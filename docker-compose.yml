@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    build: ./product_service
+    container_name: pos_product_service
+    restart: always
+    environment:
+      # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
+      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+    depends_on:
+      - postgres_db
+
+  # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
+  postgres_db:
+    image: postgres:13
+    container_name: pos_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: products_db
+    volumes:
+      # Зберігаємо дані на диску, щоб не зникали при перезапуску
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    build: ./order_service
+    container_name: pos_order_service
+    restart: always
+    environment:
+      # Зв'язок з Redis
+      - REDIS_HOST=redis_db
+    depends_on:
+      - redis_db
+
+  # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
+  redis_db:
+    image: redis:alpine
+    container_name: pos_redis
+    restart: always
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  nginx:
+    image: nginx:alpine
+    container_name: pos_gateway
+    restart: always
+    ports:
+      # Відкриваємо порт 80 на твоєму сервері
+      - "8080:80"
+    volumes:
+      # Підключаємо наш конфіг
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      # Підключаємо наш фронтенд
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - product_service
+      - order_service
+
+# Оголошуємо томи для зберігання даних
+volumes:
+  postgres_data:
