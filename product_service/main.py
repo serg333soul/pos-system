@@ -47,8 +47,42 @@ def create_product(product: ProductCreate):
 
 # Маршрут 2: Показати товари
 @app.get("/products/")
-def read_products():
+def rea_products():
     db = SessionLocal()
     products = db.query(ProductDB).all()
     db.close()
     return products
+
+# Маршрут 3: Оновити товар (PUT)
+@app.put("/products/{product_id}")
+def update_product(product_id: int, product: ProductCreate):
+    db = SessionLocal()
+    # Шукаємо товар
+    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+        
+    if db_product:
+        # Оновлюємо поля
+        db_product.name = product.name
+        db_product.price = product.price
+        db.commit() # Зберігаємо зміни
+        db.refresh(db_product)
+        db.close()
+        return db_product
+        
+    db.close()
+    return {"error": "Product not found"}
+
+# Маршрут 4: Видалити товар (DELETE)
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int):
+    db = SessionLocal()
+    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+        
+    if db_product:
+        db.delete(db_product)
+        db.commit()
+        db.close()
+        return {"status": "deleted"}
+        
+    db.close()
+    return {"error": "Product not found"}    
