@@ -1,0 +1,1694 @@
+
+========================================
+FILE: docker-compose.yml
+========================================
+#version: '3.8'
+
+services:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    build: ./product_service
+    container_name: pos_product_service
+    restart: always
+    ports:
+      - "8001:8000"
+    environment:
+      # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
+      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+    depends_on:
+      - postgres_db
+
+  # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
+  postgres_db:
+    image: postgres:13
+    container_name: pos_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: products_db
+    volumes:
+      # Зберігаємо дані на диску, щоб не зникали при перезапуску
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    build: ./order_service
+    container_name: pos_order_service
+    restart: always
+    environment:
+      # Зв'язок з Redis
+      - REDIS_HOST=redis_db
+    depends_on:
+      - redis_db
+
+  # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
+  redis_db:
+    image: redis:alpine
+    container_name: pos_redis
+    restart: always
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  frontend:  # <-- НОВА НАЗВА (було nginx або gateway)
+    build: ./frontend
+    container_name: pos_frontend # <-- НОВЕ ІМ'Я КОНТЕЙНЕРА
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - product_service
+      - order_service
+
+# Оголошуємо томи для зберігання даних
+volumes:
+  postgres_data:
+
+
+========================================
+FILE: order_service/requirements.txt
+========================================
+fastapi
+uvicorn
+redis
+
+
+========================================
+FILE: order_service/main.py
+========================================
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import redis
+import os
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+REDIS_HOST = os.getenv("REDIS_HOST", "pos_redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
+# decode_responses=True повертає строки
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+CART_KEY = "cart"
+
+@app.get("/")
+def read_root():
+    return {"message": "Order Service is running!"}
+
+# --- ВИПРАВЛЕНА ФУНКЦІЯ ---
+@app.get("/cart/")
+def get_cart():
+    raw_cart = r.hgetall(CART_KEY)
+    
+    # Ми формуємо Словник (Dictionary), а не список
+    # Було: {"item:9": "2"} -> Стане: {"9": 2}
+    clean_cart = {}
+    
+    for key, value in raw_cart.items():
+        try:
+            # key = "item:9" -> parts = ["item", "9"]
+            parts = key.split(":")
+            if len(parts) == 2 and parts[0] == "item":
+                item_id = parts[1] # Залишаємо як стрічку "9", бо JSON ключі завжди стрічки
+                quantity = int(value)
+                
+                clean_cart[item_id] = quantity
+        except ValueError:
+            continue
+
+    # Результат: {"9": 2, "14": 1}
+    return clean_cart
+
+@app.post("/cart/{item_id}")
+def add_item(item_id: int):
+    r.hincrby(CART_KEY, f"item:{item_id}", 1)
+    return {"status": "added", "id": item_id}
+
+@app.post("/cart/{item_id}/decrease")
+def decrease_item(item_id: int):
+    key = f"item:{item_id}"
+    new_qty = r.hincrby(CART_KEY, key, -1)
+    if new_qty <= 0:
+        r.hdel(CART_KEY, key)
+    return {"status": "decreased", "id": item_id, "qty": new_qty}
+
+@app.delete("/cart/{item_id}")
+def remove_item(item_id: int):
+    key = f"item:{item_id}"
+    r.hdel(CART_KEY, key)
+    return {"status": "removed", "id": item_id}
+
+@app.delete("/cart/")
+def clear_cart():
+    r.delete(CART_KEY)
+    return {"status": "cart cleared"}
+
+========================================
+FILE: order_service/Dockerfile
+========================================
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main.py .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+========================================
+FILE: frontend/index.html
+========================================
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HITS-POS</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+
+========================================
+FILE: frontend/vite.config.js
+========================================
+import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    vue(),
+  ],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: {
+      // 1. Запити до КОШИКА йдуть на order_service (8000)
+      '/api/cart': {
+        target: 'http://order_service:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '') 
+      },
+      // 2. Всі інші запити (Categories, Units, Products) йдуть на product_service (8001)
+      '/api': {
+        target: 'http://product_service:8000', // Всередині Docker мережі вони всі слухають 8000
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
+  }
+})
+
+========================================
+FILE: frontend/README.md
+========================================
+# Vue 3 + Vite
+
+This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+
+Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+
+
+========================================
+FILE: frontend/package.json
+========================================
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.24"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.17",
+    "vite": "^7.2.4"
+  }
+}
+
+
+========================================
+FILE: frontend/postcss.config.js
+========================================
+export default {
+  plugins: {
+    tailwindcss: {}, // Ніяких собачок @tailwindcss/postcss! Просто tailwindcss.
+    autoprefixer: {},
+  },
+}
+
+========================================
+FILE: frontend/nginx.conf
+========================================
+server {
+    listen 80;
+    server_name localhost;
+
+    # 1. Головна сторінка (Фронтенд)
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html; # Для роботи Vue Router (щоб не було 404 при оновленні)
+    }
+
+    # 2. Проксі для КОШИКА (Order Service)
+    # Запит /api/cart/... перетвориться на http://order_service:8000/cart/...
+    location /api/cart {
+        # Відрізаємо /api, залишаємо /cart
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://order_service:8000;
+        proxy_set_header Host $host;
+    }
+
+    # 3. Проксі для ТОВАРІВ (Product Service) - все інше api
+    # Запит /api/units/... перетвориться на http://product_service:8000/units/...
+    location /api/ {
+        # Відрізаємо /api
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://product_service:8000;
+        proxy_set_header Host $host;
+    }
+}
+
+========================================
+FILE: frontend/Dockerfile
+========================================
+# --- ЕТАП 1: Збірка (Build) ---
+# ВИКОРИСТОВУЄМО ВЕРСІЮ 22, бо Vite 6/7 цього вимагає
+FROM node:22-alpine as build-stage
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+# --- ЕТАП 2: Продакшн (Nginx) ---
+FROM nginx:alpine as production-stage
+
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+
+========================================
+FILE: frontend/tailwind.config.js
+========================================
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+========================================
+FILE: frontend/src/App.vue
+========================================
+<script setup>
+import { ref, onMounted } from 'vue'
+import Sidebar from './components/Sidebar.vue'
+import ProductCard from './components/ProductCard.vue'
+import CartDrawer from './components/CartDrawer.vue'
+import Warehouse from './components/Warehouse.vue'
+
+// --- ЗМІННІ СТАНУ ---
+const currentPage = ref('pos') // 'pos' (Каса) або 'warehouse' (Склад)
+
+// Дані для каси
+const products = ref([])
+const loading = ref(true)
+const error = ref(null)
+const cartCount = ref(0)
+const isCartOpen = ref(false)
+
+// --- ЛОГІКА КАСИ (POS) ---
+
+// 1. Завантаження товарів для продажу
+const fetchProducts = async () => {
+  try {
+    // ВАЖЛИВО: Тут ми звертаємось до api/products (це йде на product_service)
+    // Оскільки ми ще не зробили повноцінний список товарів в базі, 
+    // цей запит може повернути пустий список, але помилки не буде.
+    const res = await fetch('/api/products/') 
+    if (res.ok) {
+      products.value = await res.json()
+    } else {
+      // Тимчасова заглушка, якщо база пуста
+      products.value = [] 
+    }
+  } catch (err) {
+    error.value = "Не вдалося завантажити меню"
+    console.error(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 2. Оновлення лічильника кошика
+const updateCartCount = async () => {
+  try {
+    const res = await fetch('/api/cart/')
+    const cart = await res.json()
+    // Парсимо в числа, щоб уникнути "0112"
+    cartCount.value = Object.values(cart).reduce((sum, qty) => sum + parseInt(qty), 0)
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// 3. Додавання в кошик
+const addToCart = async (product) => {
+  try {
+    const res = await fetch(`/api/cart/${product.id}`, { method: 'POST' })
+    if (res.ok) {
+      await updateCartCount()
+    }
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// 4. Відкриття кошика
+const openCart = () => {
+  isCartOpen.value = true
+}
+
+// При старті
+onMounted(() => {
+  fetchProducts()
+  updateCartCount()
+})
+</script>
+
+<template>
+  <div class="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
+    
+    <Sidebar 
+      :current-page="currentPage" 
+      @change-page="(page) => currentPage = page" 
+    />
+
+    <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
+      
+      <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200 px-8 py-4 flex justify-between items-center">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-800">Меню</h2>
+          <p class="text-sm text-gray-500">Оберіть товари для замовлення</p>
+        </div>
+        
+        <button 
+          @click="openCart"
+          class="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg flex items-center gap-3 active:scale-95">
+          <i class="fas fa-shopping-cart"></i>
+          <span>Кошик: {{ cartCount }}</span>
+        </button>
+      </header>
+
+      <div class="p-8 overflow-y-auto flex-1 custom-scrollbar">
+        <div v-if="loading" class="flex flex-col items-center justify-center h-64 text-gray-400">
+          <i class="fas fa-circle-notch fa-spin text-3xl mb-4"></i>
+          <p>Завантаження...</p>
+        </div>
+
+        <div v-else-if="products.length === 0" class="flex flex-col items-center justify-center h-64 text-gray-400">
+          <i class="fas fa-mug-hot text-4xl mb-4 opacity-50"></i>
+          <p>Меню поки порожнє. Додайте товари на Складі!</p>
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+          <ProductCard 
+            v-for="item in products" 
+            :key="item.id" 
+            :product="item" 
+            @add-to-cart="addToCart(item)" 
+          />
+        </div>
+      </div>
+
+      <CartDrawer 
+        :is-open="isCartOpen"
+        :products="products"
+        @close="isCartOpen = false"
+        @clear-cart="updateCartCount"
+      />
+    </main>
+
+    <Warehouse v-if="currentPage === 'warehouse'" />
+
+  </div>
+</template>
+
+<style>
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+</style>
+
+========================================
+FILE: frontend/src/style.css
+========================================
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+========================================
+FILE: frontend/src/main.js
+========================================
+import { createApp } from 'vue'
+import './style.css'
+import App from './App.vue'
+
+createApp(App).mount('#app')
+
+
+========================================
+FILE: frontend/src/components/ProductCard.vue
+========================================
+<script setup>
+import { computed } from 'vue'
+
+const props = defineProps({
+  product: Object
+})
+
+const emit = defineEmits(['add-to-cart'])
+
+// Функція для вибору іконки залежно від категорії (або назви)
+const productIcon = computed(() => {
+  const name = props.product.name.toLowerCase()
+  const cat = props.product.category?.name?.toLowerCase() || ''
+
+  if (name.includes('кава') || name.includes('еспресо') || cat.includes('напої')) return 'fas fa-mug-hot'
+  if (name.includes('чай')) return 'fas fa-leaf'
+  if (name.includes('торт') || name.includes('десерт') || cat.includes('десерти')) return 'fas fa-birthday-cake'
+  if (name.includes('круасан')) return 'fas fa-bread-slice'
+  
+  return 'fas fa-box' // Стандартна іконка
+})
+
+// Колір залежно від категорії
+const cardColor = computed(() => {
+  const cat = props.product.category?.slug || ''
+  if (cat === 'hot-drinks') return 'bg-orange-50 text-orange-600 border-orange-100'
+  if (cat === 'desserts') return 'bg-pink-50 text-pink-600 border-pink-100'
+  return 'bg-white text-gray-700 border-gray-100'
+})
+</script>
+
+<template>
+  <div 
+    @click="emit('add-to-cart')"
+    class="relative group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-2xl border overflow-hidden bg-white"
+  >
+    <div class="h-32 flex items-center justify-center text-5xl transition-transform group-hover:scale-110" 
+         :class="cardColor">
+      <i :class="productIcon"></i>
+    </div>
+
+    <div class="p-4">
+      <div v-if="product.category" class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+        {{ product.category.name }}
+      </div>
+      
+      <h3 class="font-bold text-lg text-gray-800 leading-tight mb-2">{{ product.name }}</h3>
+      
+      <div class="flex justify-between items-center mt-3">
+        <span class="text-xl font-bold text-gray-900">{{ product.price }} ₴</span>
+        
+        <button class="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center hover:bg-green-500 transition shadow-lg">
+          <i class="fas fa-plus text-xs"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+========================================
+FILE: frontend/src/components/HelloWorld.vue
+========================================
+<script setup>
+import { ref } from 'vue'
+
+defineProps({
+  msg: String,
+})
+
+const count = ref(0)
+</script>
+
+<template>
+  <h1>{{ msg }}</h1>
+
+  <div class="card">
+    <button type="button" @click="count++">count is {{ count }}</button>
+    <p>
+      Edit
+      <code>components/HelloWorld.vue</code> to test HMR
+    </p>
+  </div>
+
+  <p>
+    Check out
+    <a href="https://vuejs.org/guide/quick-start.html#local" target="_blank"
+      >create-vue</a
+    >, the official Vue + Vite starter
+  </p>
+  <p>
+    Learn more about IDE Support for Vue in the
+    <a
+      href="https://vuejs.org/guide/scaling-up/tooling.html#ide-support"
+      target="_blank"
+      >Vue Docs Scaling up Guide</a
+    >.
+  </p>
+  <p class="read-the-docs">Click on the Vite and Vue logos to learn more</p>
+</template>
+
+<style scoped>
+.read-the-docs {
+  color: #888;
+}
+</style>
+
+
+========================================
+FILE: frontend/src/components/Warehouse.vue
+========================================
+<script setup>
+import { ref, onMounted } from 'vue'
+
+const activeTab = ref('categories') // 'categories', 'units', 'ingredients', 'products'
+
+// --- ДАНІ ---
+const categories = ref([])
+const units = ref([])
+const ingredients = ref([])
+const products = ref([]) // <--- НОВЕ: Список товарів
+const loading = ref(false)
+
+// --- ФОРМИ ---
+const newCategory = ref({ name: '', slug: '' })
+const newUnit = ref({ name: '', symbol: '' })
+const newIngredient = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 })
+
+// <--- НОВЕ: Форма товару з рецептом
+const newProduct = ref({
+  name: '',
+  price: 0,
+  description: '',
+  category_id: '',
+  recipe: [] // Тут буде список: [{ ingredient_id: 5, quantity: 0.01 }, ...]
+})
+
+// --- ЗАВАНТАЖЕННЯ ДАНИХ ---
+const fetchData = async () => {
+  loading.value = true
+  try {
+    const [catRes, unitRes, ingRes, prodRes] = await Promise.all([
+      fetch('/api/categories/'),
+      fetch('/api/units/'),
+      fetch('/api/ingredients/'),
+      fetch('/api/products/') // <--- НОВЕ
+    ])
+    
+    categories.value = await catRes.json()
+    units.value = await unitRes.json()
+    ingredients.value = await ingRes.json()
+    products.value = await prodRes.json()
+  } catch (err) {
+    console.error("Помилка завантаження:", err)
+  } finally {
+    loading.value = false
+  }
+}
+
+// --- ФУНКЦІЇ СТВОРЕННЯ ---
+const createCategory = async () => {
+  if (!newCategory.value.name) return
+  await fetch('/api/categories/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newCategory.value)
+  })
+  newCategory.value = { name: '', slug: '' }
+  fetchData()
+}
+
+const createUnit = async () => {
+  if (!newUnit.value.name) return
+  await fetch('/api/units/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newUnit.value)
+  })
+  newUnit.value = { name: '', symbol: '' }
+  fetchData()
+}
+
+const createIngredient = async () => {
+  if (!newIngredient.value.name || !newIngredient.value.unit_id) return
+  await fetch('/api/ingredients/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newIngredient.value)
+  })
+  newIngredient.value = { name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 }
+  fetchData()
+}
+
+// --- НОВЕ: ЛОГІКА ТОВАРІВ ---
+
+// 1. Додати рядок у рецепт (візуально)
+const addIngredientRow = () => {
+  newProduct.value.recipe.push({ ingredient_id: '', quantity: 0 })
+}
+
+// 2. Видалити рядок з рецепта
+const removeIngredientRow = (index) => {
+  newProduct.value.recipe.splice(index, 1)
+}
+
+// 3. Зберегти товар
+const createProduct = async () => {
+  if (!newProduct.value.name || !newProduct.value.category_id) return alert("Вкажіть назву та категорію!")
+  
+  // Фільтруємо пусті рядки рецепта
+  const cleanRecipe = newProduct.value.recipe.filter(r => r.ingredient_id && r.quantity > 0)
+  
+  const payload = { ...newProduct.value, recipe: cleanRecipe }
+
+  const res = await fetch('/api/products/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (res.ok) {
+    // Очищаємо форму
+    newProduct.value = { name: '', price: 0, description: '', category_id: '', recipe: [] }
+    fetchData()
+  } else {
+    alert("Помилка створення товару")
+  }
+}
+
+// 4. Видалити товар (щоб почистити дублікати)
+const deleteProduct = async (id) => {
+  if(!confirm("Видалити цей товар?")) return
+  // Оскільки ми ще не зробили DELETE в API product_service для products, 
+  // це поки що не спрацює, але підготуємо UI.
+  // Давай поки видалятимемо через базу, а тут просто заглушка.
+  alert("Функція видалення скоро буде доступна!")
+}
+
+onMounted(() => {
+  fetchData()
+})
+</script>
+
+<template>
+  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
+    
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl font-bold text-gray-800">📦 Складський облік</h2>
+        <p class="text-gray-500">Керування товарами, рецептами та сировиною</p>
+      </div>
+      <button @click="fetchData" class="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition">
+        <i class="fas fa-sync-alt" :class="{'fa-spin': loading}"></i>
+      </button>
+    </div>
+
+    <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
+      <button @click="activeTab = 'categories'" :class="activeTab === 'categories' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
+      <button @click="activeTab = 'units'" :class="activeTab === 'units' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-2 rounded-lg font-bold transition-all whitespace-nowrap">Одиниці вим.</button>
+      <button @click="activeTab = 'ingredients'" :class="activeTab === 'ingredients' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-2 rounded-lg font-bold transition-all">Інгредієнти</button>
+      <button @click="activeTab = 'products'" :class="activeTab === 'products' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-2 rounded-lg font-bold transition-all">Товари та Рецепти</button>
+    </div>
+
+    <div v-if="activeTab === 'categories'" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h3 class="font-bold mb-4 text-gray-700">Список категорій</h3>
+        <ul>
+          <li v-for="c in categories" :key="c.id" class="flex justify-between border-b py-3">
+            <span>{{ c.name }}</span>
+            <span class="bg-gray-100 text-xs px-2 py-1 rounded text-gray-500">{{ c.slug }}</span>
+          </li>
+        </ul>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
+        <h3 class="font-bold mb-4">Нова категорія</h3>
+        <input v-model="newCategory.name" class="w-full border p-2 rounded mb-2" placeholder="Назва">
+        <input v-model="newCategory.slug" class="w-full border p-2 rounded mb-4" placeholder="Slug">
+        <button @click="createCategory" class="w-full bg-blue-600 text-white py-2 rounded font-bold">Додати</button>
+      </div>
+    </div>
+
+    <div v-if="activeTab === 'units'" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+         <h3 class="font-bold mb-4 text-gray-700">Одиниці виміру</h3>
+         <ul>
+          <li v-for="u in units" :key="u.id" class="flex justify-between border-b py-3">
+            <span>{{ u.name }}</span>
+            <span class="font-bold text-green-600">{{ u.symbol }}</span>
+          </li>
+        </ul>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
+        <h3 class="font-bold mb-4">Нова одиниця</h3>
+        <input v-model="newUnit.name" class="w-full border p-2 rounded mb-2" placeholder="Назва">
+        <input v-model="newUnit.symbol" class="w-full border p-2 rounded mb-4" placeholder="Символ">
+        <button @click="createUnit" class="w-full bg-blue-600 text-white py-2 rounded font-bold">Додати</button>
+      </div>
+    </div>
+
+    <div v-if="activeTab === 'ingredients'" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div class="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="w-full text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr><th class="p-4">Назва</th><th class="p-4 text-right">Ціна/од</th><th class="p-4 text-right">Залишок</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in ingredients" :key="i.id" class="border-b hover:bg-gray-50">
+              <td class="p-4">{{ i.name }}</td>
+              <td class="p-4 text-right">{{ i.cost_per_unit }} ₴</td>
+              <td class="p-4 text-right font-bold" :class="i.stock_quantity > 0 ? 'text-green-600':'text-red-500'">
+                {{ i.stock_quantity }} {{ i.unit?.symbol }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
+        <h3 class="font-bold mb-4">Новий інгредієнт</h3>
+        <input v-model="newIngredient.name" class="w-full border p-2 rounded mb-2" placeholder="Назва">
+        <select v-model="newIngredient.unit_id" class="w-full border p-2 rounded mb-2 bg-white">
+          <option value="" disabled>Одиниця...</option>
+          <option v-for="u in units" :key="u.id" :value="u.id">{{ u.name }}</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <input v-model="newIngredient.cost_per_unit" type="number" placeholder="Ціна" class="border p-2 rounded">
+          <input v-model="newIngredient.stock_quantity" type="number" placeholder="Залишок" class="border p-2 rounded">
+        </div>
+        <button @click="createIngredient" class="w-full bg-orange-500 text-white py-2 rounded font-bold">Додати</button>
+      </div>
+    </div>
+
+    <div v-if="activeTab === 'products'" class="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-fade-in">
+      
+      <div class="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="w-full text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="p-4">Назва</th>
+              <th class="p-4">Категорія</th>
+              <th class="p-4 text-right">Ціна</th>
+              <th class="p-4 text-center">Дії</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in products" :key="p.id" class="border-b hover:bg-gray-50">
+              <td class="p-4 font-bold">{{ p.name }}</td>
+              <td class="p-4 text-sm text-gray-500">
+                {{ p.category ? p.category.name : 'Без категорії' }}
+              </td>
+              <td class="p-4 text-right font-mono">{{ p.price }} ₴</td>
+              <td class="p-4 text-center">
+                <button @click="deleteProduct(p.id)" class="text-red-400 hover:text-red-600 transition">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-purple-100 h-fit border-2">
+        <h3 class="text-lg font-bold mb-4 text-purple-700 flex items-center gap-2">
+          <i class="fas fa-magic"></i> Створити товар
+        </h3>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs font-bold text-gray-400 uppercase">Назва</label>
+            <input v-model="newProduct.name" type="text" placeholder="Напр: Лате XL" class="w-full border p-2 rounded mt-1">
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3">
+             <div>
+                <label class="text-xs font-bold text-gray-400 uppercase">Категорія</label>
+                <select v-model="newProduct.category_id" class="w-full border p-2 rounded mt-1 bg-white">
+                  <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+             </div>
+             <div>
+                <label class="text-xs font-bold text-gray-400 uppercase">Ціна продажу</label>
+                <input v-model="newProduct.price" type="number" class="w-full border p-2 rounded mt-1 text-right">
+             </div>
+          </div>
+
+          <div class="pt-4 border-t border-dashed">
+            <label class="text-xs font-bold text-purple-600 uppercase mb-2 block">Технологічна карта (Рецепт)</label>
+            
+            <div v-for="(row, index) in newProduct.recipe" :key="index" class="flex gap-2 mb-2 items-center">
+              <select v-model="row.ingredient_id" class="flex-1 border p-2 rounded bg-gray-50 text-sm">
+                <option value="" disabled>Сировина...</option>
+                <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">
+                  {{ ing.name }}
+                </option>
+              </select>
+              
+              <input v-model="row.quantity" type="number" step="0.001" placeholder="Кіл-ть" class="w-20 border p-2 rounded text-sm text-right">
+              
+              <button @click="removeIngredientRow(index)" class="text-red-400 hover:text-red-600 px-1">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+
+            <button @click="addIngredientRow" class="text-sm text-purple-600 font-bold hover:underline mt-1">
+              + Додати інгредієнт
+            </button>
+          </div>
+
+          <button @click="createProduct" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition mt-4 shadow-lg shadow-purple-200">
+            Зберегти товар
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</template>
+
+========================================
+FILE: frontend/src/components/Sidebar.vue
+========================================
+<script setup>
+// Отримуємо поточну активну сторінку від батька
+defineProps({
+  currentPage: String 
+})
+
+const emit = defineEmits(['change-page'])
+</script>
+
+<template>
+  <aside class="w-64 bg-gray-900 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-gray-800 z-50">
+    
+    <div class="p-6 text-2xl font-bold text-center border-b border-gray-800 flex items-center justify-center gap-2">
+      <div class="w-8 h-8 bg-gradient-to-tr from-yellow-400 to-orange-500 rounded-full"></div>
+      HITS POS
+    </div>
+
+    <nav class="flex-1 py-6 space-y-1">
+      
+      <a href="#" 
+         @click.prevent="emit('change-page', 'pos')"
+         :class="currentPage === 'pos' ? 'bg-gray-800 text-yellow-400 border-l-4 border-yellow-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+         class="flex items-center px-6 py-3 font-bold transition-all">
+        <i class="fas fa-cash-register w-6 text-center mr-2"></i> 
+        Каса
+      </a>
+      
+      <a href="#" 
+         @click.prevent="emit('change-page', 'warehouse')"
+         :class="currentPage === 'warehouse' ? 'bg-gray-800 text-blue-400 border-l-4 border-blue-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+         class="flex items-center px-6 py-3 font-bold transition-all group">
+        <i class="fas fa-boxes w-6 text-center mr-2 group-hover:scale-110 transition-transform"></i> 
+        Склад
+      </a>
+      
+      <a href="#" class="flex items-center px-6 py-3 text-gray-400 hover:bg-gray-800 hover:text-white transition-all group">
+        <i class="fas fa-chart-line w-6 text-center mr-2 group-hover:scale-110 transition-transform"></i> 
+        Статистика
+      </a>
+    </nav>
+
+    <div class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center">
+      <p>Server: <span class="text-green-500">Online 🟢</span></p>
+    </div>
+  </aside>
+</template>
+
+========================================
+FILE: frontend/src/components/CartDrawer.vue
+========================================
+<script setup>
+import { computed, ref, watch } from 'vue'
+
+const props = defineProps({
+  isOpen: Boolean,
+  products: Array // Список всіх товарів
+})
+
+const emit = defineEmits(['close', 'clear-cart'])
+const cartItems = ref([])
+const isProcessing = ref(false)
+const paymentMethod = ref('cash') // 'cash' або 'card'
+
+// --- ЗАВАНТАЖЕННЯ ДАНИХ ---
+const loadCart = async () => {
+  try {
+    const res = await fetch('/api/cart/')
+    if (!res.ok) return
+    
+    // Отримуємо: {"9": 2, "14": 1}
+    const rawCart = await res.json() 
+    
+    const items = []
+    // Проходимо по словнику (Object.entries ідеально підходить для нового main.py)
+    for (const [idStr, qty] of Object.entries(rawCart)) {
+      const id = parseInt(idStr)
+      const product = props.products.find(p => p.id === id)
+      
+      if (product) {
+        items.push({
+          product_id: id,
+          name: product.name,
+          price: product.price,
+          quantity: parseInt(qty),
+          // Додаємо картинку, якщо є, або заглушку
+          image: product.image || null 
+        })
+      }
+    }
+    // Сортуємо за назвою, щоб не стрибали
+    cartItems.value = items.sort((a, b) => a.name.localeCompare(b.name))
+  } catch (err) {
+    console.error("Помилка кошика:", err)
+  }
+}
+
+// --- УПРАВЛІННЯ ТОВАРАМИ ---
+
+// Збільшити (+1)
+const increaseQty = async (id) => {
+  await fetch(`/api/cart/${id}`, { method: 'POST' })
+  await loadCart() // Оновлюємо список
+}
+
+// Зменшити (-1)
+const decreaseQty = async (id) => {
+  await fetch(`/api/cart/${id}/decrease`, { method: 'POST' })
+  await loadCart()
+}
+
+// Видалити повністю
+const removeItem = async (id) => {
+  if(!confirm('Видалити цей товар з кошика?')) return
+  await fetch(`/api/cart/${id}`, { method: 'DELETE' })
+  await loadCart()
+}
+
+// Очистити все
+const clearAll = async () => {
+  if(!confirm('Очистити весь кошик?')) return
+  await fetch('/api/cart/', { method: 'DELETE' })
+  await loadCart()
+  emit('clear-cart') // Сигнал батьку оновити лічильник
+}
+
+// --- ОПЛАТА ---
+const totalSum = computed(() => {
+  return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+})
+
+const checkout = async () => {
+  if (cartItems.value.length === 0) return
+  isProcessing.value = true
+
+  try {
+    const payload = {
+      items: cartItems.value.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity
+      })),
+      payment_method: paymentMethod.value, // Передаємо тип оплати
+      total_price: totalSum.value
+    }
+
+    // Списання інгредієнтів
+    const deductRes = await fetch('/api/orders/checkout/', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+
+    if (!deductRes.ok) throw new Error("Помилка списання зі складу")
+
+    // Очистка кошика після успіху
+    await fetch('/api/cart/', { method: 'DELETE' })
+    
+    alert(`✅ Оплата успішна!\nСума: ${totalSum.value} ₴\nСпосіб: ${paymentMethod.value === 'cash' ? 'Готівка' : 'Картка'}`)
+    
+    emit('clear-cart')
+    emit('close')
+    
+  } catch (err) {
+    alert("❌ Помилка при оплаті! Перевірте залишки на складі.")
+    console.error(err)
+  } finally {
+    isProcessing.value = false
+  }
+}
+
+// Слідкуємо за відкриттям
+watch(() => props.isOpen, (newVal) => {
+  if (newVal) loadCart()
+})
+</script>
+
+<template>
+  <div class="fixed inset-0 z-50 flex justify-end transition-opacity duration-300" 
+       :class="isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'">
+    
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')"></div>
+
+    <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col transition-transform duration-300 transform"
+         :class="isOpen ? 'translate-x-0' : 'translate-x-full'">
+      
+      <div class="p-5 bg-gray-900 text-white flex justify-between items-center shadow-md">
+        <h2 class="text-xl font-bold flex items-center gap-2">
+          <i class="fas fa-shopping-cart"></i> Кошик
+        </h2>
+        <div class="flex gap-3">
+            <button @click="clearAll" class="text-gray-400 hover:text-red-400 transition" title="Очистити все">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+            <button @click="emit('close')" class="text-gray-400 hover:text-white transition">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 bg-gray-50">
+        <div v-if="cartItems.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
+          <i class="fas fa-shopping-basket text-6xl mb-4 opacity-20"></i>
+          <p>Кошик порожній</p>
+        </div>
+
+        <div v-else class="space-y-3">
+          <div v-for="item in cartItems" :key="item.product_id" 
+               class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
+            
+            <div class="flex justify-between items-start">
+              <span class="font-bold text-gray-800 text-lg">{{ item.name }}</span>
+              <span class="font-mono font-bold text-gray-900">{{ item.price * item.quantity }} ₴</span>
+            </div>
+
+            <div class="flex justify-between items-center bg-gray-50 rounded-lg p-1">
+                <div class="flex items-center gap-3">
+                    <button @click="decreaseQty(item.product_id)" 
+                            class="w-8 h-8 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center justify-center font-bold shadow-sm active:scale-95">
+                        -
+                    </button>
+                    <span class="w-6 text-center font-bold text-gray-800">{{ item.quantity }}</span>
+                    <button @click="increaseQty(item.product_id)" 
+                            class="w-8 h-8 rounded-full bg-gray-800 text-white hover:bg-gray-700 flex items-center justify-center font-bold shadow-sm active:scale-95">
+                        +
+                    </button>
+                </div>
+                
+                <button @click="removeItem(item.product_id)" class="text-red-400 hover:text-red-600 p-2">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        
+        <div class="mb-4">
+            <label class="block text-sm font-bold text-gray-600 mb-2">Спосіб оплати:</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button @click="paymentMethod = 'cash'"
+                    class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all"
+                    :class="paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                    <i class="fas fa-money-bill-wave"></i> Готівка
+                </button>
+                <button @click="paymentMethod = 'card'"
+                    class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all"
+                    :class="paymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                    <i class="fas fa-credit-card"></i> Картка
+                </button>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-center text-2xl font-bold mb-4 text-gray-800">
+          <span>Разом:</span>
+          <span>{{ totalSum }} ₴</span>
+        </div>
+        
+        <button 
+          @click="checkout"
+          :disabled="cartItems.length === 0 || isProcessing"
+          class="w-full py-4 rounded-xl font-bold text-lg text-white transition shadow-lg flex justify-center items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed active:scale-95"
+          :class="paymentMethod === 'cash' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'">
+          
+          <span v-if="isProcessing"><i class="fas fa-spinner fa-spin"></i> Обробка...</span>
+          <span v-else>
+            Оплатити ({{ paymentMethod === 'cash' ? 'Готівка' : 'Картка' }})
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+========================================
+FILE: nginx/nginx.conf
+========================================
+events {}
+
+http {
+    include       /etc/nginx/mime.types; # Важливо для стилів CSS та картинок
+    default_type  application/octet-stream;
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        # 1. ФРОНТЕНД (Vue)
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # 2. API КОШИКА (Order Service)
+        # Перехоплюємо /api/cart/...
+        location /api/cart/ {
+            # Відрізаємо /api/cart/ і передаємо залишок на бекенд
+            # Наприклад: /api/cart/ -> http://order_service:8000/cart/
+            proxy_pass http://order_service:8000/cart/;
+        }
+
+        # 3. ВСІ ІНШІ API (Product Service)
+        # Це "catch-all" блок. Сюди потраплять:
+        # /api/products/, /api/categories/, /api/inventory/, /api/ingredients/
+        location /api/ {
+            # Відрізаємо /api і передаємо корінь
+            # Наприклад: /api/inventory/deduct/ -> http://product_service:8000/inventory/deduct/
+            rewrite ^/api/(.*) /$1 break;
+            proxy_pass http://product_service:8000;
+        }
+    }
+}
+
+========================================
+FILE: product_service/requirements.txt
+========================================
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+
+
+========================================
+FILE: product_service/schemas.py
+========================================
+from pydantic import BaseModel
+from typing import List, Optional 
+from datetime import datetime
+
+# --- CATEGORIES ---
+class CategoryBase(BaseModel):
+    name: str
+    slug: str
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class Category(CategoryBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+# --- UNITS ---
+class UnitBase(BaseModel):
+    name: str
+    symbol: str
+
+class UnitCreate(UnitBase):
+    pass
+
+class Unit(UnitBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+# --- INGREDIENTS ---
+class IngredientBase(BaseModel):
+    name: str
+    unit_id: int
+    cost_per_unit: float = 0.0
+    stock_quantity: float = 0.0
+
+class IngredientCreate(IngredientBase):
+    pass
+
+class Ingredient(IngredientBase):
+    id: int
+    unit: Unit
+    class Config:
+        from_attributes = True
+
+# --- RECIPE ITEM ---
+class RecipeItemBase(BaseModel):
+    ingredient_id: int
+    quantity: float
+
+class RecipeItemCreate(RecipeItemBase):
+    pass
+
+class RecipeItem(RecipeItemBase):
+    id: int
+    ingredient_name: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+# --- PRODUCTS (Тут була проблема) ---
+class ProductBase(BaseModel):
+    name: str
+    price: float
+    description: Optional[str] = None
+    
+    # БУЛО: category_id: int
+    # СТАЛО (Виправлено):
+    category_id: Optional[int] = None 
+
+class ProductCreate(ProductBase):
+    recipe: List[RecipeItemCreate] = []
+
+class Product(ProductBase):
+    id: int
+    category: Optional[Category] = None
+    recipe: List[RecipeItem] = []
+
+    class Config:
+        from_attributes = True
+
+# --- СПИСАННЯ ---
+# --- ЗАМОВЛЕННЯ ТА СПИСАННЯ (ОНОВЛЕНО) ---
+class SoldItem(BaseModel):
+    product_id: int
+    quantity: int
+
+# Це те, що приходить від Фронтенду при натисканні "Оплатити"
+class OrderCreate(BaseModel):
+    items: List[SoldItem]
+    payment_method: str # "cash" або "card"
+    total_price: float
+
+# Це те, як ми будемо віддавати історію замовлень на сторінку Статистики
+class OrderItemRead(BaseModel):
+    product_name: str
+    quantity: int
+    price_at_moment: float
+    class Config:
+        from_attributes = True
+
+class OrderRead(BaseModel):
+    id: int
+    created_at: datetime
+    total_price: float
+    payment_method: str
+    items: List[OrderItemRead] = []
+    class Config:
+        from_attributes = True
+
+#class DeductRequest(BaseModel):
+#    items: List[SoldItem]
+
+
+========================================
+FILE: product_service/database.py
+========================================
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
+
+# Формуємо посилання: postgresql://user:password@hostname/dbname
+# Ці змінні ми прописали в docker-compose.yml ще на початку
+USER = os.getenv("POSTGRES_USER", "user")
+PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
+DB_NAME = os.getenv("POSTGRES_DB", "products_db")
+HOST = "pos_postgres" # Ім'я контейнера з БД
+
+SQLALCHEMY_DATABASE_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}/{DB_NAME}"
+
+# Створюємо двигун (engine)
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# Створюємо фабрику сесій (через неї ми будемо робити запити)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Базовий клас для всіх наших майбутніх таблиць
+Base = declarative_base()
+
+# Функція для отримання сесії (Dependency Injection)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+========================================
+FILE: product_service/main.py
+========================================
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+# Імпортуємо наші файли
+import models, schemas, database
+
+app = FastAPI()
+
+# 1. Створюємо таблиці в БД при старті (якщо їх немає)
+models.Base.metadata.create_all(bind=database.engine)
+
+# --- ENDPOINTS ДЛЯ КАТЕГОРІЙ ---
+
+# Створити категорію
+@app.post("/categories/", response_model=schemas.Category)
+def create_category(category: schemas.CategoryCreate, db: Session = Depends(database.get_db)):
+    # Перевіряємо, чи існує така категорія
+    db_category = db.query(models.Category).filter(models.Category.name == category.name).first()
+    if db_category:
+        raise HTTPException(status_code=400, detail="Category already exists")
+    
+    # Створюємо нову
+    new_category = models.Category(name=category.name, slug=category.slug)
+    db.add(new_category)
+    db.commit()
+    db.refresh(new_category)
+    return new_category
+
+# Отримати список категорій
+@app.get("/categories/", response_model=List[schemas.Category])
+def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    categories = db.query(models.Category).offset(skip).limit(limit).all()
+    return categories
+
+# ... (імпорти та категорії залишаються зверху) ...
+
+# --- ОДИНИЦІ ВИМІРУ ---
+
+@app.post("/units/", response_model=schemas.Unit)
+def create_unit(unit: schemas.UnitCreate, db: Session = Depends(database.get_db)):
+    db_unit = models.Unit(name=unit.name, symbol=unit.symbol)
+    db.add(db_unit)
+    db.commit()
+    db.refresh(db_unit)
+    return db_unit
+
+@app.get("/units/", response_model=List[schemas.Unit])
+def read_units(db: Session = Depends(database.get_db)):
+    return db.query(models.Unit).all()
+
+# --- ІНГРЕДІЄНТИ ---
+
+@app.post("/ingredients/", response_model=schemas.Ingredient)
+def create_ingredient(ingredient: schemas.IngredientCreate, db: Session = Depends(database.get_db)):
+    # Перевірка на дублікат
+    exists = db.query(models.Ingredient).filter(models.Ingredient.name == ingredient.name).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Ingredient already exists")
+
+    new_item = models.Ingredient(
+        name=ingredient.name,
+        unit_id=ingredient.unit_id,
+        cost_per_unit=ingredient.cost_per_unit,
+        stock_quantity=ingredient.stock_quantity
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+@app.get("/ingredients/", response_model=List[schemas.Ingredient])
+def read_ingredients(db: Session = Depends(database.get_db)):
+    return db.query(models.Ingredient).all()
+
+# --- ТОВАРИ (PRODUCTS) ---
+
+@app.post("/products/", response_model=schemas.Product)
+def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
+    # 1. Створюємо сам товар
+    db_product = models.Product(
+        name=product.name,
+        price=product.price,
+        description=product.description,
+        category_id=product.category_id
+    )
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product) # Отримуємо ID нового товару
+
+    # 2. Додаємо інгредієнти рецепта
+    for item in product.recipe:
+        db_recipe_item = models.ProductIngredient(
+            product_id=db_product.id,
+            ingredient_id=item.ingredient_id,
+            quantity=item.quantity
+        )
+        db.add(db_recipe_item)
+    
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+@app.get("/products/", response_model=List[schemas.Product])
+def read_products(db: Session = Depends(database.get_db)):
+    products = db.query(models.Product).all()
+    
+    # БЕЗПЕЧНИЙ ЦИКЛ
+    for p in products:
+        # Якщо у товара є рецепт
+        if p.recipe:
+            for r in p.recipe:
+                # Перевіряємо, чи існує інгредієнт (щоб не впало, якщо його видалили)
+                if r.ingredient:
+                    r.ingredient_name = r.ingredient.name
+                else:
+                    r.ingredient_name = "Видалено"
+            
+    return products
+
+# --- ОБРОБКА ЗАМОВЛЕННЯ (НОВЕ) ---
+@app.post("/orders/checkout/") # <--- Змінили URL, щоб було логічно
+def create_order(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
+    """
+    1. Створює запис про замовлення (Order).
+    2. Додає товари в історію (OrderItem).
+    3. Списує інгредієнти зі складу.
+    """
+    
+    # 1. Створюємо чек (Order)
+    new_order = models.Order(
+        total_price=order_data.total_price,
+        payment_method=order_data.payment_method
+        # created_at додається автоматично
+    )
+    db.add(new_order)
+    db.commit()      # Комітимо, щоб отримати ID замовлення
+    db.refresh(new_order)
+
+    # 2. Проходимо по кожному купленому товару
+    for item in order_data.items:
+        # Знаходимо товар в базі, щоб дізнатися його назву і рецепт
+        product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+        
+        if not product:
+            continue # Якщо товара вже не існує, пропускаємо (хоча це дивно)
+
+        # А. Додаємо запис в історію (OrderItem)
+        order_item = models.OrderItem(
+            order_id=new_order.id,
+            product_name=product.name,
+            quantity=item.quantity,
+            price_at_moment=product.price
+        )
+        db.add(order_item)
+
+        # Б. Списуємо інгредієнти (Стара логіка)
+        for recipe_item in product.recipe:
+            ingredient = recipe_item.ingredient
+            if ingredient:
+                amount_to_deduct = recipe_item.quantity * item.quantity
+                ingredient.stock_quantity -= amount_to_deduct
+                db.add(ingredient)
+
+    # 3. Зберігаємо всі зміни (Історію + Списання)
+    db.commit()
+    
+    return {"message": "Замовлення успішне", "order_id": new_order.id}
+
+# --- ОТРИМАТИ ІСТОРІЮ ЗАМОВЛЕНЬ ---
+@app.get("/orders/", response_model=List[schemas.OrderRead])
+def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
+    # Повертаємо замовлення, сортуючи від нових до старих
+    orders = db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
+    return orders
+
+========================================
+FILE: product_service/models.py
+========================================
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from database import Base
+from datetime import datetime
+
+# --- КАТЕГОРІЇ ---
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    slug = Column(String, unique=True)
+
+# --- ОДИНИЦІ ВИМІРУ (Нове) ---
+class Unit(Base):
+    __tablename__ = "units"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True)   # "Кілограм"
+    symbol = Column(String, unique=True) # "кг"
+
+# --- ІНГРЕДІЄНТИ (Нове) ---
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, unique=True) # "Молоко", "Кава"
+    
+    # Зв'язок: Інгредієнт посилається на Одиницю виміру
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    unit = relationship("Unit")
+
+    # Складський облік
+    cost_per_unit = Column(Float, default=0.0)  # Собівартість
+    stock_quantity = Column(Float, default=0.0) # Залишок
+
+# --- ТОВАРИ ---
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    price = Column(Float) # Ціна продажу
+    description = Column(String, nullable=True)
+    
+    # Зв'язок з категорією
+    category_id = Column(Integer, ForeignKey("categories.id"))
+    category = relationship("Category")
+
+    # Зв'язок з рецептом (список інгредієнтів)
+    recipe = relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
+
+# --- РЕЦЕПТ (Зв'язок Товар <-> Інгредієнт) ---
+class ProductIngredient(Base):
+    __tablename__ = "product_ingredients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    product_id = Column(Integer, ForeignKey("products.id"))
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    quantity = Column(Float) # Скільки цього інгредієнта йде на 1 порцію
+    
+    # Зв'язки
+    product = relationship("Product", back_populates="recipe")
+    ingredient = relationship("Ingredient")    
+
+from sqlalchemy import  # <--- НЕ ЗАБУДЬ додати це в імпорт зверху файлу!
+
+# --- ІСТОРІЯ ЗАМОВЛЕНЬ (НОВЕ) ---
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.now) # Дата та час покупки
+    total_price = Column(Float) # Загальна сума чеку
+    payment_method = Column(String) # "cash" або "card"
+    
+    # Зв'язок: В одному замовленні багато товарів
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    
+    # Ми зберігаємо назву товару текстом, бо якщо ти видалиш товар "Кава", 
+    # в історії він має залишитися як "Кава".
+    product_name = Column(String) 
+    quantity = Column(Integer)
+    price_at_moment = Column(Float) # Ціна на момент покупки (раптом завтра подорожчає)
+
+    order = relationship("Order", back_populates="items")
+
+
+========================================
+FILE: product_service/Dockerfile
+========================================
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Спочатку копіюємо вимоги і ставимо бібліотеки (щоб кешувалось)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ТЕПЕР КОПІЮЄМО ВСЕ (включаючи models.py, schemas.py, database.py)
+COPY . .
+
+# Запускаємо
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

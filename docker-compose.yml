@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 
 services:
   # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
@@ -6,6 +6,8 @@ services:
     build: ./product_service
     container_name: pos_product_service
     restart: always
+    ports:
+      - "8001:8000"
     environment:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
@@ -43,18 +45,12 @@ services:
     restart: always
 
   # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
-  nginx:
-    image: nginx:alpine
-    container_name: pos_gateway
+  frontend:  # <-- НОВА НАЗВА (було nginx або gateway)
+    build: ./frontend
+    container_name: pos_frontend # <-- НОВЕ ІМ'Я КОНТЕЙНЕРА
     restart: always
     ports:
-      # Відкриваємо порт 80 на твоєму сервері
       - "8080:80"
-    volumes:
-      # Підключаємо наш конфіг
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      # Підключаємо наш фронтенд
-      - ./frontend:/usr/share/nginx/html
     depends_on:
       - product_service
       - order_service

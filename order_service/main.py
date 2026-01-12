@@ -1,46 +1,73 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import redis
 import os
 
 app = FastAPI()
 
-# --- ПІДКЛЮЧЕННЯ ДО REDIS ---
-# REDIS_HOST - це ім'я контейнера з базою (ми назвемо його 'redis_db' у docker-compose)
-# Якщо змінної немає, пробуємо 'localhost' (для локальних тестів без докера)
-redis_host = os.getenv("REDIS_HOST", "localhost")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Створюємо клієнта. db=0 - це стандартна база даних Redis.
-r = redis.Redis(host=redis_host, port=6379, db=0)
+REDIS_HOST = os.getenv("REDIS_HOST", "pos_redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
-# --- API ---
+# decode_responses=True повертає строки
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+CART_KEY = "cart"
 
-# Додати товар у кошик
-@app.post("/cart/{item_id}")
-def add_to_cart(item_id: int):
-    # Redis зберігає дані як "Ключ": "Значення".
-    # Ключ буде виглядати як "item:1", "item:5" тощо.
-    # Функція incr() збільшує число на 1. Якщо ключа не було - створює його.
-    new_count = r.incr(f"item:{item_id}")
-    return {"item_id": item_id, "count": new_count, "status": "added"}
+@app.get("/")
+def read_root():
+    return {"message": "Order Service is running!"}
 
-# Подивитися весь кошик
+# --- ВИПРАВЛЕНА ФУНКЦІЯ ---
 @app.get("/cart/")
 def get_cart():
-    # Шукаємо всі ключі, які починаються на "item:"
-    keys = r.keys("item:*")
-    cart = {}
+    raw_cart = r.hgetall(CART_KEY)
+    
+    # Ми формуємо Словник (Dictionary), а не список
+    # Було: {"item:9": "2"} -> Стане: {"9": 2}
+    clean_cart = {}
+    
+    for key, value in raw_cart.items():
+        try:
+            # key = "item:9" -> parts = ["item", "9"]
+            parts = key.split(":")
+            if len(parts) == 2 and parts[0] == "item":
+                item_id = parts[1] # Залишаємо як стрічку "9", бо JSON ключі завжди стрічки
+                quantity = int(value)
+                
+                clean_cart[item_id] = quantity
+        except ValueError:
+            continue
 
-    for key in keys:
-        # Redis повертає дані у байтах (b'item:1'), тому їх треба декодувати (перетворити в текст)
-        key_str = key.decode("utf-8")
-        value = r.get(key)
-        value_int = int(value)
-        cart[key_str] = value_int
+    # Результат: {"9": 2, "14": 1}
+    return clean_cart
 
-    return cart
+@app.post("/cart/{item_id}")
+def add_item(item_id: int):
+    r.hincrby(CART_KEY, f"item:{item_id}", 1)
+    return {"status": "added", "id": item_id}
 
-# Очистити кошик
+@app.post("/cart/{item_id}/decrease")
+def decrease_item(item_id: int):
+    key = f"item:{item_id}"
+    new_qty = r.hincrby(CART_KEY, key, -1)
+    if new_qty <= 0:
+        r.hdel(CART_KEY, key)
+    return {"status": "decreased", "id": item_id, "qty": new_qty}
+
+@app.delete("/cart/{item_id}")
+def remove_item(item_id: int):
+    key = f"item:{item_id}"
+    r.hdel(CART_KEY, key)
+    return {"status": "removed", "id": item_id}
+
 @app.delete("/cart/")
 def clear_cart():
-    r.flushdb()
-    return {"status": "Cart cleared"}
+    r.delete(CART_KEY)
+    return {"status": "cart cleared"}

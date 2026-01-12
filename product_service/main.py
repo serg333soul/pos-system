@@ -1,88 +1,175 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import os
-import time
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+# Імпортуємо наші файли
+import models, schemas, database
 
 app = FastAPI()
 
-# Беремо налаштування підключення до БД зі змінних оточення (або дефолтні)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@postgres_db:5432/products_db")
+# 1. Створюємо таблиці в БД при старті (якщо їх немає)
+models.Base.metadata.create_all(bind=database.engine)
 
-# Невелика пауза, щоб БД встигла запуститися перед стартом коду
-time.sleep(3)
+# --- ENDPOINTS ДЛЯ КАТЕГОРІЙ ---
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Опис таблиці в базі даних
-class ProductDB(Base):
-    __tablename__ = "products"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    price = Column(Integer)
-    status = Column(String, default="active")
-
-# Створюємо таблицю
-Base.metadata.create_all(bind=engine)
-
-# Модель для перевірки даних, які прийшли від клієнта
-class ProductCreate(BaseModel):
-    name: str
-    price: int
-
-# Маршрут 1: Створити товар
-@app.post("/products/")
-def create_product(product: ProductCreate):
-    db = SessionLocal()
-    new_product = ProductDB(name=product.name, price=product.price)
-    db.add(new_product)
+# Створити категорію
+@app.post("/categories/", response_model=schemas.Category)
+def create_category(category: schemas.CategoryCreate, db: Session = Depends(database.get_db)):
+    # Перевіряємо, чи існує така категорія
+    db_category = db.query(models.Category).filter(models.Category.name == category.name).first()
+    if db_category:
+        raise HTTPException(status_code=400, detail="Category already exists")
+    
+    # Створюємо нову
+    new_category = models.Category(name=category.name, slug=category.slug)
+    db.add(new_category)
     db.commit()
-    db.refresh(new_product)
-    db.close()
-    return new_product
+    db.refresh(new_category)
+    return new_category
 
-# Маршрут 2: Показати товари
-@app.get("/products/")
-def rea_products():
-    db = SessionLocal()
-    products = db.query(ProductDB).all()
-    db.close()
+# Отримати список категорій
+@app.get("/categories/", response_model=List[schemas.Category])
+def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    categories = db.query(models.Category).offset(skip).limit(limit).all()
+    return categories
+
+# ... (імпорти та категорії залишаються зверху) ...
+
+# --- ОДИНИЦІ ВИМІРУ ---
+
+@app.post("/units/", response_model=schemas.Unit)
+def create_unit(unit: schemas.UnitCreate, db: Session = Depends(database.get_db)):
+    db_unit = models.Unit(name=unit.name, symbol=unit.symbol)
+    db.add(db_unit)
+    db.commit()
+    db.refresh(db_unit)
+    return db_unit
+
+@app.get("/units/", response_model=List[schemas.Unit])
+def read_units(db: Session = Depends(database.get_db)):
+    return db.query(models.Unit).all()
+
+# --- ІНГРЕДІЄНТИ ---
+
+@app.post("/ingredients/", response_model=schemas.Ingredient)
+def create_ingredient(ingredient: schemas.IngredientCreate, db: Session = Depends(database.get_db)):
+    # Перевірка на дублікат
+    exists = db.query(models.Ingredient).filter(models.Ingredient.name == ingredient.name).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Ingredient already exists")
+
+    new_item = models.Ingredient(
+        name=ingredient.name,
+        unit_id=ingredient.unit_id,
+        cost_per_unit=ingredient.cost_per_unit,
+        stock_quantity=ingredient.stock_quantity
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+@app.get("/ingredients/", response_model=List[schemas.Ingredient])
+def read_ingredients(db: Session = Depends(database.get_db)):
+    return db.query(models.Ingredient).all()
+
+# --- ТОВАРИ (PRODUCTS) ---
+
+@app.post("/products/", response_model=schemas.Product)
+def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
+    # 1. Створюємо сам товар
+    db_product = models.Product(
+        name=product.name,
+        price=product.price,
+        description=product.description,
+        category_id=product.category_id
+    )
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product) # Отримуємо ID нового товару
+
+    # 2. Додаємо інгредієнти рецепта
+    for item in product.recipe:
+        db_recipe_item = models.ProductIngredient(
+            product_id=db_product.id,
+            ingredient_id=item.ingredient_id,
+            quantity=item.quantity
+        )
+        db.add(db_recipe_item)
+    
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+@app.get("/products/", response_model=List[schemas.Product])
+def read_products(db: Session = Depends(database.get_db)):
+    products = db.query(models.Product).all()
+    
+    # БЕЗПЕЧНИЙ ЦИКЛ
+    for p in products:
+        # Якщо у товара є рецепт
+        if p.recipe:
+            for r in p.recipe:
+                # Перевіряємо, чи існує інгредієнт (щоб не впало, якщо його видалили)
+                if r.ingredient:
+                    r.ingredient_name = r.ingredient.name
+                else:
+                    r.ingredient_name = "Видалено"
+            
     return products
 
-# Маршрут 3: Оновити товар (PUT)
-@app.put("/products/{product_id}")
-def update_product(product_id: int, product: ProductCreate):
-    db = SessionLocal()
-    # Шукаємо товар
-    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
-        
-    if db_product:
-        # Оновлюємо поля
-        db_product.name = product.name
-        db_product.price = product.price
-        db.commit() # Зберігаємо зміни
-        db.refresh(db_product)
-        db.close()
-        return db_product
-        
-    db.close()
-    return {"error": "Product not found"}
+# --- ОБРОБКА ЗАМОВЛЕННЯ (НОВЕ) ---
+@app.post("/orders/checkout/") # <--- Змінили URL, щоб було логічно
+def create_order(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
+    """
+    1. Створює запис про замовлення (Order).
+    2. Додає товари в історію (OrderItem).
+    3. Списує інгредієнти зі складу.
+    """
+    
+    # 1. Створюємо чек (Order)
+    new_order = models.Order(
+        total_price=order_data.total_price,
+        payment_method=order_data.payment_method
+        # created_at додається автоматично
+    )
+    db.add(new_order)
+    db.commit()      # Комітимо, щоб отримати ID замовлення
+    db.refresh(new_order)
 
-# Маршрут 4: Видалити товар (DELETE)
-@app.delete("/products/{product_id}")
-def delete_product(product_id: int):
-    db = SessionLocal()
-    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    # 2. Проходимо по кожному купленому товару
+    for item in order_data.items:
+        # Знаходимо товар в базі, щоб дізнатися його назву і рецепт
+        product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         
-    if db_product:
-        db.delete(db_product)
-        db.commit()
-        db.close()
-        return {"status": "deleted"}
-        
-    db.close()
-    return {"error": "Product not found"}    
+        if not product:
+            continue # Якщо товара вже не існує, пропускаємо (хоча це дивно)
+
+        # А. Додаємо запис в історію (OrderItem)
+        order_item = models.OrderItem(
+            order_id=new_order.id,
+            product_name=product.name,
+            quantity=item.quantity,
+            price_at_moment=product.price
+        )
+        db.add(order_item)
+
+        # Б. Списуємо інгредієнти (Стара логіка)
+        for recipe_item in product.recipe:
+            ingredient = recipe_item.ingredient
+            if ingredient:
+                amount_to_deduct = recipe_item.quantity * item.quantity
+                ingredient.stock_quantity -= amount_to_deduct
+                db.add(ingredient)
+
+    # 3. Зберігаємо всі зміни (Історію + Списання)
+    db.commit()
+    
+    return {"message": "Замовлення успішне", "order_id": new_order.id}
+
+# --- ОТРИМАТИ ІСТОРІЮ ЗАМОВЛЕНЬ ---
+@app.get("/orders/", response_model=List[schemas.OrderRead])
+def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
+    # Повертаємо замовлення, сортуючи від нових до старих
+    orders = db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
+    return orders

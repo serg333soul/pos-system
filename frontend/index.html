@@ -1,126 +1,14 @@
 <!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POS System</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-<body class="bg-gray-100 h-screen flex overflow-hidden">
-
-    <aside class="w-64 bg-gray-900 text-white flex flex-col">
-        <div class="p-6 text-2xl font-bold text-center border-b border-gray-700">
-            ☕ HITS Coffee POS
-        </div>
-        <nav class="flex-1 py-6">
-            <a href="#" class="block py-3 px-6 hover:bg-gray-800 text-yellow-400 border-l-4 border-yellow-400">
-                <i class="fas fa-cash-register mr-3"></i> Каса
-            </a>
-            <a href="warehouse.html" class="block py-3 px-6 hover:bg-gray-800 text-gray-400">
-                <i class="fas fa-boxes mr-3"></i> Склад
-            </a>
-            <a href="#" class="block py-3 px-6 hover:bg-gray-800 text-gray-400">
-                <i class="fas fa-chart-line mr-3"></i> Статистика
-            </a>
-        </nav>
-        <div class="p-4 border-t border-gray-700 text-sm text-gray-400">
-            Server: Online 🟢
-        </div>
-    </aside>
-
-    <main class="flex-1 flex flex-col">
-        <header class="bg-white shadow p-4 flex justify-between items-center">
-            <h2 class="text-xl font-semibold text-gray-700">Меню</h2>
-            
-            <div class="flex items-center space-x-4">
-                <div class="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg font-bold">
-                    Кошик: <span id="cart-count">0</span> поз.
-                </div>
-                <button onclick="clearCart()" class="text-red-500 hover:text-red-700 text-sm underline">
-                    Очистити
-                </button>
-            </div>
-        </header>
-
-        <div class="flex-1 p-6 overflow-y-auto">
-            <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="text-center col-span-3 text-gray-400 mt-10">
-                    Завантаження меню...
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <script>
-        // 1. Завантаження товарів при старті
-        async function loadProducts() {
-            try {
-                const response = await fetch('/api/products/');
-                const products = await response.json();
-                
-                const grid = document.getElementById('products-grid');
-                grid.innerHTML = ''; // Очистити напис "Завантаження"
-
-                products.forEach(product => {
-                    const card = `
-                        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition border border-gray-200 flex flex-col justify-between h-40 cursor-pointer" 
-                             onclick="addToCart(${product.id}, '${product.name}')">
-                            <div class="flex justify-between items-start">
-                                <h3 class="text-lg font-bold text-gray-800">${product.name}</h3>
-                                <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">
-                                    ${product.price} ₴
-                                </span>
-                            </div>
-                            <button class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-bold">
-                                <i class="fas fa-plus mr-1"></i> Додати в чек
-                            </button>
-                        </div>
-                    `;
-                    grid.innerHTML += card;
-                });
-            } catch (err) {
-                console.error('Помилка завантаження:', err);
-                document.getElementById('products-grid').innerHTML = 
-                    '<p class="text-red-500">Не вдалося з’єднатися з сервером</p>';
-            }
-        }
-
-        // 2. Додавання в кошик
-        async function addToCart(id, name) {
-            try {
-                const res = await fetch(`/api/cart/${id}`, { method: 'POST' });
-                const data = await res.json();
-                
-                // Проста анімація або лог
-                console.log(`Додано: ${name}, всього: ${data.count}`);
-                updateCartUI(); 
-            } catch (err) {
-                alert('Помилка кошика');
-            }
-        }
-
-        // 3. Оновлення лічильника кошика
-        async function updateCartUI() {
-            const res = await fetch('/api/cart/');
-            const cart = await res.json();
-            // Рахуємо суму всіх кількостей
-            let totalItems = 0;
-            for (let key in cart) {
-                totalItems += cart[key];
-            }
-            document.getElementById('cart-count').innerText = totalItems;
-        }
-
-        // 4. Очистка
-        async function clearCart() {
-            await fetch('/api/cart/', { method: 'DELETE' });
-            updateCartUI();
-        }
-
-        // Запуск функцій при завантаженні
-        loadProducts();
-        updateCartUI();
-    </script>
-</body>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HITS-POS</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
