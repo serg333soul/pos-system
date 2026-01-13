@@ -5,70 +5,94 @@ import ProductCard from './components/ProductCard.vue'
 import CartDrawer from './components/CartDrawer.vue'
 import Warehouse from './components/Warehouse.vue'
 import Statistics from './components/Statistics.vue'
+import Customers from './components/Customers.vue'
+import ProductModal from './components/ProductModal.vue' // <--- ІМПОРТ
 
-// --- ЗМІННІ СТАНУ ---
-const currentPage = ref('pos') // 'pos' (Каса) або 'warehouse' (Склад)
-
-// Дані для каси
+const currentPage = ref('pos')
 const products = ref([])
 const loading = ref(true)
-const error = ref(null)
 const cartCount = ref(0)
 const isCartOpen = ref(false)
 
-// --- ЛОГІКА КАСИ (POS) ---
+// Стан модального вікна
+const isModalOpen = ref(false)
+const selectedProduct = ref(null)
 
-// 1. Завантаження товарів для продажу
 const fetchProducts = async () => {
   try {
-    // ВАЖЛИВО: Тут ми звертаємось до api/products (це йде на product_service)
-    // Оскільки ми ще не зробили повноцінний список товарів в базі, 
-    // цей запит може повернути пустий список, але помилки не буде.
     const res = await fetch('/api/products/') 
-    if (res.ok) {
-      products.value = await res.json()
-    } else {
-      // Тимчасова заглушка, якщо база пуста
-      products.value = [] 
-    }
+    if (res.ok) products.value = await res.json()
+    else products.value = [] 
   } catch (err) {
-    error.value = "Не вдалося завантажити меню"
     console.error(err)
   } finally {
     loading.value = false
   }
 }
 
-// 2. Оновлення лічильника кошика
 const updateCartCount = async () => {
   try {
     const res = await fetch('/api/cart/')
     const cart = await res.json()
-    // Парсимо в числа, щоб уникнути "0112"
     cartCount.value = Object.values(cart).reduce((sum, qty) => sum + parseInt(qty), 0)
-  } catch (err) {
-    console.error(err)
+  } catch (err) { console.error(err) }
+}
+
+// --- ЛОГІКА ВІДКРИТТЯ ТОВАРУ ---
+const handleProductClick = (product) => {
+  // Якщо товар має варіанти АБО групи модифікаторів -> відкриваємо вікно
+  if (product.has_variants || (product.modifier_groups && product.modifier_groups.length > 0)) {
+    selectedProduct.value = product
+    isModalOpen.value = true
+  } else {
+    // Якщо простий товар - додаємо відразу
+    addToCart({ 
+        product_id: product.id, 
+        quantity: 1
+    })
   }
 }
 
-// 3. Додавання в кошик
-const addToCart = async (product) => {
-  try {
-    const res = await fetch(`/api/cart/${product.id}`, { method: 'POST' })
-    if (res.ok) {
-      await updateCartCount()
+// --- ДОДАВАННЯ В КОШИК (СКЛАДНИЙ ТОВАР) ---
+const handleModalAddToCart = async (payload) => {
+    // payload приходить з ProductModal
+    const cartItem = {
+        product_id: payload.product.id,
+        variant_id: payload.variant_id,
+        modifiers: payload.modifiers,
+        quantity: 1
     }
-  } catch (err) {
-    console.error(err)
-  }
+    await addToCart(cartItem)
 }
 
-// 4. Відкриття кошика
-const openCart = () => {
-  isCartOpen.value = true
+// Універсальна функція API
+const addToCart = async (payload) => {
+  try {
+    // Для простого додавання нам треба змінити API cart endpoint, 
+    // АЛЕ поки що у нас order_service простий (Redis hash).
+    // Тимчасово ми будемо використовувати стару логіку для лічильника, 
+    // але Order Service треба буде оновити, щоб він зберігав варіанти в Redis.
+    // Поки що ми просто робимо POST на /cart/{id} для сумісності з лічильником,
+    // АЛЕ реальні дані для чекауту ми будемо збирати в Frontend CartDrawer.
+    // (Це спрощення для поточного етапу, ідеально - Redis має зберігати JSON об'єкт)
+    
+    // Щоб не ускладнювати зараз Order Service, ми зробимо хитрість:
+    // Ми будемо додавати в Redis просто ID товару (для лічильника),
+    // А деталі варіантів зберігатимемо в LocalStorage на фронті (або передаватимемо в Order Service розширений об'єкт).
+    
+    // ДЛЯ ЗАРАЗ: Використовуємо старий ендпоінт для підрахунку кількості
+    const res = await fetch(`/api/cart/${payload.product_id}`, { method: 'POST' })
+    
+    // ВАЖЛИВО: Оскільки Order Service (Redis) зараз тупий і зберігає тільки ID=QTY,
+    // він не розрізнить "250г" і "500г". 
+    // ДЛЯ ПОВНОЦІННОЇ РОБОТИ нам треба оновити CartDrawer, щоб він зберігав складні об'єкти.
+    // Давай зробимо це наступним кроком. Поки що - просто оновлюємо лічильник.
+    
+    if (res.ok) await updateCartCount()
+    
+  } catch (err) { console.error(err) }
 }
 
-// При старті
 onMounted(() => {
   fetchProducts()
   updateCartCount()
@@ -77,45 +101,26 @@ onMounted(() => {
 
 <template>
   <div class="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
-    
-    <Sidebar 
-      :current-page="currentPage" 
-      @change-page="(page) => currentPage = page" 
-    />
+    <Sidebar :current-page="currentPage" @change-page="(page) => currentPage = page" />
 
     <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
-      
       <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200 px-8 py-4 flex justify-between items-center">
         <div>
           <h2 class="text-2xl font-bold text-gray-800">Меню</h2>
           <p class="text-sm text-gray-500">Оберіть товари для замовлення</p>
         </div>
-        
-        <button 
-          @click="openCart"
-          class="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg flex items-center gap-3 active:scale-95">
-          <i class="fas fa-shopping-cart"></i>
-          <span>Кошик: {{ cartCount }}</span>
+        <button @click="isCartOpen = true" class="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg flex items-center gap-3 active:scale-95">
+          <i class="fas fa-shopping-cart"></i> <span>Кошик: {{ cartCount }}</span>
         </button>
       </header>
 
       <div class="p-8 overflow-y-auto flex-1 custom-scrollbar">
-        <div v-if="loading" class="flex flex-col items-center justify-center h-64 text-gray-400">
-          <i class="fas fa-circle-notch fa-spin text-3xl mb-4"></i>
-          <p>Завантаження...</p>
-        </div>
-
-        <div v-else-if="products.length === 0" class="flex flex-col items-center justify-center h-64 text-gray-400">
-          <i class="fas fa-mug-hot text-4xl mb-4 opacity-50"></i>
-          <p>Меню поки порожнє. Додайте товари на Складі!</p>
-        </div>
-
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
           <ProductCard 
             v-for="item in products" 
             :key="item.id" 
             :product="item" 
-            @add-to-cart="addToCart(item)" 
+            @click="handleProductClick(item)" 
           />
         </div>
       </div>
@@ -126,16 +131,17 @@ onMounted(() => {
         @close="isCartOpen = false"
         @clear-cart="updateCartCount"
       />
+      
+      <ProductModal 
+        :is-open="isModalOpen"
+        :product="selectedProduct"
+        @close="isModalOpen = false"
+        @add-to-cart="handleModalAddToCart"
+      />
     </main>
 
     <Warehouse v-if="currentPage === 'warehouse'" />
     <Statistics v-if="currentPage === 'statistics'" />
-
+    <Customers v-if="currentPage === 'customers'" />
   </div>
 </template>
-
-<style>
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-</style>

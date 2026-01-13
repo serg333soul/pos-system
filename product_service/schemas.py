@@ -1,112 +1,132 @@
 from pydantic import BaseModel
-from typing import List, Optional 
+from typing import List, Optional
 from datetime import datetime
 
-# --- CATEGORIES ---
-class CategoryBase(BaseModel):
+# --- BASIC (Categories, Units, Ingredients) ---
+class Category(BaseModel):
+    id: int
     name: str
     slug: str
+    class Config: from_attributes = True
 
-class CategoryCreate(CategoryBase):
-    pass
-
-class Category(CategoryBase):
+class Unit(BaseModel):
     id: int
-    class Config:
-        from_attributes = True
-
-# --- UNITS ---
-class UnitBase(BaseModel):
     name: str
     symbol: str
+    class Config: from_attributes = True
 
-class UnitCreate(UnitBase):
-    pass
-
-class Unit(UnitBase):
+class Ingredient(BaseModel):
     id: int
-    class Config:
-        from_attributes = True
-
-# --- INGREDIENTS ---
-class IngredientBase(BaseModel):
     name: str
-    unit_id: int
-    cost_per_unit: float = 0.0
-    stock_quantity: float = 0.0
+    cost_per_unit: float
+    stock_quantity: float
+    unit: Optional[Unit] = None
+    class Config: from_attributes = True
 
-class IngredientCreate(IngredientBase):
-    pass
+# --- MODIFIERS ---
+class ModifierCreate(BaseModel):
+    name: str
+    price_change: float = 0.0
+    ingredient_id: Optional[int] = None
+    quantity: float = 0.0
 
-class Ingredient(IngredientBase):
+class Modifier(ModifierCreate):
     id: int
-    unit: Unit
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# --- RECIPE ITEM ---
-class RecipeItemBase(BaseModel):
+class ModifierGroupCreate(BaseModel):
+    name: str
+    is_required: bool = False
+    modifiers: List[ModifierCreate] = []
+
+class ModifierGroup(ModifierGroupCreate):
+    id: int
+    modifiers: List[Modifier] = []
+    class Config: from_attributes = True
+
+# --- RECIPES ---
+class RecipeItemCreate(BaseModel):
     ingredient_id: int
     quantity: float
 
-class RecipeItemCreate(RecipeItemBase):
-    pass
-
-class RecipeItem(RecipeItemBase):
-    id: int
+class RecipeItem(RecipeItemCreate):
     ingredient_name: Optional[str] = None
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# --- PRODUCTS (Тут була проблема) ---
-class ProductBase(BaseModel):
+# --- VARIANTS ---
+class VariantCreate(BaseModel):
     name: str
     price: float
+    sku: Optional[str] = None
+    recipe: List[RecipeItemCreate] = []
+
+class Variant(VariantCreate):
+    id: int
+    recipe: List[RecipeItem] = [] # (Це заповниться з variant_recipe в main.py)
+    class Config: from_attributes = True
+
+# --- PRODUCTS ---
+class ProductBase(BaseModel):
+    name: str
     description: Optional[str] = None
-    
-    # БУЛО: category_id: int
-    # СТАЛО (Виправлено):
-    category_id: Optional[int] = None 
+    category_id: Optional[int] = None
+    has_variants: bool = False
+    price: float = 0.0 # Базова ціна (для простих товарів)
 
 class ProductCreate(ProductBase):
+    # Або простий рецепт
     recipe: List[RecipeItemCreate] = []
+    # Або варіанти
+    variants: List[VariantCreate] = []
+    # Модифікатори
+    modifier_groups: List[ModifierGroupCreate] = []
 
 class Product(ProductBase):
     id: int
     category: Optional[Category] = None
+    
+    # Поля для читання
     recipe: List[RecipeItem] = []
+    variants: List[Variant] = []
+    modifier_groups: List[ModifierGroup] = []
 
     class Config:
         from_attributes = True
 
-# --- СПИСАННЯ ---
-# --- ЗАМОВЛЕННЯ ТА СПИСАННЯ (ОНОВЛЕНО) ---
+# --- ORDERS ---
+class SoldItemModifier(BaseModel):
+    modifier_id: int
+
 class SoldItem(BaseModel):
     product_id: int
+    variant_id: Optional[int] = None # Якщо товар з варіантами
+    modifiers: List[SoldItemModifier] = [] # Обрані модифікатори
     quantity: int
 
-# Це те, що приходить від Фронтенду при натисканні "Оплатити"
 class OrderCreate(BaseModel):
     items: List[SoldItem]
-    payment_method: str # "cash" або "card"
+    payment_method: str
     total_price: float
+    customer_id: Optional[int] = None
 
-# Це те, як ми будемо віддавати історію замовлень на сторінку Статистики
+class Customer(BaseModel):
+    id: int
+    name: str
+    phone: str
+    class Config: from_attributes = True
+
 class OrderItemRead(BaseModel):
     product_name: str
     quantity: int
     price_at_moment: float
-    class Config:
-        from_attributes = True
+    details: Optional[str] = None
+    class Config: from_attributes = True
 
 class OrderRead(BaseModel):
     id: int
     created_at: datetime
     total_price: float
     payment_method: str
-    items: List[OrderItemRead] = []
-    class Config:
-        from_attributes = True
-
-#class DeductRequest(BaseModel):
-#    items: List[SoldItem]
+    items: List[OrderItemRead]
+    customer: Optional[Customer] = None
+    class Config: from_attributes = True

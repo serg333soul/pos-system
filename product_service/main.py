@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import or_ # Для пошуку "або ім'я або телефон"
 
 # Імпортуємо наші файли
 import models, schemas, database
@@ -75,101 +76,232 @@ def read_ingredients(db: Session = Depends(database.get_db)):
 
 # --- ТОВАРИ (PRODUCTS) ---
 
+# --- PRODUCTS (ОНОВЛЕНО) ---
 @app.post("/products/", response_model=schemas.Product)
 def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
-    # 1. Створюємо сам товар
+    # 1. Створюємо Product
     db_product = models.Product(
         name=product.name,
         price=product.price,
         description=product.description,
-        category_id=product.category_id
+        category_id=product.category_id,
+        has_variants=product.has_variants
     )
     db.add(db_product)
     db.commit()
-    db.refresh(db_product) # Отримуємо ID нового товару
+    db.refresh(db_product)
 
-    # 2. Додаємо інгредієнти рецепта
-    for item in product.recipe:
-        db_recipe_item = models.ProductIngredient(
+    # 2. Якщо є прості рецепти (для простих товарів)
+    if not product.has_variants and product.recipe:
+        for item in product.recipe:
+            db_recipe = models.ProductRecipe(
+                product_id=db_product.id,
+                ingredient_id=item.ingredient_id,
+                quantity=item.quantity
+            )
+            db.add(db_recipe)
+
+    # 3. Якщо є ВАРІАНТИ
+    if product.has_variants and product.variants:
+        for v in product.variants:
+            db_variant = models.ProductVariant(
+                product_id=db_product.id,
+                name=v.name,
+                price=v.price,
+                sku=v.sku
+            )
+            db.add(db_variant)
+            db.commit() # Треба ID варіанту
+            db.refresh(db_variant)
+
+            # Рецепт варіанту
+            for r_item in v.recipe:
+                db_var_recipe = models.VariantRecipe(
+                    variant_id=db_variant.id,
+                    ingredient_id=r_item.ingredient_id,
+                    quantity=r_item.quantity
+                )
+                db.add(db_var_recipe)
+
+    # 4. Модифікатори
+    for group in product.modifier_groups:
+        db_group = models.ProductModifierGroup(
             product_id=db_product.id,
-            ingredient_id=item.ingredient_id,
-            quantity=item.quantity
+            name=group.name,
+            is_required=group.is_required
         )
-        db.add(db_recipe_item)
-    
+        db.add(db_group)
+        db.commit()
+        db.refresh(db_group)
+        
+        for mod in group.modifiers:
+            db_mod = models.Modifier(
+                group_id=db_group.id,
+                name=mod.name,
+                price_change=mod.price_change,
+                ingredient_id=mod.ingredient_id,
+                quantity=mod.quantity
+            )
+            db.add(db_mod)
+
     db.commit()
     db.refresh(db_product)
     return db_product
 
 @app.get("/products/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
+    # Завантажуємо продукти з усіма зв'язками
     products = db.query(models.Product).all()
-    
-    # БЕЗПЕЧНИЙ ЦИКЛ
-    for p in products:
-        # Якщо у товара є рецепт
-        if p.recipe:
-            for r in p.recipe:
-                # Перевіряємо, чи існує інгредієнт (щоб не впало, якщо його видалили)
-                if r.ingredient:
-                    r.ingredient_name = r.ingredient.name
-                else:
-                    r.ingredient_name = "Видалено"
-            
+    # Мапінг для схем (Pydantic сам спробує, але для VariantRecipe треба обережно)
+    # Тут SQLAlchemy lazy loading підтягне variants та їх рецепти
     return products
 
-# --- ОБРОБКА ЗАМОВЛЕННЯ (НОВЕ) ---
-@app.post("/orders/checkout/") # <--- Змінили URL, щоб було логічно
-def create_order(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
-    """
-    1. Створює запис про замовлення (Order).
-    2. Додає товари в історію (OrderItem).
-    3. Списує інгредієнти зі складу.
-    """
+# --- CRM: КЛІЄНТИ ---
+
+# 1. Створити клієнта
+@app.post("/customers/", response_model=schemas.Customer)
+def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(database.get_db)):
+    # Перевірка на дублікат телефону
+    exists = db.query(models.Customer).filter(models.Customer.phone == customer.phone).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Клієнт з таким телефоном вже існує")
     
-    # 1. Створюємо чек (Order)
+    new_customer = models.Customer(**customer.dict())
+    db.add(new_customer)
+    db.commit()
+    db.refresh(new_customer)
+    return new_customer
+
+# 5. Редагувати (Оновити)
+@app.put("/customers/{customer_id}", response_model=schemas.Customer)
+def update_customer(customer_id: int, customer_data: schemas.CustomerCreate, db: Session = Depends(database.get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Оновлюємо поля
+    db_customer.name = customer_data.name
+    db_customer.phone = customer_data.phone
+    db_customer.email = customer_data.email
+    db_customer.notes = customer_data.notes
+    
+    try:
+        db.commit()
+        db.refresh(db_customer)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Можливо, такий телефон вже існує")
+        
+    return db_customer
+
+# 2. Пошук клієнтів (Живий пошук)
+@app.get("/customers/search/", response_model=List[schemas.Customer])
+def search_customers(q: str, db: Session = Depends(database.get_db)):
+    # Шукаємо, де запит схожий на Ім'я АБО на Телефон
+    search_term = f"%{q}%"
+    results = db.query(models.Customer).filter(
+        or_(
+            models.Customer.name.ilike(search_term),
+            models.Customer.phone.ilike(search_term)
+        )
+    ).limit(10).all()
+    return results
+
+# 3. Отримати всіх (для адмінки)
+@app.get("/customers/", response_model=List[schemas.Customer])
+def read_customers(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
+    return db.query(models.Customer).offset(skip).limit(limit).all()
+
+# 4. Видалити
+@app.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(database.get_db)):
+    customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    db.delete(customer)
+    db.commit()
+    return {"status": "deleted"}
+
+# --- ОБРОБКА ЗАМОВЛЕННЯ (НОВЕ) ---
+# --- CHECKOUT (ОНОВЛЕНО ДЛЯ ВАРІАНТІВ) ---
+@app.post("/orders/checkout/")
+def create_order(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
+    # 1. Створюємо Order
     new_order = models.Order(
         total_price=order_data.total_price,
-        payment_method=order_data.payment_method
-        # created_at додається автоматично
+        payment_method=order_data.payment_method,
+        customer_id=order_data.customer_id
     )
     db.add(new_order)
-    db.commit()      # Комітимо, щоб отримати ID замовлення
+    db.commit()
     db.refresh(new_order)
 
-    # 2. Проходимо по кожному купленому товару
+    # 2. Обробка товарів
     for item in order_data.items:
-        # Знаходимо товар в базі, щоб дізнатися його назву і рецепт
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
-        
-        if not product:
-            continue # Якщо товара вже не існує, пропускаємо (хоча це дивно)
+        if not product: continue
 
-        # А. Додаємо запис в історію (OrderItem)
+        item_name = product.name
+        price = product.price
+        details_list = []
+
+        # А. Якщо це ВАРІАНТ
+        if item.variant_id:
+            variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == item.variant_id).first()
+            if variant:
+                item_name = f"{product.name} ({variant.name})"
+                price = variant.price
+                details_list.append(f"Варіант: {variant.name}")
+                
+                # Списання по рецепту варіанту
+                for r in variant.variant_recipe:
+                     if r.ingredient:
+                        r.ingredient.stock_quantity -= r.quantity * item.quantity
+                        db.add(r.ingredient)
+        else:
+            # Списання по простому рецепту
+             for r in product.recipe:
+                 if r.ingredient:
+                    r.ingredient.stock_quantity -= r.quantity * item.quantity
+                    db.add(r.ingredient)
+
+        # Б. Обробка МОДИФІКАТОРІВ
+        for mod_item in item.modifiers:
+            mod = db.query(models.Modifier).filter(models.Modifier.id == mod_item.modifier_id).first()
+            if mod:
+                details_list.append(mod.name)
+                # Якщо модифікатор щось списує (напр. коробку)
+                if mod.ingredient:
+                    mod.ingredient.stock_quantity -= mod.quantity * item.quantity
+                    db.add(mod.ingredient)
+
+        # 3. Запис в історію
         order_item = models.OrderItem(
             order_id=new_order.id,
-            product_name=product.name,
+            product_name=item_name,
             quantity=item.quantity,
-            price_at_moment=product.price
+            price_at_moment=price,
+            details=", ".join(details_list)
         )
         db.add(order_item)
 
-        # Б. Списуємо інгредієнти (Стара логіка)
-        for recipe_item in product.recipe:
-            ingredient = recipe_item.ingredient
-            if ingredient:
-                amount_to_deduct = recipe_item.quantity * item.quantity
-                ingredient.stock_quantity -= amount_to_deduct
-                db.add(ingredient)
-
-    # 3. Зберігаємо всі зміни (Історію + Списання)
     db.commit()
-    
-    return {"message": "Замовлення успішне", "order_id": new_order.id}
+    return {"status": "ok", "order_id": new_order.id}
 
 # --- ОТРИМАТИ ІСТОРІЮ ЗАМОВЛЕНЬ ---
 @app.get("/orders/", response_model=List[schemas.OrderRead])
 def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
     # Повертаємо замовлення, сортуючи від нових до старих
     orders = db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
+    return orders
+
+# --- ІСТОРІЯ ПОКУПОК КЛІЄНТА ---
+@app.get("/customers/{customer_id}/orders/", response_model=List[schemas.OrderRead])
+def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db)):
+    # Знаходимо всі чеки цього клієнта, сортуємо від нових до старих
+    orders = db.query(models.Order)\
+        .filter(models.Order.customer_id == customer_id)\
+        .order_by(models.Order.created_at.desc())\
+        .all()
     return orders

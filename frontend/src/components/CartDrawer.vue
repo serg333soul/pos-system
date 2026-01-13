@@ -9,19 +9,47 @@ const props = defineProps({
 const emit = defineEmits(['close', 'clear-cart'])
 const cartItems = ref([])
 const isProcessing = ref(false)
-const paymentMethod = ref('cash') // 'cash' або 'card'
+const paymentMethod = ref('cash')
+
+// --- CRM (КЛІЄНТИ) ---
+const customerSearch = ref('')
+const customerResults = ref([])
+const selectedCustomer = ref(null) // Тут буде об'єкт клієнта, якщо вибрали
+
+// Пошук клієнта
+const searchCustomer = async () => {
+  if (customerSearch.value.length < 2) {
+    customerResults.value = []
+    return
+  }
+  try {
+    const res = await fetch(`/api/customers/search/?q=${customerSearch.value}`)
+    if (res.ok) customerResults.value = await res.json()
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// Вибір клієнта зі списку
+const selectCustomer = (customer) => {
+  selectedCustomer.value = customer
+  customerSearch.value = ''
+  customerResults.value = []
+}
+
+// Скидання клієнта
+const removeCustomer = () => {
+  selectedCustomer.value = null
+}
 
 // --- ЗАВАНТАЖЕННЯ ДАНИХ ---
 const loadCart = async () => {
   try {
     const res = await fetch('/api/cart/')
     if (!res.ok) return
-    
-    // Отримуємо: {"9": 2, "14": 1}
     const rawCart = await res.json() 
     
     const items = []
-    // Проходимо по словнику (Object.entries ідеально підходить для нового main.py)
     for (const [idStr, qty] of Object.entries(rawCart)) {
       const id = parseInt(idStr)
       const product = props.products.find(p => p.id === id)
@@ -32,12 +60,10 @@ const loadCart = async () => {
           name: product.name,
           price: product.price,
           quantity: parseInt(qty),
-          // Додаємо картинку, якщо є, або заглушку
           image: product.image || null 
         })
       }
     }
-    // Сортуємо за назвою, щоб не стрибали
     cartItems.value = items.sort((a, b) => a.name.localeCompare(b.name))
   } catch (err) {
     console.error("Помилка кошика:", err)
@@ -45,32 +71,24 @@ const loadCart = async () => {
 }
 
 // --- УПРАВЛІННЯ ТОВАРАМИ ---
-
-// Збільшити (+1)
 const increaseQty = async (id) => {
   await fetch(`/api/cart/${id}`, { method: 'POST' })
-  await loadCart() // Оновлюємо список
+  await loadCart()
 }
-
-// Зменшити (-1)
 const decreaseQty = async (id) => {
   await fetch(`/api/cart/${id}/decrease`, { method: 'POST' })
   await loadCart()
 }
-
-// Видалити повністю
 const removeItem = async (id) => {
   if(!confirm('Видалити цей товар з кошика?')) return
   await fetch(`/api/cart/${id}`, { method: 'DELETE' })
   await loadCart()
 }
-
-// Очистити все
 const clearAll = async () => {
   if(!confirm('Очистити весь кошик?')) return
   await fetch('/api/cart/', { method: 'DELETE' })
   await loadCart()
-  emit('clear-cart') // Сигнал батьку оновити лічильник
+  emit('clear-cart')
 }
 
 // --- ОПЛАТА ---
@@ -88,11 +106,12 @@ const checkout = async () => {
         product_id: item.product_id,
         quantity: item.quantity
       })),
-      payment_method: paymentMethod.value, // Передаємо тип оплати
-      total_price: totalSum.value
+      payment_method: paymentMethod.value,
+      total_price: totalSum.value,
+      // Додаємо ID клієнта, якщо він вибраний
+      customer_id: selectedCustomer.value ? selectedCustomer.value.id : null
     }
 
-    // Списання інгредієнтів
     const deductRes = await fetch('/api/orders/checkout/', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -101,11 +120,17 @@ const checkout = async () => {
 
     if (!deductRes.ok) throw new Error("Помилка списання зі складу")
 
-    // Очистка кошика після успіху
+    // Очистка
     await fetch('/api/cart/', { method: 'DELETE' })
     
-    alert(`✅ Оплата успішна!\nСума: ${totalSum.value} ₴\nСпосіб: ${paymentMethod.value === 'cash' ? 'Готівка' : 'Картка'}`)
+    // Формуємо повідомлення
+    let msg = `✅ Оплата успішна!\nСума: ${totalSum.value} ₴`
+    if (selectedCustomer.value) {
+        msg += `\nКлієнт: ${selectedCustomer.value.name}`
+    }
+    alert(msg)
     
+    selectedCustomer.value = null // Скидаємо клієнта
     emit('clear-cart')
     emit('close')
     
@@ -117,7 +142,6 @@ const checkout = async () => {
   }
 }
 
-// Слідкуємо за відкриттям
 watch(() => props.isOpen, (newVal) => {
   if (newVal) loadCart()
 })
@@ -185,7 +209,49 @@ watch(() => props.isOpen, (newVal) => {
       <div class="p-6 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         
         <div class="mb-4">
-            <label class="block text-sm font-bold text-gray-600 mb-2">Спосіб оплати:</label>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Клієнт (Бонуси)</label>
+            
+            <div v-if="!selectedCustomer" class="relative">
+                <div class="flex items-center border rounded-lg bg-gray-50 focus-within:ring-2 ring-blue-500 overflow-hidden">
+                    <i class="fas fa-search text-gray-400 ml-3"></i>
+                    <input 
+                        v-model="customerSearch" 
+                        @input="searchCustomer"
+                        placeholder="Знайти за телефоном або ім'ям..." 
+                        class="w-full p-2 bg-transparent outline-none text-sm"
+                    >
+                </div>
+                <div v-if="customerResults.length > 0" class="absolute bottom-full left-0 w-full bg-white border shadow-xl rounded-lg mb-1 max-h-40 overflow-y-auto z-10">
+                    <div v-for="c in customerResults" :key="c.id" 
+                         @click="selectCustomer(c)"
+                         class="p-2 hover:bg-blue-50 cursor-pointer border-b last:border-0 flex justify-between items-center">
+                         <div>
+                             <div class="font-bold text-sm">{{ c.name }}</div>
+                             <div class="text-xs text-gray-500">{{ c.phone }}</div>
+                         </div>
+                         <i class="fas fa-plus-circle text-blue-500"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else class="flex justify-between items-center bg-blue-50 border border-blue-200 p-2 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
+                        {{ selectedCustomer.name.charAt(0) }}
+                    </div>
+                    <div>
+                        <div class="font-bold text-sm text-blue-900">{{ selectedCustomer.name }}</div>
+                        <div class="text-xs text-blue-600">{{ selectedCustomer.phone }}</div>
+                    </div>
+                </div>
+                <button @click="removeCustomer" class="text-gray-400 hover:text-red-500 px-2">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Спосіб оплати</label>
             <div class="grid grid-cols-2 gap-3">
                 <button @click="paymentMethod = 'cash'"
                     class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all"

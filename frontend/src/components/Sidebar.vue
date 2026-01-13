@@ -34,6 +34,14 @@ const emit = defineEmits(['change-page'])
       </a>
       
       <a href="#" 
+         @click.prevent="emit('change-page', 'customers')"
+         :class="currentPage === 'customers' ? 'bg-gray-800 text-green-400 border-l-4 border-green-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+         class="flex items-center px-6 py-3 font-bold transition-all group">
+        <i class="fas fa-users w-6 text-center mr-2 group-hover:scale-110 transition-transform"></i> 
+        Клієнти
+      </a>
+
+      <a href="#" 
          @click.prevent="emit('change-page', 'statistics')"
          :class="currentPage === 'statistics' ? 'bg-gray-800 text-purple-400 border-l-4 border-purple-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
          class="flex items-center px-6 py-3 font-bold transition-all group">
