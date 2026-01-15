@@ -3,30 +3,31 @@ import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   isOpen: Boolean,
-  product: Object // Об'єкт товару, який ми клікнули
+  product: Object 
 })
 
 const emit = defineEmits(['close', 'add-to-cart'])
 
-// Стан вибору
 const selectedVariant = ref(null)
-const selectedModifiers = ref({}) // { group_id: modifier_id }
+const selectedModifiers = ref({}) 
 
-// Ініціалізація при відкритті
-watch(() => props.product, (newVal) => {
-  if (newVal) {
-    // Якщо є варіанти, вибираємо перший автоматично
-    if (newVal.variants && newVal.variants.length > 0) {
-      selectedVariant.value = newVal.variants[0]
-    } else {
-      selectedVariant.value = null
-    }
-    // Очищаємо модифікатори
+// --- ВИПРАВЛЕНО: Ініціалізація при ВІДКРИТТІ вікна ---
+watch(() => props.isOpen, (isOpen) => {
+  if (isOpen && props.product) {
+    // 1. Скидаємо вибір
+    selectedVariant.value = null
     selectedModifiers.value = {}
-    
-    // Якщо є обов'язкові модифікатори, вибираємо перші опції
-    if (newVal.modifier_groups) {
-      newVal.modifier_groups.forEach(group => {
+
+    // 2. Якщо є варіанти, АВТОМАТИЧНО вибираємо перший (це виправить проблему "нічого не відбувається")
+    if (props.product.variants && props.product.variants.length > 0) {
+      // Сортуємо за ціною, щоб вибрати найдешевший за замовчуванням, або просто перший
+      const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
+      selectedVariant.value = sorted[0]
+    }
+
+    // 3. Вибираємо обов'язкові модифікатори
+    if (props.product.modifier_groups) {
+      props.product.modifier_groups.forEach(group => {
         if (group.is_required && group.modifiers.length > 0) {
           selectedModifiers.value[group.id] = group.modifiers[0].id
         }
@@ -35,20 +36,16 @@ watch(() => props.product, (newVal) => {
   }
 })
 
-// Розрахунок ціни
 const currentPrice = computed(() => {
   if (!props.product) return 0
-  
   let price = 0
   
-  // 1. Базова ціна або ціна варіанту
   if (props.product.has_variants && selectedVariant.value) {
     price += selectedVariant.value.price
   } else {
     price += props.product.price
   }
   
-  // 2. Додаємо ціну модифікаторів
   if (props.product.modifier_groups) {
     props.product.modifier_groups.forEach(group => {
       const modId = selectedModifiers.value[group.id]
@@ -63,13 +60,17 @@ const currentPrice = computed(() => {
 })
 
 const handleAddToCart = () => {
-  // Формуємо складний об'єкт для кошика
+  // Додаткова перевірка: якщо це товар з варіантами, але варіант не обрано (хоча watch має це виправити)
+  if (props.product.has_variants && !selectedVariant.value) {
+      alert("Будь ласка, оберіть розмір/варіант")
+      return
+  }
+
   const payload = {
     product: props.product,
     variant_id: selectedVariant.value ? selectedVariant.value.id : null,
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
     finalPrice: currentPrice.value,
-    // Формуємо красиву назву для чека: "Delicate (250g) + Еспресо"
     generatedName: generateName() 
   }
   emit('add-to-cart', payload)
@@ -81,7 +82,6 @@ const generateName = () => {
   if (selectedVariant.value) {
     name += ` (${selectedVariant.value.name})`
   }
-  // Додаємо назви модифікаторів (опціонально, можна це робити на бекенді, але тут для UI корисно)
   return name
 }
 </script>

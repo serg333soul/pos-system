@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 
 const props = defineProps({ product: Object })
-// emit видаляємо, бо обробка кліку йде в батьківському компоненті через @click нативного div
 
 const productIcon = computed(() => {
   const name = props.product.name.toLowerCase()
@@ -24,6 +23,17 @@ const cardColor = computed(() => {
 const hasOptions = computed(() => {
     return props.product.has_variants || (props.product.modifier_groups && props.product.modifier_groups.length > 0)
 })
+
+// --- НОВЕ: Обчислення ціни для відображення ---
+const displayPrice = computed(() => {
+  if (props.product.has_variants && props.product.variants.length > 0) {
+    // Знаходимо мінімальну ціну серед усіх варіантів
+    const prices = props.product.variants.map(v => v.price)
+    return Math.min(...prices)
+  }
+  // Якщо варіантів немає, повертаємо звичайну ціну
+  return props.product.price
+})
 </script>
 
 <template>
@@ -42,7 +52,7 @@ const hasOptions = computed(() => {
       <div class="flex justify-between items-center mt-3">
         <div class="flex flex-col">
             <span v-if="product.has_variants" class="text-xs text-gray-400">від</span>
-            <span class="text-xl font-bold text-gray-900">{{ product.price }} ₴</span>
+            <span class="text-xl font-bold text-gray-900">{{ displayPrice }} ₴</span>
         </div>
         
         <button class="w-8 h-8 rounded-full flex items-center justify-center transition shadow-lg"

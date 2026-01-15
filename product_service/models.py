@@ -1,14 +1,23 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
 
-# --- КАТЕГОРІЇ (Без змін) ---
+# --- КАТЕГОРІЇ (ОНОВЛЕНО) ---
 class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     slug = Column(String, unique=True)
+    
+    # НОВІ ПОЛЯ
+    color = Column(String, default="#ffffff") # Колір категорії (HEX)
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True) # Посилання на саму себе
+    
+    # Зв'язок для отримання дочірніх категорій
+    children = relationship("Category", 
+                            backref=backref("parent", remote_side=[id]),
+                            cascade="all, delete-orphan")
 
 # --- ОДИНИЦІ ВИМІРУ (Без змін) ---
 class Unit(Base):
@@ -27,6 +36,26 @@ class Ingredient(Base):
     cost_per_unit = Column(Float, default=0.0)  # Якщо це зміниться, зміниться собівартість всюди
     stock_quantity = Column(Float, default=0.0)
 
+# --- НОВЕ: МАЙСТЕР-РЕЦЕПТИ (ТЕХНОЛОГІЧНІ КАРТИ) ---
+class MasterRecipe(Base):
+    __tablename__ = "master_recipes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # Напр. "Основа Еспресо"
+    description = Column(String, nullable=True)
+    
+    # Список інгредієнтів у цьому рецепті
+    items = relationship("MasterRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
+
+class MasterRecipeItem(Base):
+    __tablename__ = "master_recipe_items"
+    id = Column(Integer, primary_key=True, index=True)
+    recipe_id = Column(Integer, ForeignKey("master_recipes.id"))
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    quantity = Column(Float)
+
+    recipe = relationship("MasterRecipe", back_populates="items")
+    ingredient = relationship("Ingredient")
+
 # --- МАЙСТЕР-ТОВАР (PRODUCT) ---
 class Product(Base):
     __tablename__ = "products"
@@ -43,15 +72,19 @@ class Product(Base):
     # Якщо товар простий (печиво), у нього є ціна. Якщо складний (кава) - ціна 0 (береться з варіантів)
     price = Column(Float, default=0.0)
 
-    # Зв'язки
+    # НОВЕ: Посилання на майстер-рецепт
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    master_recipe = relationship("MasterRecipe")
+
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
+    modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
     
+    # Старе поле recipe (можна залишити для сумісності або видалити пізніше)
+    # Ми будемо використовувати master_recipe_id пріоритетно
     # Простий рецепт (для товарів без варіантів, напр. Круасан)
     recipe = relationship("ProductRecipe", back_populates="product", cascade="all, delete-orphan")
     
-    # Групи модифікаторів (Помол, Сиропи)
-    modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
-
+    
 # --- ВАРІАНТИ (НОВЕ) ---
 # Наприклад: "Delicate 250g", "Delicate 1kg"
 class ProductVariant(Base):
@@ -64,6 +97,10 @@ class ProductVariant(Base):
     price = Column(Float) # 250.00
     sku = Column(String, nullable=True) # Штрих-код
     
+    # НОВЕ: Варіант теж може мати свій окремий рецепт (напр. Велика порція)
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    master_recipe = relationship("MasterRecipe")
+
     product = relationship("Product", back_populates="variants")
     
     # Рецепт конкретно для цього варіанту (напр. 75г кави + 1 пачка 250г)
