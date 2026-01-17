@@ -5,7 +5,8 @@ import IngredientSelect from './IngredientSelect.vue'
 const activeTab = ref('products') 
 const categories = ref([]); const units = ref([]); const ingredients = ref([]); const products = ref([]);
 const recipes = ref([]) 
-const consumables = ref([]) // <-- НОВЕ
+const consumables = ref([]) 
+const processGroups = ref([]) // <-- НОВЕ: Список груп процесів
 
 const loading = ref(false)
 
@@ -13,7 +14,11 @@ const loading = ref(false)
 const newCategory = ref({ name: '', slug: '', color: '#3b82f6', parent_id: '' }) 
 const newUnit = ref({ name: '', symbol: '' })
 const newIngredient = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 })
-const newConsumable = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 }) // <-- НОВЕ
+const newConsumable = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 })
+
+// --- PROCESSES (НОВЕ) ---
+const newProcessGroup = ref({ name: '' })
+const newOptionName = ref('') // Тимчасова змінна для додавання опції
 
 // --- РЕЦЕПТИ (Master Recipes) ---
 const editingRecipeId = ref(null)
@@ -31,11 +36,12 @@ const newProduct = ref({
   output_weight: 0, 
   variants: [], 
   modifier_groups: [],
-  consumables: [] // <-- НОВЕ: Consumables для головного товару
+  consumables: [],
+  process_group_ids: [] // <-- НОВЕ: ID прив'язаних процесів
 })
 const variantBuilder = ref({ 
   name: '', price: 0, master_recipe_id: null, output_weight: 0,
-  consumables: [] // <-- НОВЕ: Consumables для варіанту
+  consumables: [] 
 })
 
 // Тимчасові змінні для додавання consumable до товару/варіанту в UI
@@ -56,9 +62,10 @@ const fetchData = async () => {
   categories.value = await safeFetch('/api/categories/')
   units.value = await safeFetch('/api/units/')
   ingredients.value = await safeFetch('/api/ingredients/')
-  consumables.value = await safeFetch('/api/consumables/') // <-- НОВЕ
+  consumables.value = await safeFetch('/api/consumables/')
   products.value = await safeFetch('/api/products/')
   recipes.value = await safeFetch('/api/recipes/')
+  processGroups.value = await safeFetch('/api/processes/groups/') // <-- НОВЕ
   
   loading.value = false
 }
@@ -80,6 +87,36 @@ const deleteConsumable = async (id) => {
     if(!confirm("Видалити?")) return;
     await fetch(`/api/consumables/${id}`, {method:'DELETE'});
     fetchData();
+}
+
+// --- PROCESSES CRUD (НОВЕ) ---
+const createProcessGroup = async () => {
+    if(!newProcessGroup.value.name) return alert("Вкажіть назву групи (напр. Помол)")
+    await fetch('/api/processes/groups/', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: newProcessGroup.value.name, options: [] })
+    })
+    newProcessGroup.value.name = ''
+    fetchData()
+}
+const deleteProcessGroup = async (id) => {
+    if(!confirm("Видалити групу процесів?")) return
+    await fetch(`/api/processes/groups/${id}`, { method: 'DELETE' })
+    fetchData()
+}
+const addProcessOption = async (groupId) => {
+    const name = prompt("Введіть назву опції (напр. Під еспресо):")
+    if(!name) return
+    await fetch(`/api/processes/options/?group_id=${groupId}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: name })
+    })
+    fetchData()
+}
+const deleteProcessOption = async (optionId) => {
+    if(!confirm("Видалити опцію?")) return
+    await fetch(`/api/processes/options/${optionId}`, { method: 'DELETE' })
+    fetchData()
 }
 
 // --- PRODUCT FORM LOGIC UPDATES ---
@@ -187,30 +224,35 @@ const editProduct = (p) => {
         master_recipe_id: p.master_recipe_id,
         output_weight: p.output_weight || 0,
         
-        // ВАЖЛИВО: Захищене маппінг варіантів
         variants: p.variants.map(v => ({
             ...v,
             consumables: Array.isArray(v.consumables) ? v.consumables.map(vc => ({
                 consumable_id: vc.consumable_id,
                 quantity: vc.quantity,
-                name: vc.consumable_name || '???' // Фолбек, якщо назва не прийшла
+                name: vc.consumable_name || '???' 
             })) : []
         })),
         
         modifier_groups: p.modifier_groups ? JSON.parse(JSON.stringify(p.modifier_groups)) : [],
         
-        // Маппінг матеріалів головного товару
         consumables: p.consumables ? p.consumables.map(c => ({
             consumable_id: c.consumable_id, 
             quantity: c.quantity,
             name: c.consumable_name 
-        })) : []
+        })) : [],
+
+        // --- НОВЕ: Завантажуємо прив'язані процеси ---
+        process_group_ids: p.process_groups ? p.process_groups.map(pg => pg.id) : []
     }
 }
 const resetProductForm = () => {
     editingProductId.value = null
     isVariantMode.value = false
-    newProduct.value = { name: '', description: '', category_id: '', price: 0, master_recipe_id: null, output_weight: 0, variants: [], modifier_groups: [], consumables: [] }
+    newProduct.value = { 
+        name: '', description: '', category_id: '', price: 0, 
+        master_recipe_id: null, output_weight: 0, variants: [], 
+        modifier_groups: [], consumables: [], process_group_ids: [] 
+    }
 }
 const saveProduct = async () => {
     if (!newProduct.value.name || !newProduct.value.category_id) return alert("Вкажіть назву та категорію!")
@@ -225,13 +267,11 @@ const saveProduct = async () => {
 }
 const addVariant = () => {
     if(!variantBuilder.value.name || !variantBuilder.value.price) return alert("Заповніть назву та ціну")
-    // Копіюємо consumables з білдера
     const variantPayload = {
         ...variantBuilder.value,
         consumables: [...variantBuilder.value.consumables]
     }
     newProduct.value.variants.push(variantPayload)
-    // Reset builder
     variantBuilder.value = { name: '', price: 0, master_recipe_id: null, output_weight: 0, consumables: [] }
 }
 const removeVariant = (idx) => newProduct.value.variants.splice(idx, 1)
@@ -271,7 +311,7 @@ onMounted(fetchData)
     <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
       <button @click="activeTab='recipes'" :class="activeTab==='recipes'?'bg-white text-orange-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-book-open mr-2"></i>Рецепти</button>
       <button @click="activeTab='products'" :class="activeTab==='products'?'bg-white text-purple-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Товари</button>
-      <button @click="activeTab='ingredients'" :class="activeTab==='ingredients'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Інгредієнти</button>
+      <button @click="activeTab='processes'" :class="activeTab==='processes'?'bg-white text-indigo-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-tasks mr-2"></i>Процеси</button> <button @click="activeTab='ingredients'" :class="activeTab==='ingredients'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Інгредієнти</button>
       <button @click="activeTab='consumables'" :class="activeTab==='consumables'?'bg-white text-teal-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-box-open mr-2"></i>Витр. матеріали</button>
       <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці</button>
       <button @click="activeTab='categories'" :class="activeTab==='categories'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
@@ -387,6 +427,17 @@ onMounted(fetchData)
                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
 
+                <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 space-y-2">
+                    <label class="block text-xs font-bold text-indigo-600 uppercase">Опції приготування (Процеси)</label>
+                    <div v-if="processGroups.length === 0" class="text-xs text-gray-400 italic">Створіть процеси у вкладці "Процеси"</div>
+                    <div class="flex flex-wrap gap-2">
+                        <label v-for="pg in processGroups" :key="pg.id" class="flex items-center gap-2 bg-white px-2 py-1 rounded border shadow-sm cursor-pointer hover:bg-indigo-50 transition">
+                            <input type="checkbox" :value="pg.id" v-model="newProduct.process_group_ids" class="rounded text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-bold text-gray-700">{{ pg.name }}</span>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="flex items-center gap-3 bg-gray-100 p-2 rounded-lg">
                     <span class="text-xs font-bold uppercase text-gray-500 ml-2">Тип:</span>
                     <button @click="isVariantMode=false" :class="!isVariantMode ? 'bg-white shadow text-gray-800':'text-gray-400'" class="flex-1 py-1 rounded text-sm font-bold transition">Простий</button>
@@ -487,9 +538,46 @@ onMounted(fetchData)
             </div>
        </div>
     </div>
+
+    <div v-if="activeTab === 'processes'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-indigo-100 h-fit">
+            <h3 class="font-bold text-lg text-indigo-800 mb-4 border-b pb-2">➕ Нова група процесів</h3>
+            <p class="text-sm text-gray-500 mb-4">Наприклад: "Помол", "Ступінь просмаження", "Температура подачі".</p>
+            <div class="flex gap-2">
+                <input v-model="newProcessGroup.name" placeholder="Назва групи..." class="flex-1 border p-2 rounded-lg outline-none focus:ring-2 ring-indigo-200">
+                <button @click="createProcessGroup" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition">Створити</button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+             <div v-if="processGroups.length === 0" class="p-8 text-center text-gray-400">
+                 Немає створених процесів
+             </div>
+             
+             <div v-else class="divide-y divide-gray-100">
+                 <div v-for="group in processGroups" :key="group.id" class="p-6">
+                     <div class="flex justify-between items-center mb-4">
+                         <h4 class="font-bold text-xl text-gray-800">{{ group.name }}</h4>
+                         <button @click="deleteProcessGroup(group.id)" class="text-gray-300 hover:text-red-500 transition"><i class="fas fa-trash"></i></button>
+                     </div>
+
+                     <div class="space-y-2 mb-4">
+                         <div v-for="opt in group.options" :key="opt.id" class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
+                             <span class="text-gray-700 font-medium">{{ opt.name }}</span>
+                             <button @click="deleteProcessOption(opt.id)" class="text-red-300 hover:text-red-500"><i class="fas fa-times"></i></button>
+                         </div>
+                     </div>
+
+                     <button @click="addProcessOption(group.id)" class="w-full py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg hover:bg-indigo-100 border border-indigo-200 border-dashed">
+                         + Додати варіант (напр. "Під еспресо")
+                     </button>
+                 </div>
+             </div>
+        </div>
+    </div>
     
     <div v-if="activeTab === 'ingredients'" class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3><div class="space-y-5"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва інгредієнта</label><input v-model="newIngredient.name" placeholder="Напр. Кава в зернах" class="border p-2 rounded-lg w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Одиниця виміру</label><select v-model="newIngredient.unit_id" class="border p-2 rounded-lg w-full bg-white h-[42px]"><option value="" disabled>Оберіть...</option><option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option></select></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label><input v-model="newIngredient.cost_per_unit" type="number" placeholder="0.00" class="border p-2 rounded-lg w-full"></div></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Початковий залишок на складі</label><input v-model="newIngredient.stock_quantity" type="number" placeholder="0" class="border p-2 rounded-lg w-full"></div><button @click="createIngredient" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2"><i class="fas fa-plus mr-2"></i> Додати в базу</button></div></div><div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4 text-right">Залишок</th><th class="p-4 text-center">Дії</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50"><td class="p-4 font-bold text-gray-700">{{ i.name }}<div class="text-xs text-gray-400 font-normal">Собівартість: {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}</div></td><td class="p-4 text-right font-mono text-lg" :class="i.stock_quantity > 0 ? 'text-green-600' : 'text-red-500'">{{ i.stock_quantity }} <span class="text-xs text-gray-400 font-sans">{{ i.unit?.symbol }}</span></td><td class="p-4 text-center"><div class="flex justify-center gap-2"><button @click="openEditIngModal(i)" class="text-gray-400 hover:text-blue-500 px-2"><i class="fas fa-pen"></i></button><button @click="deleteIngredient(i.id)" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button></div></td></tr></tbody></table></div></div>
-     
+      
     <div v-if="activeTab === 'consumables'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
             <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">📦 Новий матеріал</h3>

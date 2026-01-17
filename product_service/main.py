@@ -8,7 +8,6 @@ app = FastAPI()
 
 models.Base.metadata.create_all(bind=database.engine)
 
-# ... (Categories, Units code remains same) ...
 # --- ENDPOINTS ДЛЯ КАТЕГОРІЙ ---
 @app.post("/categories/", response_model=schemas.Category)
 def create_category(category: schemas.CategoryCreate, db: Session = Depends(database.get_db)):
@@ -132,7 +131,44 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     db.delete(db_recipe); db.commit()
     return {"status": "deleted"}
 
-# --- PRODUCTS (ОНОВЛЕНО ДЛЯ CONSUMABLES) ---
+# --- НОВІ ENDPOINTS ДЛЯ ПРОЦЕСІВ ---
+
+@app.post("/processes/groups/", response_model=schemas.ProcessGroup)
+def create_process_group(group: schemas.ProcessGroupCreate, db: Session = Depends(database.get_db)):
+    new_group = models.ProcessGroup(name=group.name)
+    db.add(new_group); db.commit(); db.refresh(new_group)
+    
+    for opt in group.options:
+        db.add(models.ProcessOption(group_id=new_group.id, name=opt.name))
+    
+    db.commit(); db.refresh(new_group)
+    return new_group
+
+@app.get("/processes/groups/", response_model=List[schemas.ProcessGroup])
+def read_process_groups(db: Session = Depends(database.get_db)):
+    return db.query(models.ProcessGroup).all()
+
+@app.delete("/processes/groups/{id}")
+def delete_process_group(id: int, db: Session = Depends(database.get_db)):
+    group = db.query(models.ProcessGroup).filter(models.ProcessGroup.id == id).first()
+    if not group: raise HTTPException(status_code=404)
+    db.delete(group); db.commit()
+    return {"status": "deleted"}
+
+@app.post("/processes/options/", response_model=schemas.ProcessOption)
+def add_process_option(option: schemas.ProcessOptionCreate, group_id: int, db: Session = Depends(database.get_db)):
+    new_opt = models.ProcessOption(group_id=group_id, name=option.name)
+    db.add(new_opt); db.commit(); db.refresh(new_opt)
+    return new_opt
+
+@app.delete("/processes/options/{id}")
+def delete_process_option(id: int, db: Session = Depends(database.get_db)):
+    opt = db.query(models.ProcessOption).filter(models.ProcessOption.id == id).first()
+    if not opt: raise HTTPException(status_code=404)
+    db.delete(opt); db.commit()
+    return {"status": "deleted"}
+
+# --- PRODUCTS (ОНОВЛЕНО ДЛЯ ПРОЦЕСІВ) ---
 @app.post("/products/", response_model=schemas.Product)
 def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
     db_product = models.Product(
@@ -142,54 +178,51 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(databas
     )
     db.add(db_product); db.commit(); db.refresh(db_product)
     
-    # Додаємо consumables до основного продукту
+    # Consumables
     for cons in product.consumables:
         db.add(models.ProductConsumable(product_id=db_product.id, consumable_id=cons.consumable_id, quantity=cons.quantity))
 
+    # Variants
     if product.has_variants and product.variants:
         for v in product.variants:
             db_variant = models.ProductVariant(
                 product_id=db_product.id, name=v.name, price=v.price, sku=v.sku,
                 master_recipe_id=v.master_recipe_id, output_weight=v.output_weight
             )
-            db.add(db_variant); db.flush() # flush щоб отримати ID варіанту
-            # Додаємо consumables до варіанту
+            db.add(db_variant); db.flush()
             for vc in v.consumables:
                 db.add(models.ProductVariantConsumable(variant_id=db_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity))
     
+    # Modifiers
     for group in product.modifier_groups:
         db_group = models.ProductModifierGroup(product_id=db_product.id, name=group.name, is_required=group.is_required)
         db.add(db_group); db.flush()
         for mod in group.modifiers:
             db.add(models.Modifier(group_id=db_group.id, name=mod.name, price_change=mod.price_change, ingredient_id=mod.ingredient_id, quantity=mod.quantity))
             
+    # НОВЕ: Прив'язка груп процесів (Many-to-Many)
+    if product.process_group_ids:
+        for pg_id in product.process_group_ids:
+            pg = db.query(models.ProcessGroup).filter(models.ProcessGroup.id == pg_id).first()
+            if pg:
+                db_product.process_groups.append(pg)
+
     db.commit(); db.refresh(db_product)
     return db_product
 
 @app.get("/products/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
     products = db.query(models.Product).all()
-    
+    # Заповнюємо назви для consumables (як і раніше)
     for p in products:
-        # 1. Заповнюємо назви для головного товару
         for c in p.consumables:
-            if c.consumable:
-                c.consumable_name = c.consumable.name
-            else:
-                c.consumable_name = "DELETED"
-            
-        # 2. ВАЖЛИВО: Заповнюємо назви для кожного варіанту
+            if c.consumable: c.consumable_name = c.consumable.name
+            else: c.consumable_name = "DELETED"
         if p.variants:
             for v in p.variants:
                 for vc in v.consumables:
-                    # SQLAlchemy об'єкт `vc` має зв'язок `consumable`
-                    if vc.consumable:
-                        vc.consumable_name = vc.consumable.name
-                        # Debug log
-                        print(f"DEBUG: Loaded consumable {vc.consumable.name} for variant {v.name}")
-                    else:
-                        vc.consumable_name = "Unknown"
-
+                    if vc.consumable: vc.consumable_name = vc.consumable.name
+                    else: vc.consumable_name = "Unknown"
     return products
 
 @app.put("/products/{product_id}", response_model=schemas.Product)
@@ -197,7 +230,7 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not db_product: raise HTTPException(status_code=404)
 
-    # Оновлення базових полів
+    # Base update
     db_product.name = product_data.name
     db_product.description = product_data.description
     db_product.price = product_data.price
@@ -206,17 +239,26 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
     db_product.master_recipe_id = product_data.master_recipe_id
     db_product.output_weight = product_data.output_weight
 
-    # Очищення старих зв'язків
+    # Cleaning old relations
     db_product.variants = []
     db_product.modifier_groups = []
-    db_product.consumables = [] # Clear base product consumables
+    db_product.consumables = []
+    
+    # НОВЕ: Очищуємо старі процеси і додаємо нові
+    db_product.process_groups = [] 
+    if product_data.process_group_ids:
+        for pg_id in product_data.process_group_ids:
+            pg = db.query(models.ProcessGroup).filter(models.ProcessGroup.id == pg_id).first()
+            if pg:
+                db_product.process_groups.append(pg)
+
     db.flush()
 
-    # Consumables для Product
+    # Consumables
     for cons in product_data.consumables:
         db.add(models.ProductConsumable(product_id=db_product.id, consumable_id=cons.consumable_id, quantity=cons.quantity))
 
-    # Variants + їх Consumables
+    # Variants
     if product_data.has_variants and product_data.variants:
         for v in product_data.variants:
             db_variant = models.ProductVariant(
@@ -226,7 +268,7 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
             db.add(db_variant); db.flush()
             for vc in v.consumables:
                 db.add(models.ProductVariantConsumable(variant_id=db_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity))
-            
+                
     # Modifiers
     for group in product_data.modifier_groups:
         db_group = models.ProductModifierGroup(product_id=db_product.id, name=group.name, is_required=group.is_required)

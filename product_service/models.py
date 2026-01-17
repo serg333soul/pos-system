@@ -1,7 +1,15 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
+
+# --- АСОЦІАТИВНА ТАБЛИЦЯ: ТОВАР <-> ГРУПИ ПРОЦЕСІВ ---
+# Це дозволяє прив'язати "Помол" до "Ефіопії", "Колумбії" і "Бразилії" одночасно
+product_process_groups = Table(
+    'product_process_groups_link', Base.metadata,
+    Column('product_id', Integer, ForeignKey('products.id')),
+    Column('process_group_id', Integer, ForeignKey('process_groups.id'))
+)
 
 # --- КАТЕГОРІЇ ---
 class Category(Base):
@@ -30,12 +38,12 @@ class Ingredient(Base):
     cost_per_unit = Column(Float, default=0.0)
     stock_quantity = Column(Float, default=0.0)
 
-# --- НОВЕ: ВИТРАТНІ МАТЕРІАЛИ (Consumables) ---
+# --- ВИТРАТНІ МАТЕРІАЛИ ---
 class Consumable(Base):
     __tablename__ = "consumables"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, unique=True)
-    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True) # шт, рулон, метр
+    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
     unit = relationship("Unit")
     cost_per_unit = Column(Float, default=0.0)
     stock_quantity = Column(Float, default=0.0)
@@ -58,6 +66,26 @@ class MasterRecipeItem(Base):
     recipe = relationship("MasterRecipe", back_populates="items")
     ingredient = relationship("Ingredient")
 
+# --- ПРОЦЕСИ (НОВЕ) ---
+class ProcessGroup(Base):
+    __tablename__ = "process_groups"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # Напр: "Помол", "Просмаження"
+    
+    # Зв'язок один-до-багатьох з опціями
+    options = relationship("ProcessOption", back_populates="group", cascade="all, delete-orphan")
+    
+    # Зв'язок багато-до-багатьох з товарами (зворотній бік)
+    products = relationship("Product", secondary=product_process_groups, back_populates="process_groups")
+
+class ProcessOption(Base):
+    __tablename__ = "process_options"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("process_groups.id"))
+    name = Column(String) # Напр: "Під турку", "Під фільтр"
+    
+    group = relationship("ProcessGroup", back_populates="options")
+
 # --- ТОВАРИ ---
 class Product(Base):
     __tablename__ = "products"
@@ -74,17 +102,18 @@ class Product(Base):
 
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
-    
-    # НОВЕ: Зв'язок з витратними матеріалами
     consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
 
-# --- НОВЕ: Зв'язок Товар -> Витратні матеріали ---
+    # НОВЕ: Зв'язок з групами процесів
+    process_groups = relationship("ProcessGroup", secondary=product_process_groups, back_populates="products")
+
+# --- Зв'язок Товар -> Витратні матеріали ---
 class ProductConsumable(Base):
     __tablename__ = "product_consumables"
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
     consumable_id = Column(Integer, ForeignKey("consumables.id"))
-    quantity = Column(Float, default=1.0) # Скільки списувати (напр. 1 стакан)
+    quantity = Column(Float, default=1.0)
     
     product = relationship("Product", back_populates="consumables")
     consumable = relationship("Consumable")
@@ -101,11 +130,8 @@ class ProductVariant(Base):
     master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
     master_recipe = relationship("MasterRecipe")
     product = relationship("Product", back_populates="variants")
-
-    # НОВЕ: Зв'язок Варіант -> Витратні матеріали
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
 
-# --- НОВЕ: Зв'язок Варіант -> Витратні матеріали ---
 class ProductVariantConsumable(Base):
     __tablename__ = "product_variant_consumables"
     id = Column(Integer, primary_key=True, index=True)
@@ -115,7 +141,6 @@ class ProductVariantConsumable(Base):
     
     variant = relationship("ProductVariant", back_populates="consumables")
     consumable = relationship("Consumable")
-
 
 # --- МОДИФІКАТОРИ ---
 class ProductModifierGroup(Base):

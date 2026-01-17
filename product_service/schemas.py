@@ -67,6 +67,24 @@ class ProductConsumableRead(BaseModel):
     consumable_name: Optional[str] = None
     class Config: from_attributes = True
 
+# --- PROCESSES (НОВЕ) ---
+class ProcessOptionCreate(BaseModel):
+    name: str # "Дрібний", "Зерно"
+class ProcessOption(ProcessOptionCreate):
+    id: int
+    group_id: int
+    class Config: from_attributes = True
+
+class ProcessGroupCreate(BaseModel):
+    name: str # "Помол"
+    options: List[ProcessOptionCreate] = []
+
+class ProcessGroup(BaseModel):
+    id: int
+    name: str
+    options: List[ProcessOption] = []
+    class Config: from_attributes = True
+
 # --- MASTER RECIPES ---
 class MasterRecipeItemCreate(BaseModel):
     ingredient_id: int
@@ -136,6 +154,9 @@ class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
     modifier_groups: List[ModifierGroupCreate] = []
     consumables: List[ProductConsumableLink] = []
+    
+    # НОВЕ: Список ID груп процесів, які треба прив'язати
+    process_group_ids: List[int] = [] 
 
 class Product(ProductBase):
     id: int
@@ -143,8 +164,10 @@ class Product(ProductBase):
     variants: List[Variant] = [] 
     modifier_groups: List[ModifierGroup] = []
     master_recipe: Optional[MasterRecipe] = None
-    
     consumables: List[ProductConsumableRead] = [] 
+    
+    # НОВЕ: Повертаємо повні об'єкти груп процесів
+    process_groups: List[ProcessGroup] = []
 
     class Config: from_attributes = True
 
@@ -156,6 +179,9 @@ class SoldItem(BaseModel):
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
+    # Тут ми не додаємо окреме поле для процесів, 
+    # бо вони приходять вже як частина назви або details, сформовані на фронті
+    # або ми додамо їх в майбутньому, якщо треба буде.
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str

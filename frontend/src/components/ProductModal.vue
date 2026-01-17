@@ -10,28 +10,39 @@ const emit = defineEmits(['close', 'add-to-cart'])
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
+const selectedProcesses = ref({}) // <-- НОВЕ: Зберігаємо вибір процесів (key: group_id, value: option_name)
 
-// --- ВИПРАВЛЕНО: Ініціалізація при ВІДКРИТТІ вікна ---
+// --- Ініціалізація при ВІДКРИТТІ вікна ---
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen && props.product) {
     // 1. Скидаємо вибір
     selectedVariant.value = null
     selectedModifiers.value = {}
+    selectedProcesses.value = {} // <-- Скидаємо процеси
 
-    // 2. Якщо є варіанти, АВТОМАТИЧНО вибираємо перший (це виправить проблему "нічого не відбувається")
+    // 2. АВТО-ВИБІР Варіанту (перший/найдешевший)
     if (props.product.variants && props.product.variants.length > 0) {
-      // Сортуємо за ціною, щоб вибрати найдешевший за замовчуванням, або просто перший
       const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
       selectedVariant.value = sorted[0]
     }
 
-    // 3. Вибираємо обов'язкові модифікатори
+    // 3. АВТО-ВИБІР Модифікаторів (якщо required)
     if (props.product.modifier_groups) {
       props.product.modifier_groups.forEach(group => {
         if (group.is_required && group.modifiers.length > 0) {
           selectedModifiers.value[group.id] = group.modifiers[0].id
         }
       })
+    }
+
+    // 4. НОВЕ: АВТО-ВИБІР Процесів (завжди обираємо перший варіант за замовчуванням)
+    // Це пришвидшує роботу касира: "Під еспресо" стоїть за замовчуванням
+    if (props.product.process_groups) {
+        props.product.process_groups.forEach(pg => {
+            if (pg.options && pg.options.length > 0) {
+                selectedProcesses.value[pg.id] = pg.options[0].name
+            }
+        })
     }
   }
 })
@@ -60,7 +71,6 @@ const currentPrice = computed(() => {
 })
 
 const handleAddToCart = () => {
-  // Додаткова перевірка: якщо це товар з варіантами, але варіант не обрано (хоча watch має це виправити)
   if (props.product.has_variants && !selectedVariant.value) {
       alert("Будь ласка, оберіть розмір/варіант")
       return
@@ -77,11 +87,22 @@ const handleAddToCart = () => {
   emit('close')
 }
 
+// --- ГЕНЕРАЦІЯ НАЗВИ ДЛЯ ЧЕКУ ---
 const generateName = () => {
   let name = props.product.name
+  
+  // Додаємо варіант (L, M, 250г...)
   if (selectedVariant.value) {
     name += ` (${selectedVariant.value.name})`
   }
+
+  // НОВЕ: Додаємо процеси (Помол: Під еспресо)
+  // Ми просто додаємо їх у рядок назви, щоб бариста бачив це на чеку/екрані
+  const processValues = Object.values(selectedProcesses.value)
+  if (processValues.length > 0) {
+      name += ` [${processValues.join(', ')}]`
+  }
+
   return name
 }
 </script>
@@ -104,7 +125,7 @@ const generateName = () => {
         </button>
       </div>
 
-      <div class="p-6 overflow-y-auto space-y-6">
+      <div class="p-6 overflow-y-auto space-y-6 custom-scrollbar">
         
         <div v-if="product.has_variants && product.variants.length > 0">
           <label class="block text-sm font-bold text-gray-900 mb-3">Оберіть розмір/вагу:</label>
@@ -120,6 +141,25 @@ const generateName = () => {
               <span class="text-xs">{{ variant.price }} ₴</span>
             </button>
           </div>
+        </div>
+
+        <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
+            <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                <label class="block text-sm font-bold text-indigo-900 mb-2">
+                    {{ pg.name }}
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <button 
+                        v-for="opt in pg.options" 
+                        :key="opt.id"
+                        @click="selectedProcesses[pg.id] = opt.name"
+                        class="px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border"
+                        :class="selectedProcesses[pg.id] === opt.name ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
+                    >
+                        {{ opt.name }}
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div v-if="product.modifier_groups && product.modifier_groups.length > 0" class="space-y-4">
@@ -169,4 +209,8 @@ const generateName = () => {
   from { opacity: 0; transform: translateY(20px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* Додаємо стилі для скролбару, якщо їх ще немає в глобальних */
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
 </style>
