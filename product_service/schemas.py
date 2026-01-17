@@ -40,14 +40,41 @@ class IngredientCreate(BaseModel):
     stock_quantity: float
     unit_id: int
 
-# --- НОВЕ: MASTER RECIPES ---
+# --- НОВЕ: Consumables Schemas ---
+class ConsumableBase(BaseModel):
+    name: str
+    cost_per_unit: float
+    stock_quantity: float
+    unit_id: Optional[int] = None
+
+class ConsumableCreate(ConsumableBase):
+    pass
+
+class Consumable(ConsumableBase):
+    id: int
+    unit: Optional[Unit] = None
+    class Config: from_attributes = True
+
+# Схема для прив'язки витратних матеріалів до товару (для запису)
+class ProductConsumableLink(BaseModel):
+    consumable_id: int
+    quantity: float = 1.0
+
+# --- ВАЖЛИВО: Переміщено СЮДИ (перед Variants), щоб Pydantic його бачив ---
+class ProductConsumableRead(BaseModel):
+    consumable_id: int
+    quantity: float
+    consumable_name: Optional[str] = None
+    class Config: from_attributes = True
+
+# --- MASTER RECIPES ---
 class MasterRecipeItemCreate(BaseModel):
     ingredient_id: int
     quantity: float
+    is_percentage: bool = False 
 
 class MasterRecipeItem(MasterRecipeItemCreate):
     id: int
-    # Для зручності на фронті
     ingredient_name: Optional[str] = None 
     class Config: from_attributes = True
 
@@ -84,10 +111,15 @@ class VariantCreate(BaseModel):
     name: str
     price: float
     sku: Optional[str] = None
-    master_recipe_id: Optional[int] = None # <-- НОВЕ
+    output_weight: float = 0.0
+    master_recipe_id: Optional[int] = None
+    # При створенні використовуємо Link (тільки ID та кількість)
+    consumables: List[ProductConsumableLink] = []
 
 class Variant(VariantCreate):
     id: int
+    # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
+    consumables: List[ProductConsumableRead] = [] 
     class Config: from_attributes = True
 
 # --- PRODUCTS ---
@@ -97,20 +129,22 @@ class ProductBase(BaseModel):
     category_id: Optional[int] = None
     has_variants: bool = False
     price: float = 0.0 
-    master_recipe_id: Optional[int] = None # <-- НОВЕ
+    output_weight: float = 0.0 
+    master_recipe_id: Optional[int] = None
 
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
     modifier_groups: List[ModifierGroupCreate] = []
+    consumables: List[ProductConsumableLink] = []
 
 class Product(ProductBase):
     id: int
     category: Optional[Category] = None
-    variants: List[Variant] = []
+    variants: List[Variant] = [] 
     modifier_groups: List[ModifierGroup] = []
-    
-    # Для відображення назви рецепту на фронті
     master_recipe: Optional[MasterRecipe] = None
+    
+    consumables: List[ProductConsumableRead] = [] 
 
     class Config: from_attributes = True
 

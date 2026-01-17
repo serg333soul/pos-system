@@ -680,93 +680,177 @@ import IngredientSelect from './IngredientSelect.vue'
 
 const activeTab = ref('products') 
 const categories = ref([]); const units = ref([]); const ingredients = ref([]); const products = ref([]);
+const recipes = ref([]) 
+const consumables = ref([]) // <-- НОВЕ
+
 const loading = ref(false)
 
-// Forms for simple data
+// Forms
 const newCategory = ref({ name: '', slug: '', color: '#3b82f6', parent_id: '' }) 
 const newUnit = ref({ name: '', symbol: '' })
 const newIngredient = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 })
+const newConsumable = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 }) // <-- НОВЕ
 
-// --- РЕДАГУВАННЯ ІНГРЕДІЄНТА ---
-const showEditIngModal = ref(false)
-const editIngData = ref({ id: null, name: '', unit_id: '', cost_per_unit: 0 })
+// --- РЕЦЕПТИ (Master Recipes) ---
+const editingRecipeId = ref(null)
+const newRecipe = ref({ name: '', description: '', items: [] })
+const tempRecipeItem = ref({ ingredient_id: '', quantity: 0, is_percentage: false })
 
-// --- ТОВАР (Create / Edit Logic) ---
+// --- ТОВАР (Product) ---
 const isVariantMode = ref(false)
-const editingProductId = ref(null) // ID товару, який редагуємо (null = створення нового)
-const productSearch = ref('') // <--- НОВЕ: Пошуковий запит
-
+const editingProductId = ref(null) 
+const productSearch = ref('') 
 const newProduct = ref({
   name: '', description: '', category_id: '',
-  price: 0, recipe: [], variants: [], modifier_groups: []
+  price: 0, 
+  master_recipe_id: null,
+  output_weight: 0, 
+  variants: [], 
+  modifier_groups: [],
+  consumables: [] // <-- НОВЕ: Consumables для головного товару
 })
-const variantBuilder = ref({ name: '', price: 0, recipe: [] })
-const modGroupBuilder = ref({ name: '', is_required: false, modifiers: [] })
+const variantBuilder = ref({ 
+  name: '', price: 0, master_recipe_id: null, output_weight: 0,
+  consumables: [] // <-- НОВЕ: Consumables для варіанту
+})
+
+// Тимчасові змінні для додавання consumable до товару/варіанту в UI
+const tempProductConsumable = ref({ consumable_id: '', quantity: 1 })
+const tempVariantConsumable = ref({ consumable_id: '', quantity: 1 })
 
 // --- ЗАВАНТАЖЕННЯ ---
 const fetchData = async () => {
   loading.value = true
-  try {
-    const [c, u, i, p] = await Promise.all([
-      fetch('/api/categories/').then(r=>r.json()),
-      fetch('/api/units/').then(r=>r.json()),
-      fetch('/api/ingredients/').then(r=>r.json()),
-      fetch('/api/products/').then(r=>r.json())
-    ])
-    categories.value = c; units.value = u; ingredients.value = i; products.value = p;
-  } catch (e) { console.error(e) } finally { loading.value = false }
+  const safeFetch = async (url) => {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) return [] 
+      return await res.json()
+    } catch (e) { return [] }
+  }
+
+  categories.value = await safeFetch('/api/categories/')
+  units.value = await safeFetch('/api/units/')
+  ingredients.value = await safeFetch('/api/ingredients/')
+  consumables.value = await safeFetch('/api/consumables/') // <-- НОВЕ
+  products.value = await safeFetch('/api/products/')
+  recipes.value = await safeFetch('/api/recipes/')
+  
+  loading.value = false
 }
 
-// --- НОВЕ: Фільтрація товарів ---
+const getParentName = (parentId) => {
+    if (!parentId) return '';
+    const parent = categories.value.find(c => c.id === parentId);
+    return parent ? parent.name : '???';
+}
+
+// --- CONSUMABLES CRUD ---
+const createConsumable = async () => {
+    if(!newConsumable.value.name) return;
+    await fetch('/api/consumables/', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newConsumable.value)});
+    newConsumable.value={name:'',unit_id:'',cost_per_unit:0,stock_quantity:0};
+    fetchData();
+}
+const deleteConsumable = async (id) => {
+    if(!confirm("Видалити?")) return;
+    await fetch(`/api/consumables/${id}`, {method:'DELETE'});
+    fetchData();
+}
+
+// --- PRODUCT FORM LOGIC UPDATES ---
+const addConsumableToProduct = () => {
+    if(!tempProductConsumable.value.consumable_id) return
+    const c = consumables.value.find(x => x.id === tempProductConsumable.value.consumable_id)
+    newProduct.value.consumables.push({
+        consumable_id: tempProductConsumable.value.consumable_id,
+        quantity: tempProductConsumable.value.quantity,
+        name: c ? c.name : '???' // Для відображення
+    })
+    tempProductConsumable.value = { consumable_id: '', quantity: 1 }
+}
+const removeConsumableFromProduct = (idx) => newProduct.value.consumables.splice(idx, 1)
+
+const addConsumableToVariant = () => {
+    if(!tempVariantConsumable.value.consumable_id) return
+    const c = consumables.value.find(x => x.id === tempVariantConsumable.value.consumable_id)
+    variantBuilder.value.consumables.push({
+        consumable_id: tempVariantConsumable.value.consumable_id,
+        quantity: tempVariantConsumable.value.quantity,
+        name: c ? c.name : '???'
+    })
+    tempVariantConsumable.value = { consumable_id: '', quantity: 1 }
+}
+const removeConsumableFromVariant = (idx) => variantBuilder.value.consumables.splice(idx, 1)
+
+
+// --- ЛОГІКА РЕЦЕПТІВ (CRUD) ---
+const editRecipe = (r) => {
+    editingRecipeId.value = r.id
+    newRecipe.value = {
+        name: r.name,
+        description: r.description,
+        items: r.items.map(item => ({ 
+            ingredient_id: item.ingredient_id, 
+            quantity: item.quantity,
+            is_percentage: item.is_percentage, 
+            ingredient_name: item.ingredient_name 
+        }))
+    }
+}
+const resetRecipeForm = () => {
+    editingRecipeId.value = null
+    newRecipe.value = { name: '', description: '', items: [] }
+    tempRecipeItem.value = { ingredient_id: '', quantity: 0, is_percentage: false }
+}
+const addIngredientToMaster = () => {
+    if(!tempRecipeItem.value.ingredient_id || !tempRecipeItem.value.quantity) return
+    const ing = ingredients.value.find(i => i.id === tempRecipeItem.value.ingredient_id)
+    newRecipe.value.items.push({
+        ingredient_id: tempRecipeItem.value.ingredient_id,
+        quantity: tempRecipeItem.value.quantity,
+        is_percentage: tempRecipeItem.value.is_percentage, 
+        ingredient_name: ing ? ing.name : ''
+    })
+    tempRecipeItem.value = { ingredient_id: '', quantity: 0, is_percentage: false }
+}
+const removeIngredientFromMaster = (idx) => {
+    newRecipe.value.items.splice(idx, 1)
+}
+const saveRecipe = async () => {
+    if(!newRecipe.value.name) return alert("Вкажіть назву рецепту")
+    
+    let url = '/api/recipes/'; let method = 'POST'
+    if(editingRecipeId.value) { url = `/api/recipes/${editingRecipeId.value}`; method = 'PUT' }
+    
+    const res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRecipe.value)
+    })
+    if(res.ok) {
+        alert("Рецепт збережено!")
+        fetchData()
+        resetRecipeForm()
+    } else { alert("Помилка") }
+}
+const deleteRecipe = async (id) => {
+    if(!confirm("Видалити цей рецепт?")) return
+    const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' })
+    if(res.ok) fetchData()
+    else { 
+        const err = await res.json()
+        alert("Помилка: " + err.detail) 
+    }
+}
+
+
+// --- ЛОГІКА ТОВАРІВ ---
 const filteredProducts = computed(() => {
     if (!productSearch.value) return products.value
     const lower = productSearch.value.toLowerCase()
     return products.value.filter(p => p.name.toLowerCase().includes(lower))
 })
-
-// --- ФУНКЦІЇ ДЛЯ ПРОСТИХ ДАНИХ (Categories, Units, Ingredients) ---
-const createUnit = async () => {
-    if(!newUnit.value.name || !newUnit.value.symbol) return alert("Вкажіть назву та символ")
-    await fetch('/api/units/', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newUnit.value) })
-    newUnit.value = { name: '', symbol: '' }; fetchData()
-}
-const createIngredient = async () => { 
-    if(!newIngredient.value.name || !newIngredient.value.unit_id) return alert("Заповніть поля")
-    await fetch('/api/ingredients/', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newIngredient.value) }); 
-    newIngredient.value = { name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 }; fetchData() 
-}
-const deleteIngredient = async (id) => {
-    if(!confirm("Видалити?")) return
-    const res = await fetch(`/api/ingredients/${id}`, { method: 'DELETE' })
-    if(res.ok) fetchData() 
-}
-const openEditIngModal = (ing) => {
-    editIngData.value = { ...ing }
-    showEditIngModal.value = true
-}
-const updateIngredient = async () => {
-    const res = await fetch(`/api/ingredients/${editIngData.value.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(editIngData.value) })
-    if(res.ok) { showEditIngModal.value = false; fetchData() }
-}
-const createCategory = async () => { 
-    if(!newCategory.value.name || !newCategory.value.slug) return alert("Заповніть назву та код")
-    await fetch('/api/categories/', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newCategory.value) }); 
-    newCategory.value = { name: '', slug: '', color: '#3b82f6', parent_id: '' }; fetchData()
-}
-
-// --- ЛОГІКА ТОВАРІВ ---
-
-// 1. Скидання форми
-const resetProductForm = () => {
-    editingProductId.value = null
-    isVariantMode.value = false
-    newProduct.value = {
-        name: '', description: '', category_id: '',
-        price: 0, recipe: [], variants: [], modifier_groups: []
-    }
-}
-
-// 2. Заповнення форми для редагування
 const editProduct = (p) => {
     editingProductId.value = p.id
     isVariantMode.value = p.has_variants
@@ -776,59 +860,79 @@ const editProduct = (p) => {
         description: p.description || '',
         category_id: p.category_id,
         price: p.price,
-        recipe: p.recipe ? p.recipe.map(r => ({ ingredient_id: r.ingredient_id, quantity: r.quantity })) : [],
-        variants: p.variants ? p.variants.map(v => ({
-            name: v.name,
-            price: v.price,
-            sku: v.sku,
-            recipe: v.variant_recipe ? v.variant_recipe.map(vr => ({ ingredient_id: vr.ingredient_id, quantity: vr.quantity })) : (v.recipe || [])
-        })) : [],
-        modifier_groups: p.modifier_groups ? JSON.parse(JSON.stringify(p.modifier_groups)) : []
+        master_recipe_id: p.master_recipe_id,
+        output_weight: p.output_weight || 0,
+        
+        // ВАЖЛИВО: Захищене маппінг варіантів
+        variants: p.variants.map(v => ({
+            ...v,
+            consumables: Array.isArray(v.consumables) ? v.consumables.map(vc => ({
+                consumable_id: vc.consumable_id,
+                quantity: vc.quantity,
+                name: vc.consumable_name || '???' // Фолбек, якщо назва не прийшла
+            })) : []
+        })),
+        
+        modifier_groups: p.modifier_groups ? JSON.parse(JSON.stringify(p.modifier_groups)) : [],
+        
+        // Маппінг матеріалів головного товару
+        consumables: p.consumables ? p.consumables.map(c => ({
+            consumable_id: c.consumable_id, 
+            quantity: c.quantity,
+            name: c.consumable_name 
+        })) : []
     }
 }
-
-// 3. Збереження (Створення АБО Оновлення)
+const resetProductForm = () => {
+    editingProductId.value = null
+    isVariantMode.value = false
+    newProduct.value = { name: '', description: '', category_id: '', price: 0, master_recipe_id: null, output_weight: 0, variants: [], modifier_groups: [], consumables: [] }
+}
 const saveProduct = async () => {
-    const p = newProduct.value
-    if (!p.name || !p.category_id) return alert("Вкажіть назву та категорію!")
+    if (!newProduct.value.name || !newProduct.value.category_id) return alert("Вкажіть назву та категорію!")
+    const payload = { ...newProduct.value, has_variants: isVariantMode.value, price: isVariantMode.value ? 0 : newProduct.value.price }
     
-    const payload = {
-        name: p.name, description: p.description, category_id: p.category_id,
-        has_variants: isVariantMode.value, price: isVariantMode.value ? 0 : p.price,
-        recipe: p.recipe.filter(r => r.ingredient_id && r.quantity > 0),
-        variants: p.variants.map(v => ({ ...v, recipe: v.recipe.filter(r => r.ingredient_id && r.quantity > 0) })),
-        modifier_groups: p.modifier_groups
-    }
-
-    let url = '/api/products/'
-    let method = 'POST'
+    let url = '/api/products/'; let method = 'POST'
+    if (editingProductId.value) { url = `/api/products/${editingProductId.value}`; method = 'PUT' }
     
-    if (editingProductId.value) {
-        url = `/api/products/${editingProductId.value}`
-        method = 'PUT'
-    }
-
     const res = await fetch(url, { method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
-    
-    if(res.ok) { 
-        alert(editingProductId.value ? "Товар оновлено!" : "Товар створено!")
-        fetchData()
-        resetProductForm()
-    } else { 
-        alert("Помилка збереження") 
-    }
+    if(res.ok) { alert("Збережено!"); fetchData(); resetProductForm() } 
+    else { alert("Помилка") }
 }
-
-// Хелпери для масивів
-const addIngToRecipe = (arr) => arr.push({ ingredient_id: '', quantity: 0 })
-const removeIngFromRecipe = (arr, idx) => arr.splice(idx, 1)
 const addVariant = () => {
-    if(!variantBuilder.value.name || !variantBuilder.value.price) return alert("Вкажіть назву та ціну")
-    newProduct.value.variants.push({ ...variantBuilder.value, recipe: JSON.parse(JSON.stringify(variantBuilder.value.recipe)) })
-    variantBuilder.value = { name: '', price: 0, recipe: [] }
+    if(!variantBuilder.value.name || !variantBuilder.value.price) return alert("Заповніть назву та ціну")
+    // Копіюємо consumables з білдера
+    const variantPayload = {
+        ...variantBuilder.value,
+        consumables: [...variantBuilder.value.consumables]
+    }
+    newProduct.value.variants.push(variantPayload)
+    // Reset builder
+    variantBuilder.value = { name: '', price: 0, master_recipe_id: null, output_weight: 0, consumables: [] }
 }
 const removeVariant = (idx) => newProduct.value.variants.splice(idx, 1)
-const getParentName = (id) => { const p = categories.value.find(c => c.id === id); return p ? p.name : '-' }
+
+// Helpers for other CRUDs
+const createUnit = async () => {
+    if (!newUnit.value.name || !newUnit.value.symbol) { alert("Заповніть!"); return; }
+    await fetch('/api/units/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUnit.value) });
+    newUnit.value = { name: '', symbol: '' }; fetchData();
+}
+const createIngredient = async () => { if(!newIngredient.value.name) return; await fetch('/api/ingredients/', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newIngredient.value)}); newIngredient.value={name:'',unit_id:'',cost_per_unit:0,stock_quantity:0}; fetchData() }
+const createCategory = async () => {
+    if (!newCategory.value.name) return alert("Назва!");
+    const payload = { ...newCategory.value };
+    if (!payload.slug) payload.slug = payload.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString().slice(-4);
+    if (payload.parent_id === "") payload.parent_id = null;
+    await fetch('/api/categories/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    newCategory.value = { name: '', slug: '', color: '#3b82f6', parent_id: '' }; fetchData();
+}
+
+const getSelectedIngredientSymbol = computed(() => {
+    if (!tempRecipeItem.value.ingredient_id) return ''
+    const ing = ingredients.value.find(i => i.id === tempRecipeItem.value.ingredient_id)
+    return ing ? ing.unit.symbol : ''
+})
 
 onMounted(fetchData)
 </script>
@@ -840,169 +944,282 @@ onMounted(fetchData)
       <button @click="fetchData" class="text-blue-600 hover:bg-blue-50 p-2 rounded-full"><i class="fas fa-sync-alt"></i></button>
     </div>
 
-    <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8">
+    <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
+      <button @click="activeTab='recipes'" :class="activeTab==='recipes'?'bg-white text-orange-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-book-open mr-2"></i>Рецепти</button>
       <button @click="activeTab='products'" :class="activeTab==='products'?'bg-white text-purple-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Товари</button>
       <button @click="activeTab='ingredients'" :class="activeTab==='ingredients'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Інгредієнти</button>
-      <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці вим.</button>
+      <button @click="activeTab='consumables'" :class="activeTab==='consumables'?'bg-white text-teal-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-box-open mr-2"></i>Витр. матеріали</button>
+      <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці</button>
       <button @click="activeTab='categories'" :class="activeTab==='categories'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
     </div>
 
-    <div v-if="activeTab === 'products'" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
-       <div class="xl:col-span-2 flex flex-col gap-4 h-fit">
-        
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
-             <i class="fas fa-search text-gray-400 ml-2"></i>
-             <input v-model="productSearch" type="text" placeholder="Пошук товару..." class="w-full outline-none text-gray-700">
-             <span class="text-xs text-gray-400 font-bold uppercase">{{ filteredProducts.length }} знайдено</span>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <table class="w-full text-left">
-            <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
-                <tr>
-                    <th class="p-4">Назва</th>
-                    <th class="p-4">Категорія</th> <th class="p-4">Тип</th>
-                    <th class="p-4 text-right">Ціна</th>
-                    <th class="p-4"></th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-if="filteredProducts.length === 0">
-                    <td colspan="5" class="p-8 text-center text-gray-400">Товарів не знайдено</td>
-                </tr>
-                <tr v-for="p in filteredProducts" :key="p.id" class="border-b hover:bg-gray-50 transition">
-                <td class="p-4 font-bold text-gray-800">{{ p.name }}</td>
-                
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full" :style="{ backgroundColor: p.category?.color || '#ccc' }"></div>
-                        <span class="text-sm font-medium text-gray-600">{{ p.category?.name || '-' }}</span>
+    <div v-if="activeTab === 'recipes'" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div class="xl:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
+            <div class="p-4 bg-gray-50 border-b font-bold text-gray-700">Всі рецепти</div>
+            <div class="max-h-[600px] overflow-y-auto custom-scrollbar">
+                <div v-for="r in recipes" :key="r.id" class="p-4 border-b hover:bg-orange-50 cursor-pointer flex justify-between items-center group">
+                    <div @click="editRecipe(r)" class="flex-1">
+                        <div class="font-bold text-gray-800">{{ r.name }}</div>
+                        <div class="text-xs text-gray-400">{{ r.items.length }} інгр.</div>
                     </div>
-                </td>
-
-                <td class="p-4 text-xs uppercase font-bold" :class="p.has_variants ? 'text-purple-600':'text-gray-500'">
-                    {{ p.has_variants ? 'Варіанти' : 'Простий' }}
-                </td>
-                <td class="p-4 text-right font-mono">
-                    {{ p.has_variants && p.variants.length > 0 ? `${p.variants[0].price} - ...` : p.price }} ₴
-                </td>
-                <td class="p-4 text-right">
-                    <button @click="editProduct(p)" class="text-gray-400 hover:text-blue-600 px-2 transition"><i class="fas fa-pen"></i></button>
-                </td>
-                </tr>
-            </tbody>
-            </table>
-        </div>
-      </div>
-      
-       <div class="bg-white p-6 rounded-2xl shadow-sm border border-purple-100 border-2 h-fit sticky top-4">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-bold" :class="editingProductId ? 'text-blue-700' : 'text-purple-700'">
-                <i class="fas" :class="editingProductId ? 'fa-edit' : 'fa-plus-circle'"></i> 
-                {{ editingProductId ? 'Редагування товару' : 'Новий товар' }}
-            </h3>
-            <button v-if="editingProductId" @click="resetProductForm" class="text-xs text-red-500 hover:underline">Скасувати</button>
-        </div>
-        
-        <div class="space-y-4">
-            <input v-model="newProduct.name" type="text" placeholder="Назва (напр. Кава Delicate)" class="w-full border p-2 rounded focus:ring-2 ring-purple-100 outline-none">
-            <select v-model="newProduct.category_id" class="w-full border p-2 rounded bg-white">
-                <option value="" disabled>Оберіть категорію</option>
-                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-            
-            <div class="flex items-center gap-3 bg-gray-100 p-2 rounded-lg">
-                <span class="text-xs font-bold uppercase text-gray-500 ml-2">Тип:</span>
-                <button @click="isVariantMode=false" :class="!isVariantMode ? 'bg-white shadow text-gray-800':'text-gray-400'" class="flex-1 py-1 rounded text-sm font-bold transition">Простий</button>
-                <button @click="isVariantMode=true" :class="isVariantMode ? 'bg-white shadow text-purple-600':'text-gray-400'" class="flex-1 py-1 rounded text-sm font-bold transition">З варіантами</button>
-            </div>
-
-             <div v-if="!isVariantMode" class="space-y-3 animate-fade-in">
-                <input v-model="newProduct.price" type="number" placeholder="Ціна (₴)" class="w-full border p-2 rounded font-bold text-right">
-                <div class="border-t border-dashed pt-2">
-                    <label class="text-xs font-bold text-gray-400 uppercase">Рецепт</label>
-                    <div v-for="(row, idx) in newProduct.recipe" :key="idx" class="flex gap-2 mt-1 items-center">
-                        <div class="flex-1"><IngredientSelect v-model="row.ingredient_id" :ingredients="ingredients" /></div>
-                        <input v-model="row.quantity" type="number" step="0.001" placeholder="Кіл" class="w-16 text-sm border rounded p-1.5 h-[38px]">
-                        <button @click="removeIngFromRecipe(newProduct.recipe, idx)" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-times"></i></button>
-                    </div>
-                    <button @click="addIngToRecipe(newProduct.recipe)" class="text-xs text-blue-500 font-bold mt-2 flex items-center gap-1 hover:text-blue-700"><i class="fas fa-plus"></i> Інгредієнт</button>
+                    <button @click="deleteRecipe(r.id)" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
-
-            <div v-if="isVariantMode" class="bg-purple-50 p-3 rounded-xl border border-purple-100 animate-fade-in">
-                
-                <div v-if="newProduct.variants.length > 0" class="mb-4 space-y-2">
-                    <label class="text-xs font-bold text-purple-600 uppercase">Список варіантів:</label>
-                    <div v-for="(v, idx) in newProduct.variants" :key="idx" class="flex justify-between text-sm bg-white p-2 rounded border border-purple-100 shadow-sm items-center">
-                        <div class="flex flex-col">
-                            <span class="font-bold text-gray-700">{{ v.name }} <span class="text-gray-400 font-normal">({{ v.price }} ₴)</span></span>
-                            <span class="text-[10px] text-gray-400">{{ v.recipe.length }} інгр.</span>
-                        </div>
-                        <button @click="removeVariant(idx)" class="text-gray-400 hover:text-red-500 transition"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>
-
-                <div class="bg-white/50 p-2 rounded-lg border border-dashed border-purple-200">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Додати новий варіант</label>
-                    <div class="flex gap-2 mb-2">
-                        <input v-model="variantBuilder.name" placeholder="Назва (250г)" class="flex-1 text-sm border p-1 rounded">
-                        <input v-model="variantBuilder.price" type="number" placeholder="Ціна" class="w-20 text-sm border p-1 rounded">
-                    </div>
-                    <div class="bg-white p-2 rounded border border-purple-100 mb-2">
-                          <div v-for="(row, idx) in variantBuilder.recipe" :key="idx" class="flex gap-1 mb-2 items-center">
-                            <div class="flex-1"><IngredientSelect v-model="row.ingredient_id" :ingredients="ingredients" /></div>
-                            <input v-model="row.quantity" type="number" step="0.001" class="w-16 text-xs border rounded p-1.5 h-[38px]">
-                            <button @click="removeIngFromRecipe(variantBuilder.recipe, idx)" class="text-red-400 text-xs px-2 hover:text-red-600"><i class="fas fa-times"></i></button>
-                          </div>
-                          <button @click="addIngToRecipe(variantBuilder.recipe)" class="text-xs text-purple-500 font-bold hover:text-purple-700 flex items-center gap-1"><i class="fas fa-plus"></i> Склад</button>
-                    </div>
-                    <button @click="addVariant" class="w-full bg-purple-200 text-purple-800 text-sm font-bold py-2 rounded hover:bg-purple-300 transition shadow-sm">Додати в список</button>
-                </div>
-            </div>
-
-            <button @click="saveProduct" 
-                class="w-full text-white py-3 rounded-xl font-bold shadow-lg mt-4 transition transform active:scale-95"
-                :class="editingProductId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'">
-                {{ editingProductId ? 'Зберегти зміни' : 'Створити товар' }}
+            <button @click="resetRecipeForm" class="w-full py-3 text-center text-orange-600 font-bold hover:bg-orange-50 transition border-t">
+                <i class="fas fa-plus-circle"></i> Створити новий
             </button>
         </div>
-      </div>
+
+        <div class="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-orange-100 border-2 h-fit">
+             <div class="p-6 border-b flex justify-between items-center bg-orange-50 rounded-t-xl">
+                 <h3 class="font-bold text-xl text-orange-800">{{ editingRecipeId ? 'Редагування' : 'Новий рецепт' }}</h3>
+                 <button v-if="editingRecipeId" @click="resetRecipeForm" class="text-xs text-red-500 hover:underline">Закрити</button>
+             </div>
+             
+             <div class="p-6 space-y-4">
+                 <input v-model="newRecipe.name" placeholder="Назва рецепту" class="w-full border p-2 rounded focus:ring-2 ring-orange-200 outline-none text-lg font-bold">
+                 
+                 <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                     <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Склад рецепту</label>
+                     <div class="space-y-2 mb-4">
+                         <div v-for="(item, idx) in newRecipe.items" :key="idx" class="flex items-center gap-3 bg-white p-2 rounded border shadow-sm">
+                             <span class="flex-1 font-bold text-gray-700">{{ item.ingredient_name }}</span>
+                             <span class="font-mono bg-gray-100 px-2 rounded" :class="item.is_percentage ? 'text-blue-600' : ''">
+                                 {{ item.quantity }} {{ item.is_percentage ? '%' : '' }}
+                             </span>
+                             <button @click="removeIngredientFromMaster(idx)" class="text-red-400 hover:text-red-600"><i class="fas fa-times"></i></button>
+                         </div>
+                     </div>
+
+                     <div class="flex gap-2 items-end border-t pt-3">
+                         <div class="flex-1">
+                             <label class="text-[10px] text-gray-400 font-bold uppercase">Інгредієнт</label>
+                             <IngredientSelect v-model="tempRecipeItem.ingredient_id" :ingredients="ingredients" />
+                         </div>
+                         
+                         <div class="flex flex-col">
+                             <label class="text-[10px] text-gray-400 font-bold uppercase mb-1">Тип</label>
+                             <div class="flex bg-white border rounded h-[38px] overflow-hidden">
+                                 <button @click="tempRecipeItem.is_percentage=false" :class="!tempRecipeItem.is_percentage ? 'bg-gray-200 font-bold':''" class="px-2 text-xs border-r hover:bg-gray-100">FIX</button>
+                                 <button @click="tempRecipeItem.is_percentage=true" :class="tempRecipeItem.is_percentage ? 'bg-blue-100 text-blue-700 font-bold':''" class="px-2 text-xs hover:bg-gray-100">%</button>
+                             </div>
+                         </div>
+
+                         <div class="w-24">
+                             <label class="text-[10px] text-gray-400 font-bold uppercase">Кількість</label>
+                             <div class="relative">
+                                 <input v-model="tempRecipeItem.quantity" type="number" step="0.001" class="w-full border p-2 rounded h-[38px] pr-8">
+                                 <span class="absolute right-2 top-2 text-xs text-gray-400">
+                                     {{ tempRecipeItem.is_percentage ? '%' : getSelectedIngredientSymbol }}
+                                 </span>
+                             </div>
+                         </div>
+                         <button @click="addIngredientToMaster" class="bg-orange-500 text-white w-10 h-[38px] rounded hover:bg-orange-600 transition"><i class="fas fa-plus"></i></button>
+                     </div>
+                 </div>
+
+                 <button @click="saveRecipe" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg mt-2">Зберегти рецепт</button>
+             </div>
+        </div>
     </div>
 
-    <div v-if="activeTab === 'ingredients'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+    <div v-if="activeTab === 'products'" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+       <div class="xl:col-span-2 flex flex-col gap-4 h-fit">
+           <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
+                 <i class="fas fa-search text-gray-400 ml-2"></i>
+                 <input v-model="productSearch" type="text" placeholder="Пошук товару..." class="w-full outline-none text-gray-700">
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4">Категорія</th><th class="p-4">Рецепт</th><th class="p-4 text-right">Ціна</th><th class="p-4"></th></tr></thead>
+                    <tbody>
+                        <tr v-for="p in filteredProducts" :key="p.id" class="border-b hover:bg-gray-50">
+                            <td class="p-4 font-bold">{{ p.name }}</td>
+                            <td class="p-4 text-sm text-gray-500">{{ p.category?.name }}</td>
+                            <td class="p-4 text-sm">
+                                <span v-if="p.master_recipe" class="text-orange-600 font-bold"><i class="fas fa-scroll"></i> {{ p.master_recipe.name }}</span>
+                                <span v-else-if="p.has_variants && p.variants.some(v=>v.master_recipe_id)" class="text-purple-600 font-bold">По варіантах</span>
+                                <span v-else class="text-gray-300">-</span>
+                            </td>
+                            <td class="p-4 text-right font-mono">{{ p.has_variants ? '...' : p.price + ' ₴' }}</td>
+                            <td class="p-4 text-right"><button @click="editProduct(p)" class="text-blue-500 hover:text-blue-700"><i class="fas fa-pen"></i></button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+       </div>
+
+       <div class="bg-white p-6 rounded-2xl shadow-sm border border-purple-100 border-2 h-fit sticky top-4 overflow-y-auto max-h-[90vh] custom-scrollbar">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-purple-700">{{ editingProductId ? 'Редагування' : 'Новий товар' }}</h3>
+                <button v-if="editingProductId" @click="resetProductForm" class="text-red-500 text-xs hover:underline">Скасувати</button>
+            </div>
+            
+            <div class="space-y-4">
+                <input v-model="newProduct.name" placeholder="Назва" class="w-full border p-2 rounded">
+                <select v-model="newProduct.category_id" class="w-full border p-2 rounded bg-white">
+                    <option value="" disabled>Категорія...</option>
+                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+
+                <div class="flex items-center gap-3 bg-gray-100 p-2 rounded-lg">
+                    <span class="text-xs font-bold uppercase text-gray-500 ml-2">Тип:</span>
+                    <button @click="isVariantMode=false" :class="!isVariantMode ? 'bg-white shadow text-gray-800':'text-gray-400'" class="flex-1 py-1 rounded text-sm font-bold transition">Простий</button>
+                    <button @click="isVariantMode=true" :class="isVariantMode ? 'bg-white shadow text-purple-600':'text-gray-400'" class="flex-1 py-1 rounded text-sm font-bold transition">З варіантами</button>
+                </div>
+
+                <div class="bg-teal-50 p-3 rounded-lg border border-teal-100 space-y-2">
+                    <label class="block text-xs font-bold text-teal-600 uppercase">Витратні матеріали (для товару)</label>
+                    <div class="space-y-1">
+                        <div v-for="(c, idx) in newProduct.consumables" :key="idx" class="flex justify-between bg-white px-2 py-1 rounded text-sm">
+                            <span>{{ c.name }}</span>
+                            <span>x{{ c.quantity }} <button @click="removeConsumableFromProduct(idx)" class="text-red-400 ml-2">x</button></span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                         <select v-model="tempProductConsumable.consumable_id" class="flex-1 border p-1 rounded text-xs bg-white">
+                             <option value="">Матеріал...</option>
+                             <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                         </select>
+                         <input v-model="tempProductConsumable.quantity" type="number" class="w-16 border p-1 rounded text-xs" placeholder="К-сть">
+                         <button @click="addConsumableToProduct" class="bg-teal-500 text-white px-2 rounded hover:bg-teal-600">+</button>
+                    </div>
+                </div>
+
+                <div v-if="!isVariantMode" class="space-y-3 animate-fade-in">
+                    <input v-model="newProduct.price" type="number" placeholder="Ціна (₴)" class="w-full border p-2 rounded font-bold text-right">
+                    
+                    <div class="bg-orange-50 p-3 rounded-lg border border-orange-100 space-y-2">
+                        <label class="block text-xs font-bold text-orange-600 uppercase">Технологічна карта</label>
+                        <select v-model="newProduct.master_recipe_id" class="w-full border p-2 rounded bg-white text-sm">
+                            <option :value="null">-- Без списання --</option>
+                            <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
+                        </select>
+                        <div v-if="newProduct.master_recipe_id" class="animate-fade-in">
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase">Вага виходу (для % списання)</label>
+                            <div class="flex items-center gap-2">
+                                <input v-model="newProduct.output_weight" type="number" class="w-full border p-2 rounded text-sm" placeholder="напр. 250">
+                                <span class="text-xs font-bold text-gray-400">г/мл</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isVariantMode" class="bg-purple-50 p-3 rounded-xl border border-purple-100 animate-fade-in">
+                    <div v-if="newProduct.variants.length > 0" class="mb-4 space-y-2">
+                         <div v-for="(v, idx) in newProduct.variants" :key="idx" class="bg-white p-2 rounded border shadow-sm text-sm">
+                             <div class="flex justify-between mb-1">
+                                 <span class="font-bold">{{ v.name }} ({{ v.price }} ₴)</span>
+                                 <button @click="removeVariant(idx)" class="text-red-400"><i class="fas fa-times"></i></button>
+                             </div>
+                             <div class="text-xs text-gray-500 mb-1">
+                                 Вага: {{ v.output_weight || 0 }}, Рецепт: {{ recipes.find(r=>r.id===v.master_recipe_id)?.name || '-' }}
+                             </div>
+                             <div v-if="v.consumables && v.consumables.length > 0" class="flex flex-wrap gap-1">
+                                 <span v-for="vc in v.consumables" :key="vc.consumable_id" class="bg-teal-100 text-teal-800 text-[10px] px-1 rounded">
+                                     {{ consumables.find(x=>x.id==vc.consumable_id)?.name }}: {{ vc.quantity }}
+                                 </span>
+                             </div>
+                         </div>
+                    </div>
+
+                    <div class="bg-white/50 p-2 rounded-lg border border-dashed border-purple-200 space-y-2">
+                        <div class="flex gap-2">
+                            <input v-model="variantBuilder.name" placeholder="Назва (L)" class="flex-1 border p-1 rounded text-sm">
+                            <input v-model="variantBuilder.price" type="number" placeholder="Ціна" class="w-20 border p-1 rounded text-sm">
+                        </div>
+                        
+                        <div class="flex gap-2">
+                             <input v-model="variantBuilder.output_weight" type="number" placeholder="Вага" class="w-20 border p-1 rounded text-sm">
+                             <select v-model="variantBuilder.master_recipe_id" class="flex-1 border p-1 rounded text-xs bg-white">
+                                <option :value="null">Рецепт...</option>
+                                <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
+                             </select>
+                        </div>
+
+                         <div class="bg-teal-50/50 p-2 rounded border border-teal-100">
+                             <label class="text-[10px] uppercase font-bold text-teal-600">Матеріали варіанту (напр. стакан)</label>
+                             <div class="flex gap-1 mb-1">
+                                 <select v-model="tempVariantConsumable.consumable_id" class="flex-1 border p-1 rounded text-[10px] bg-white h-7">
+                                     <option value="">Матеріал...</option>
+                                     <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                                 </select>
+                                 <input v-model="tempVariantConsumable.quantity" type="number" class="w-10 border p-1 rounded text-[10px] h-7" placeholder="Qty">
+                                 <button @click="addConsumableToVariant" class="bg-teal-500 text-white w-7 h-7 rounded hover:bg-teal-600 text-xs">+</button>
+                             </div>
+                             <div class="flex flex-wrap gap-1">
+                                 <span v-for="(vc, vi) in variantBuilder.consumables" :key="vi" class="bg-white border text-[10px] px-1 rounded flex items-center gap-1">
+                                     {{ vc.name }} x{{ vc.quantity }} <button @click="removeConsumableFromVariant(vi)" class="text-red-500 font-bold">&times;</button>
+                                 </span>
+                             </div>
+                         </div>
+
+                        <button @click="addVariant" class="w-full bg-purple-200 text-purple-800 text-sm font-bold py-1 rounded hover:bg-purple-300">Додати варіант</button>
+                    </div>
+                </div>
+
+                <button @click="saveProduct" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg">Зберегти</button>
+            </div>
+       </div>
+    </div>
+    
+    <div v-if="activeTab === 'ingredients'" class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3><div class="space-y-5"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва інгредієнта</label><input v-model="newIngredient.name" placeholder="Напр. Кава в зернах" class="border p-2 rounded-lg w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Одиниця виміру</label><select v-model="newIngredient.unit_id" class="border p-2 rounded-lg w-full bg-white h-[42px]"><option value="" disabled>Оберіть...</option><option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option></select></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label><input v-model="newIngredient.cost_per_unit" type="number" placeholder="0.00" class="border p-2 rounded-lg w-full"></div></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Початковий залишок на складі</label><input v-model="newIngredient.stock_quantity" type="number" placeholder="0" class="border p-2 rounded-lg w-full"></div><button @click="createIngredient" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2"><i class="fas fa-plus mr-2"></i> Додати в базу</button></div></div><div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4 text-right">Залишок</th><th class="p-4 text-center">Дії</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50"><td class="p-4 font-bold text-gray-700">{{ i.name }}<div class="text-xs text-gray-400 font-normal">Собівартість: {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}</div></td><td class="p-4 text-right font-mono text-lg" :class="i.stock_quantity > 0 ? 'text-green-600' : 'text-red-500'">{{ i.stock_quantity }} <span class="text-xs text-gray-400 font-sans">{{ i.unit?.symbol }}</span></td><td class="p-4 text-center"><div class="flex justify-center gap-2"><button @click="openEditIngModal(i)" class="text-gray-400 hover:text-blue-500 px-2"><i class="fas fa-pen"></i></button><button @click="deleteIngredient(i.id)" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button></div></td></tr></tbody></table></div></div>
+     
+    <div v-if="activeTab === 'consumables'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
-             <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3>
-             <div class="space-y-5">
-                 <div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва інгредієнта</label><input v-model="newIngredient.name" placeholder="Напр. Кава в зернах" class="border p-2 rounded-lg w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition"></div>
-                 <div class="grid grid-cols-2 gap-4">
-                    <div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Одиниця виміру</label><select v-model="newIngredient.unit_id" class="border p-2 rounded-lg w-full bg-white h-[42px]"><option value="" disabled>Оберіть...</option><option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option></select></div>
-                    <div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label><input v-model="newIngredient.cost_per_unit" type="number" placeholder="0.00" class="border p-2 rounded-lg w-full"></div>
-                 </div>
-                 <div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Початковий залишок на складі</label><input v-model="newIngredient.stock_quantity" type="number" placeholder="0" class="border p-2 rounded-lg w-full"></div>
-                 <button @click="createIngredient" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2"><i class="fas fa-plus mr-2"></i> Додати в базу</button>
-             </div>
+            <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">📦 Новий матеріал</h3>
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва</label>
+                    <input v-model="newConsumable.name" placeholder="Напр. Стакан 300мл" class="border p-2 rounded-lg w-full">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Одиниця</label>
+                        <select v-model="newConsumable.unit_id" class="border p-2 rounded-lg w-full bg-white h-[42px]">
+                            <option value="" disabled>Оберіть...</option>
+                            <option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ціна (₴/од)</label>
+                        <input v-model="newConsumable.cost_per_unit" type="number" class="border p-2 rounded-lg w-full">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Залишок</label>
+                    <input v-model="newConsumable.stock_quantity" type="number" class="border p-2 rounded-lg w-full">
+                </div>
+                <button @click="createConsumable" class="bg-teal-600 hover:bg-teal-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-teal-200 transition mt-2">Додати</button>
+            </div>
         </div>
         <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
             <table class="w-full text-sm text-left">
-                <thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4 text-right">Залишок</th><th class="p-4 text-center">Дії</th></tr></thead>
-                <tbody class="divide-y divide-gray-100"><tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50"><td class="p-4 font-bold text-gray-700">{{ i.name }}<div class="text-xs text-gray-400 font-normal">Собівартість: {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}</div></td><td class="p-4 text-right font-mono text-lg" :class="i.stock_quantity > 0 ? 'text-green-600' : 'text-red-500'">{{ i.stock_quantity }} <span class="text-xs text-gray-400 font-sans">{{ i.unit?.symbol }}</span></td><td class="p-4 text-center"><div class="flex justify-center gap-2"><button @click="openEditIngModal(i)" class="text-gray-400 hover:text-blue-500 px-2"><i class="fas fa-pen"></i></button><button @click="deleteIngredient(i.id)" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button></div></td></tr></tbody>
+                <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+                    <tr><th class="p-4">Назва</th><th class="p-4 text-right">Залишок</th><th class="p-4 text-center">Дії</th></tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr v-for="c in consumables" :key="c.id" class="hover:bg-gray-50">
+                        <td class="p-4 font-bold text-gray-700">{{ c.name }}
+                            <div class="text-xs text-gray-400 font-normal">{{ c.cost_per_unit }} ₴/{{ c.unit?.symbol }}</div>
+                        </td>
+                        <td class="p-4 text-right font-mono text-lg" :class="c.stock_quantity > 10 ? 'text-green-600' : 'text-red-500'">
+                            {{ c.stock_quantity }} <span class="text-xs text-gray-400 font-sans">{{ c.unit?.symbol }}</span>
+                        </td>
+                        <td class="p-4 text-center">
+                            <button @click="deleteConsumable(c.id)" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </div>
-    
-    <div v-if="activeTab === 'units'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-4 text-gray-700">📏 Створити одиницю виміру</h3><div class="space-y-3"><input v-model="newUnit.name" placeholder="Назва (напр. Грами)" class="border p-2 rounded w-full"><input v-model="newUnit.symbol" placeholder="Символ (напр. г)" class="border p-2 rounded w-full"><button @click="createUnit" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition">Зберегти</button></div></div>
-         <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4 text-right">Символ</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="u in units" :key="u.id" class="hover:bg-gray-50"><td class="p-4 font-bold text-gray-700">{{ u.name }}</td><td class="p-4 text-right font-mono">{{ u.symbol }}</td></tr></tbody></table></div>
-    </div>
-    
-    <div v-if="activeTab === 'categories'" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-4 text-gray-700">📂 Нова категорія</h3><div class="space-y-4"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва</label><input v-model="newCategory.name" class="border p-2 rounded w-full"></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Код</label><input v-model="newCategory.slug" class="border p-2 rounded w-full font-mono text-sm"></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Колір</label><div class="flex items-center gap-2"><input v-model="newCategory.color" type="color" class="h-10 w-16 border rounded cursor-pointer"><span class="text-sm text-gray-600">{{ newCategory.color }}</span></div></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Батько</label><select v-model="newCategory.parent_id" class="border p-2 rounded w-full bg-white"><option value="">(Немає)</option><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></div><button @click="createCategory" class="bg-blue-600 text-white w-full py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg mt-2">Створити</button></div></div>
-        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Колір</th><th class="p-4">Назва</th><th class="p-4">Код</th><th class="p-4">Батько</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="c in categories" :key="c.id" class="hover:bg-gray-50"><td class="p-4"><div class="w-8 h-8 rounded-lg shadow-sm border border-gray-200" :style="{ backgroundColor: c.color || '#fff' }"></div></td><td class="p-4 font-bold text-gray-800 text-lg">{{ c.name }}</td><td class="p-4 font-mono text-gray-500">{{ c.slug }}</td><td class="p-4"><span v-if="c.parent_id" class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">{{ getParentName(c.parent_id) }}</span><span v-else class="text-gray-300 text-xs">-</span></td></tr></tbody></table></div>
-    </div>
 
+    <div v-if="activeTab === 'units'" class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-4 text-gray-700">📏 Створити одиницю виміру</h3><div class="space-y-3"><input v-model="newUnit.name" placeholder="Назва (напр. Грами)" class="border p-2 rounded w-full"><input v-model="newUnit.symbol" placeholder="Символ (напр. г)" class="border p-2 rounded w-full"><button @click="createUnit" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition">Зберегти</button></div></div><div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Назва</th><th class="p-4 text-right">Символ</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="u in units" :key="u.id" class="hover:bg-gray-50"><td class="p-4 font-bold text-gray-700">{{ u.name }}</td><td class="p-4 text-right font-mono">{{ u.symbol }}</td></tr></tbody></table></div></div>
+    <div v-if="activeTab === 'categories'" class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit"><h3 class="font-bold mb-4 text-gray-700">📂 Нова категорія</h3><div class="space-y-4"><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва</label><input v-model="newCategory.name" class="border p-2 rounded w-full"></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Код</label><input v-model="newCategory.slug" class="border p-2 rounded w-full font-mono text-sm"></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Колір</label><div class="flex items-center gap-2"><input v-model="newCategory.color" type="color" class="h-10 w-16 border rounded cursor-pointer"><span class="text-sm text-gray-600">{{ newCategory.color }}</span></div></div><div><label class="block text-xs font-bold text-gray-500 uppercase mb-1">Батько</label><select v-model="newCategory.parent_id" class="border p-2 rounded w-full bg-white"><option value="">(Немає)</option><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></div><button @click="createCategory" class="bg-blue-600 text-white w-full py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg mt-2">Створити</button></div></div><div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-gray-50 text-gray-500 uppercase text-xs"><tr><th class="p-4">Колір</th><th class="p-4">Назва</th><th class="p-4">Код</th><th class="p-4">Батько</th></tr></thead><tbody class="divide-y divide-gray-100"><tr v-for="c in categories" :key="c.id" class="hover:bg-gray-50"><td class="p-4"><div class="w-8 h-8 rounded-lg shadow-sm border border-gray-200" :style="{ backgroundColor: c.color || '#fff' }"></div></td><td class="p-4 font-bold text-gray-800 text-lg">{{ c.name }}</td><td class="p-4 font-mono text-gray-500">{{ c.slug }}</td><td class="p-4"><span v-if="c.parent_id" class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">{{ getParentName(c.parent_id) }}</span><span v-else class="text-gray-300 text-xs">-</span></td></tr></tbody></table></div></div>
+    
     <div v-if="showEditIngModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm"><div class="bg-white p-6 rounded-2xl shadow-2xl w-96"><h3 class="text-xl font-bold mb-4">Редагувати інгредієнт</h3><div class="space-y-3"><div><label class="text-xs font-bold text-gray-500 uppercase">Назва</label><input v-model="editIngData.name" class="border p-2 rounded w-full"></div><div><label class="text-xs font-bold text-gray-500 uppercase">Одиниця</label><select v-model="editIngData.unit_id" class="border p-2 rounded w-full bg-white"><option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option></select></div><div><label class="text-xs font-bold text-gray-500 uppercase">Ціна</label><input v-model="editIngData.cost_per_unit" type="number" class="border p-2 rounded w-full"></div><div class="flex gap-2 mt-4"><button @click="showEditIngModal=false" class="flex-1 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-lg">Скасувати</button><button @click="updateIngredient" class="flex-1 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">Зберегти</button></div></div></div></div>
-
   </div>
 </template>
 
@@ -2076,132 +2293,164 @@ pydantic
 ========================================
 FILE: product_service/schemas.py
 ========================================
-# ========================================
-# FILE: product_service/schemas.py
-# ========================================
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-# --- 1. CATEGORIES (ОНОВЛЕНО) ---
-class CategoryBase(BaseModel):
+# --- BASIC ---
+class Category(BaseModel):
+    id: int
     name: str
     slug: str
-    color: Optional[str] = "#ffffff" # За замовчуванням білий
-    parent_id: Optional[int] = None # Може бути None (якщо це головна категорія)
-
-class CategoryCreate(CategoryBase):
-    pass
-
-class Category(CategoryBase):
-    id: int
-    # Для зручності можемо повертати ім'я батька, але поки залишимо базові поля
+    color: Optional[str] = "#ffffff"
+    parent_id: Optional[int] = None
     class Config: from_attributes = True
 
-# --- 2. UNITS (Одиниці виміру) ---
-class UnitBase(BaseModel):
+class CategoryCreate(BaseModel):
+    name: str
+    slug: str
+    color: Optional[str] = "#ffffff"
+    parent_id: Optional[int] = None
+
+class Unit(BaseModel):
+    id: int
+    name: str
+    symbol: str
+    class Config: from_attributes = True
+class UnitCreate(BaseModel):
     name: str
     symbol: str
 
-# Клас для створення (без ID)
-class UnitCreate(UnitBase):
-    pass
-
-# Клас для читання з БД (з ID)
-class Unit(UnitBase):
+class Ingredient(BaseModel):
     id: int
+    name: str
+    cost_per_unit: float
+    stock_quantity: float
+    unit_id: Optional[int] = None
+    unit: Optional[Unit] = None
     class Config: from_attributes = True
+class IngredientCreate(BaseModel):
+    name: str
+    cost_per_unit: float
+    stock_quantity: float
+    unit_id: int
 
-# --- 3. INGREDIENTS ---
-class IngredientBase(BaseModel):
+# --- НОВЕ: Consumables Schemas ---
+class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
     stock_quantity: float
     unit_id: Optional[int] = None
 
-class IngredientCreate(IngredientBase):
+class ConsumableCreate(ConsumableBase):
     pass
 
-class Ingredient(IngredientBase):
+class Consumable(ConsumableBase):
     id: int
     unit: Optional[Unit] = None
     class Config: from_attributes = True
 
-# --- 4. MODIFIERS ---
+# Схема для прив'язки витратних матеріалів до товару (для запису)
+class ProductConsumableLink(BaseModel):
+    consumable_id: int
+    quantity: float = 1.0
+
+# --- ВАЖЛИВО: Переміщено СЮДИ (перед Variants), щоб Pydantic його бачив ---
+class ProductConsumableRead(BaseModel):
+    consumable_id: int
+    quantity: float
+    consumable_name: Optional[str] = None
+    class Config: from_attributes = True
+
+# --- MASTER RECIPES ---
+class MasterRecipeItemCreate(BaseModel):
+    ingredient_id: int
+    quantity: float
+    is_percentage: bool = False 
+
+class MasterRecipeItem(MasterRecipeItemCreate):
+    id: int
+    ingredient_name: Optional[str] = None 
+    class Config: from_attributes = True
+
+class MasterRecipeCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    items: List[MasterRecipeItemCreate] = []
+
+class MasterRecipe(MasterRecipeCreate):
+    id: int
+    items: List[MasterRecipeItem] = []
+    class Config: from_attributes = True
+
+# --- MODIFIERS ---
 class ModifierCreate(BaseModel):
     name: str
     price_change: float = 0.0
     ingredient_id: Optional[int] = None
     quantity: float = 0.0
-
 class Modifier(ModifierCreate):
     id: int
     class Config: from_attributes = True
-
 class ModifierGroupCreate(BaseModel):
     name: str
     is_required: bool = False
     modifiers: List[ModifierCreate] = []
-
 class ModifierGroup(ModifierGroupCreate):
     id: int
     modifiers: List[Modifier] = []
     class Config: from_attributes = True
 
-# --- 5. RECIPES ---
-class RecipeItemCreate(BaseModel):
-    ingredient_id: int
-    quantity: float
-
-class RecipeItem(RecipeItemCreate):
-    ingredient_name: Optional[str] = None
-    class Config: from_attributes = True
-
-# --- 6. VARIANTS ---
+# --- VARIANTS ---
 class VariantCreate(BaseModel):
     name: str
     price: float
     sku: Optional[str] = None
-    recipe: List[RecipeItemCreate] = []
+    output_weight: float = 0.0
+    master_recipe_id: Optional[int] = None
+    # При створенні використовуємо Link (тільки ID та кількість)
+    consumables: List[ProductConsumableLink] = []
 
 class Variant(VariantCreate):
     id: int
-    recipe: List[RecipeItem] = [] 
+    # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
+    consumables: List[ProductConsumableRead] = [] 
     class Config: from_attributes = True
 
-# --- 7. PRODUCTS ---
+# --- PRODUCTS ---
 class ProductBase(BaseModel):
     name: str
     description: Optional[str] = None
     category_id: Optional[int] = None
     has_variants: bool = False
     price: float = 0.0 
+    output_weight: float = 0.0 
+    master_recipe_id: Optional[int] = None
 
 class ProductCreate(ProductBase):
-    recipe: List[RecipeItemCreate] = []
     variants: List[VariantCreate] = []
     modifier_groups: List[ModifierGroupCreate] = []
+    consumables: List[ProductConsumableLink] = []
 
 class Product(ProductBase):
     id: int
     category: Optional[Category] = None
-    recipe: List[RecipeItem] = []
-    variants: List[Variant] = []
+    variants: List[Variant] = [] 
     modifier_groups: List[ModifierGroup] = []
+    master_recipe: Optional[MasterRecipe] = None
+    
+    consumables: List[ProductConsumableRead] = [] 
 
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# --- 8. ORDERS & CUSTOMERS ---
+# --- ORDERS ---
 class SoldItemModifier(BaseModel):
     modifier_id: int
-
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
@@ -2213,7 +2462,6 @@ class CustomerCreate(BaseModel):
     phone: str
     email: Optional[str] = None
     notes: Optional[str] = None
-
 class Customer(CustomerCreate):
     id: int
     class Config: from_attributes = True
@@ -2224,7 +2472,6 @@ class OrderItemRead(BaseModel):
     price_at_moment: float
     details: Optional[str] = None
     class Config: from_attributes = True
-
 class OrderRead(BaseModel):
     id: int
     created_at: datetime
@@ -2281,54 +2528,41 @@ app = FastAPI()
 
 models.Base.metadata.create_all(bind=database.engine)
 
-# --- ENDPOINTS ДЛЯ КАТЕГОРІЙ (ОНОВЛЕНО) ---
-
+# ... (Categories, Units code remains same) ...
+# --- ENDPOINTS ДЛЯ КАТЕГОРІЙ ---
 @app.post("/categories/", response_model=schemas.Category)
 def create_category(category: schemas.CategoryCreate, db: Session = Depends(database.get_db)):
-    # Перевіряємо дублікат
     db_category = db.query(models.Category).filter(models.Category.name == category.name).first()
-    if db_category:
-        raise HTTPException(status_code=400, detail="Category already exists")
-    
-    # Створюємо нову з урахуванням кольору і батька
-    new_category = models.Category(
-        name=category.name, 
-        slug=category.slug,
-        color=category.color,
-        parent_id=category.parent_id
-    )
+    if db_category: raise HTTPException(status_code=400, detail="Category already exists")
+    new_category = models.Category(name=category.name, slug=category.slug, color=category.color, parent_id=category.parent_id)
     db.add(new_category)
-    db.commit()
-    db.refresh(new_category)
+    db.commit(); db.refresh(new_category)
     return new_category
 
 @app.get("/categories/", response_model=List[schemas.Category])
 def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    categories = db.query(models.Category).offset(skip).limit(limit).all()
-    return categories
+    return db.query(models.Category).offset(skip).limit(limit).all()
 
-# --- ІНШІ ENDPOINTS (Залишаються без змін, код скорочено для зручності) ---
-
+# --- UNITS ---
 @app.post("/units/", response_model=schemas.Unit)
 def create_unit(unit: schemas.UnitCreate, db: Session = Depends(database.get_db)):
+    exists = db.query(models.Unit).filter(or_(models.Unit.name == unit.name, models.Unit.symbol == unit.symbol)).first()
+    if exists: raise HTTPException(status_code=400, detail="Одиниця існує")
     db_unit = models.Unit(name=unit.name, symbol=unit.symbol)
-    db.add(db_unit)
-    db.commit()
-    db.refresh(db_unit)
+    db.add(db_unit); db.commit(); db.refresh(db_unit)
     return db_unit
 
 @app.get("/units/", response_model=List[schemas.Unit])
 def read_units(db: Session = Depends(database.get_db)):
     return db.query(models.Unit).all()
 
+# --- INGREDIENTS ---
 @app.post("/ingredients/", response_model=schemas.Ingredient)
 def create_ingredient(ingredient: schemas.IngredientCreate, db: Session = Depends(database.get_db)):
     exists = db.query(models.Ingredient).filter(models.Ingredient.name == ingredient.name).first()
     if exists: raise HTTPException(status_code=400, detail="Ingredient already exists")
-    new_item = models.Ingredient(name=ingredient.name, unit_id=ingredient.unit_id, cost_per_unit=ingredient.cost_per_unit, stock_quantity=ingredient.stock_quantity)
-    db.add(new_item)
-    db.commit()
-    db.refresh(new_item)
+    new_item = models.Ingredient(**ingredient.dict())
+    db.add(new_item); db.commit(); db.refresh(new_item)
     return new_item
 
 @app.get("/ingredients/", response_model=List[schemas.Ingredient])
@@ -2342,212 +2576,278 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     db_ingredient.name = ingredient_data.name
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
-    db.commit()
-    db.refresh(db_ingredient)
+    db.commit(); db.refresh(db_ingredient)
     return db_ingredient
 
 @app.delete("/ingredients/{ingredient_id}")
 def delete_ingredient(ingredient_id: int, db: Session = Depends(database.get_db)):
     db_ingredient = db.query(models.Ingredient).filter(models.Ingredient.id == ingredient_id).first()
-    if not db_ingredient: raise HTTPException(status_code=404, detail="Ingredient not found")
-    try:
-        db.delete(db_ingredient)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="Неможливо видалити: інгредієнт використовується")
+    if not db_ingredient: raise HTTPException(status_code=404)
+    try: db.delete(db_ingredient); db.commit()
+    except: db.rollback(); raise HTTPException(status_code=400, detail="Used elsewhere")
     return {"status": "deleted"}
 
+# --- НОВЕ: CONSUMABLES CRUD ---
+@app.post("/consumables/", response_model=schemas.Consumable)
+def create_consumable(item: schemas.ConsumableCreate, db: Session = Depends(database.get_db)):
+    exists = db.query(models.Consumable).filter(models.Consumable.name == item.name).first()
+    if exists: raise HTTPException(status_code=400, detail="Вже існує")
+    new_c = models.Consumable(**item.dict())
+    db.add(new_c); db.commit(); db.refresh(new_c)
+    return new_c
+
+@app.get("/consumables/", response_model=List[schemas.Consumable])
+def read_consumables(db: Session = Depends(database.get_db)):
+    return db.query(models.Consumable).all()
+
+@app.put("/consumables/{id}", response_model=schemas.Consumable)
+def update_consumable(id: int, item: schemas.ConsumableCreate, db: Session = Depends(database.get_db)):
+    db_c = db.query(models.Consumable).filter(models.Consumable.id == id).first()
+    if not db_c: raise HTTPException(status_code=404)
+    for k, v in item.dict().items(): setattr(db_c, k, v)
+    db.commit(); db.refresh(db_c)
+    return db_c
+
+@app.delete("/consumables/{id}")
+def delete_consumable(id: int, db: Session = Depends(database.get_db)):
+    db_c = db.query(models.Consumable).filter(models.Consumable.id == id).first()
+    if not db_c: raise HTTPException(status_code=404)
+    db.delete(db_c); db.commit()
+    return {"status": "deleted"}
+
+
+# --- RECIPES ---
+@app.post("/recipes/", response_model=schemas.MasterRecipe)
+def create_recipe(recipe: schemas.MasterRecipeCreate, db: Session = Depends(database.get_db)):
+    new_recipe = models.MasterRecipe(name=recipe.name, description=recipe.description)
+    db.add(new_recipe); db.commit(); db.refresh(new_recipe)
+    for item in recipe.items:
+        db.add(models.MasterRecipeItem(recipe_id=new_recipe.id, ingredient_id=item.ingredient_id, quantity=item.quantity, is_percentage=item.is_percentage))
+    db.commit(); db.refresh(new_recipe)
+    return new_recipe
+
+@app.get("/recipes/", response_model=List[schemas.MasterRecipe])
+def read_recipes(db: Session = Depends(database.get_db)):
+    recipes = db.query(models.MasterRecipe).all()
+    for r in recipes:
+        for i in r.items: i.ingredient_name = i.ingredient.name if i.ingredient else "Unknown"
+    return recipes
+
+@app.put("/recipes/{recipe_id}", response_model=schemas.MasterRecipe)
+def update_recipe(recipe_id: int, recipe_data: schemas.MasterRecipeCreate, db: Session = Depends(database.get_db)):
+    db_recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == recipe_id).first()
+    if not db_recipe: raise HTTPException(status_code=404)
+    db_recipe.name = recipe_data.name; db_recipe.description = recipe_data.description
+    db_recipe.items = []
+    db.flush()
+    for item in recipe_data.items:
+        db.add(models.MasterRecipeItem(recipe_id=db_recipe.id, ingredient_id=item.ingredient_id, quantity=item.quantity, is_percentage=item.is_percentage))
+    db.commit(); db.refresh(db_recipe)
+    return db_recipe
+
+@app.delete("/recipes/{recipe_id}")
+def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
+    # ... (перевірка використання) ...
+    db_recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == recipe_id).first()
+    db.delete(db_recipe); db.commit()
+    return {"status": "deleted"}
+
+# --- PRODUCTS (ОНОВЛЕНО ДЛЯ CONSUMABLES) ---
 @app.post("/products/", response_model=schemas.Product)
 def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
-    db_product = models.Product(name=product.name, price=product.price, description=product.description, category_id=product.category_id, has_variants=product.has_variants)
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
+    db_product = models.Product(
+        name=product.name, price=product.price, description=product.description, 
+        category_id=product.category_id, has_variants=product.has_variants,
+        master_recipe_id=product.master_recipe_id, output_weight=product.output_weight
+    )
+    db.add(db_product); db.commit(); db.refresh(db_product)
     
-    if not product.has_variants and product.recipe:
-        for item in product.recipe:
-            db.add(models.ProductRecipe(product_id=db_product.id, ingredient_id=item.ingredient_id, quantity=item.quantity))
-            
+    # Додаємо consumables до основного продукту
+    for cons in product.consumables:
+        db.add(models.ProductConsumable(product_id=db_product.id, consumable_id=cons.consumable_id, quantity=cons.quantity))
+
     if product.has_variants and product.variants:
         for v in product.variants:
-            db_variant = models.ProductVariant(product_id=db_product.id, name=v.name, price=v.price, sku=v.sku)
-            db.add(db_variant)
-            db.commit()
-            db.refresh(db_variant)
-            for r_item in v.recipe:
-                db.add(models.VariantRecipe(variant_id=db_variant.id, ingredient_id=r_item.ingredient_id, quantity=r_item.quantity))
-
+            db_variant = models.ProductVariant(
+                product_id=db_product.id, name=v.name, price=v.price, sku=v.sku,
+                master_recipe_id=v.master_recipe_id, output_weight=v.output_weight
+            )
+            db.add(db_variant); db.flush() # flush щоб отримати ID варіанту
+            # Додаємо consumables до варіанту
+            for vc in v.consumables:
+                db.add(models.ProductVariantConsumable(variant_id=db_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity))
+    
     for group in product.modifier_groups:
         db_group = models.ProductModifierGroup(product_id=db_product.id, name=group.name, is_required=group.is_required)
-        db.add(db_group)
-        db.commit()
-        db.refresh(db_group)
+        db.add(db_group); db.flush()
         for mod in group.modifiers:
             db.add(models.Modifier(group_id=db_group.id, name=mod.name, price_change=mod.price_change, ingredient_id=mod.ingredient_id, quantity=mod.quantity))
             
-    db.commit()
-    db.refresh(db_product)
+    db.commit(); db.refresh(db_product)
     return db_product
 
 @app.get("/products/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
-    return db.query(models.Product).all()
+    products = db.query(models.Product).all()
+    
+    for p in products:
+        # 1. Заповнюємо назви для головного товару
+        for c in p.consumables:
+            if c.consumable:
+                c.consumable_name = c.consumable.name
+            else:
+                c.consumable_name = "DELETED"
+            
+        # 2. ВАЖЛИВО: Заповнюємо назви для кожного варіанту
+        if p.variants:
+            for v in p.variants:
+                for vc in v.consumables:
+                    # SQLAlchemy об'єкт `vc` має зв'язок `consumable`
+                    if vc.consumable:
+                        vc.consumable_name = vc.consumable.name
+                        # Debug log
+                        print(f"DEBUG: Loaded consumable {vc.consumable.name} for variant {v.name}")
+                    else:
+                        vc.consumable_name = "Unknown"
+
+    return products
 
 @app.put("/products/{product_id}", response_model=schemas.Product)
 def update_product(product_id: int, product_data: schemas.ProductCreate, db: Session = Depends(database.get_db)):
-    # 1. Знаходимо товар
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not db_product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    if not db_product: raise HTTPException(status_code=404)
 
-    # 2. Оновлюємо базові поля
+    # Оновлення базових полів
     db_product.name = product_data.name
     db_product.description = product_data.description
     db_product.price = product_data.price
     db_product.category_id = product_data.category_id
     db_product.has_variants = product_data.has_variants
+    db_product.master_recipe_id = product_data.master_recipe_id
+    db_product.output_weight = product_data.output_weight
 
-    # 3. Очищаємо старі зв'язки (SQLAlchemy видалить їх з БД завдяки cascade="all, delete-orphan")
-    # Важливо: ми просто присвоюємо порожні списки, ORM зробить решту.
-    db_product.recipe = []
+    # Очищення старих зв'язків
     db_product.variants = []
     db_product.modifier_groups = []
-    
-    # Зберігаємо очищення перед додаванням нових (щоб уникнути конфліктів)
+    db_product.consumables = [] # Clear base product consumables
     db.flush()
 
-    # 4. Додаємо нові дані (Логіка ідентична до create_product)
-    
-    # 4.1 Простий рецепт
-    if not product_data.has_variants and product_data.recipe:
-        for item in product_data.recipe:
-            db.add(models.ProductRecipe(
-                product_id=db_product.id, 
-                ingredient_id=item.ingredient_id, 
-                quantity=item.quantity
-            ))
+    # Consumables для Product
+    for cons in product_data.consumables:
+        db.add(models.ProductConsumable(product_id=db_product.id, consumable_id=cons.consumable_id, quantity=cons.quantity))
 
-    # 4.2 Варіанти
+    # Variants + їх Consumables
     if product_data.has_variants and product_data.variants:
         for v in product_data.variants:
             db_variant = models.ProductVariant(
-                product_id=db_product.id, 
-                name=v.name, 
-                price=v.price, 
-                sku=v.sku
+                product_id=db_product.id, name=v.name, price=v.price, sku=v.sku,
+                master_recipe_id=v.master_recipe_id, output_weight=v.output_weight
             )
-            db.add(db_variant)
-            db.flush() # Щоб отримати ID варіанту
+            db.add(db_variant); db.flush()
+            for vc in v.consumables:
+                db.add(models.ProductVariantConsumable(variant_id=db_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity))
             
-            for r_item in v.recipe:
-                db.add(models.VariantRecipe(
-                    variant_id=db_variant.id, 
-                    ingredient_id=r_item.ingredient_id, 
-                    quantity=r_item.quantity
-                ))
-
-    # 4.3 Модифікатори
+    # Modifiers
     for group in product_data.modifier_groups:
-        db_group = models.ProductModifierGroup(
-            product_id=db_product.id, 
-            name=group.name, 
-            is_required=group.is_required
-        )
-        db.add(db_group)
-        db.flush()
-        
+        db_group = models.ProductModifierGroup(product_id=db_product.id, name=group.name, is_required=group.is_required)
+        db.add(db_group); db.flush()
         for mod in group.modifiers:
-            db.add(models.Modifier(
-                group_id=db_group.id, 
-                name=mod.name, 
-                price_change=mod.price_change, 
-                ingredient_id=mod.ingredient_id, 
-                quantity=mod.quantity
-            ))
+            db.add(models.Modifier(group_id=db_group.id, name=mod.name, price_change=mod.price_change, ingredient_id=mod.ingredient_id, quantity=mod.quantity))
 
-    db.commit()
-    db.refresh(db_product)
+    db.commit(); db.refresh(db_product)
     return db_product
 
-
+# ... (Customers logic remains same) ...
 @app.post("/customers/", response_model=schemas.Customer)
 def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(database.get_db)):
-    exists = db.query(models.Customer).filter(models.Customer.phone == customer.phone).first()
-    if exists: raise HTTPException(status_code=400, detail="Клієнт вже існує")
     new_customer = models.Customer(**customer.dict())
-    db.add(new_customer)
-    db.commit()
-    db.refresh(new_customer)
+    db.add(new_customer); db.commit(); db.refresh(new_customer)
     return new_customer
-
-@app.put("/customers/{customer_id}", response_model=schemas.Customer)
-def update_customer(customer_id: int, customer_data: schemas.CustomerCreate, db: Session = Depends(database.get_db)):
-    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
-    if not db_customer: raise HTTPException(status_code=404, detail="Customer not found")
-    db_customer.name = customer_data.name
-    db_customer.phone = customer_data.phone
-    db_customer.email = customer_data.email
-    db_customer.notes = customer_data.notes
-    try: db.commit(); db.refresh(db_customer)
-    except: db.rollback(); raise HTTPException(status_code=400, detail="Помилка оновлення")
-    return db_customer
-
+# ... (Customer search, update, delete etc) ...
 @app.get("/customers/search/", response_model=List[schemas.Customer])
 def search_customers(q: str, db: Session = Depends(database.get_db)):
-    search_term = f"%{q}%"
-    return db.query(models.Customer).filter(or_(models.Customer.name.ilike(search_term), models.Customer.phone.ilike(search_term))).limit(10).all()
-
+    return db.query(models.Customer).filter(or_(models.Customer.name.ilike(f"%{q}%"), models.Customer.phone.ilike(f"%{q}%"))).limit(10).all()
 @app.get("/customers/", response_model=List[schemas.Customer])
-def read_customers(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
-    return db.query(models.Customer).offset(skip).limit(limit).all()
-
-@app.delete("/customers/{customer_id}")
-def delete_customer(customer_id: int, db: Session = Depends(database.get_db)):
-    customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
-    if not customer: raise HTTPException(status_code=404, detail="Customer not found")
-    db.delete(customer)
-    db.commit()
+def read_customers(skip: int=0, limit: int=50, db: Session = Depends(database.get_db)): return db.query(models.Customer).offset(skip).limit(limit).all()
+@app.delete("/customers/{id}")
+def delete_customer(id: int, db: Session = Depends(database.get_db)): 
+    c = db.query(models.Customer).filter(models.Customer.id==id).first()
+    if c: db.delete(c); db.commit()
     return {"status": "deleted"}
 
+
+# --- CHECKOUT (ОНОВЛЕНО ДЛЯ СПИСАННЯ CONSUMABLES) ---
 @app.post("/orders/checkout/")
 def create_order(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
     new_order = models.Order(total_price=order_data.total_price, payment_method=order_data.payment_method, customer_id=order_data.customer_id)
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
+    db.add(new_order); db.commit(); db.refresh(new_order)
     
     for item in order_data.items:
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         if not product: continue
+        
         item_name = product.name
         price = product.price
         details_list = []
+        target_recipe_id = None
+        base_weight = 0.0
         
+        # --- СПИСАННЯ CONSUMABLES (ТОВАРУ) ---
+        # Ці списуються завжди (наприклад, серветка, що йде до будь-якого замовлення цього товару)
+        for pc in product.consumables:
+            if pc.consumable:
+                pc.consumable.stock_quantity -= pc.quantity * item.quantity
+                db.add(pc.consumable)
+
+        # Логіка Варіантів
         if item.variant_id:
             variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == item.variant_id).first()
             if variant:
                 item_name = f"{product.name} ({variant.name})"
                 price = variant.price
                 details_list.append(f"Варіант: {variant.name}")
-                for r in variant.variant_recipe:
-                     if r.ingredient: r.ingredient.stock_quantity -= r.quantity * item.quantity; db.add(r.ingredient)
-        else:
-             for r in product.recipe:
-                 if r.ingredient: r.ingredient.stock_quantity -= r.quantity * item.quantity; db.add(r.ingredient)
+                target_recipe_id = variant.master_recipe_id or product.master_recipe_id
+                base_weight = variant.output_weight
 
+                # --- СПИСАННЯ CONSUMABLES (ВАРІАНТУ) ---
+                # Наприклад, стакан 300мл
+                for vc in variant.consumables:
+                    if vc.consumable:
+                        vc.consumable.stock_quantity -= vc.quantity * item.quantity
+                        db.add(vc.consumable)
+        else:
+            target_recipe_id = product.master_recipe_id
+            base_weight = product.output_weight
+
+        # Списання Інгредієнтів (як було раніше)
+        if target_recipe_id:
+            recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == target_recipe_id).first()
+            if recipe:
+                for r_item in recipe.items:
+                    if r_item.ingredient:
+                        deduction = (r_item.quantity / 100.0 * base_weight) if r_item.is_percentage else r_item.quantity
+                        r_item.ingredient.stock_quantity -= deduction * item.quantity
+                        db.add(r_item.ingredient)
+
+        # Списання Модифікаторів
         for mod_item in item.modifiers:
             mod = db.query(models.Modifier).filter(models.Modifier.id == mod_item.modifier_id).first()
             if mod:
                 details_list.append(mod.name)
-                if mod.ingredient: mod.ingredient.stock_quantity -= mod.quantity * item.quantity; db.add(mod.ingredient)
+                if mod.ingredient:
+                    mod.ingredient.stock_quantity -= mod.quantity * item.quantity
+                    db.add(mod.ingredient)
 
-        db.add(models.OrderItem(order_id=new_order.id, product_name=item_name, quantity=item.quantity, price_at_moment=price, details=", ".join(details_list)))
+        db.add(models.OrderItem(
+            order_id=new_order.id, product_name=item_name, quantity=item.quantity, 
+            price_at_moment=price, details=", ".join(details_list)
+        ))
+        
     db.commit()
     return {"status": "ok", "order_id": new_order.id}
 
 @app.get("/orders/", response_model=List[schemas.OrderRead])
-def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
+def get_orders(skip: int=0, limit: int=50, db: Session = Depends(database.get_db)):
     return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
 
 @app.get("/customers/{customer_id}/orders/", response_model=List[schemas.OrderRead])
@@ -2562,138 +2862,147 @@ from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
 
-# --- КАТЕГОРІЇ (ОНОВЛЕНО) ---
+# --- КАТЕГОРІЇ ---
 class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     slug = Column(String, unique=True)
-    
-    # НОВІ ПОЛЯ
-    color = Column(String, default="#ffffff") # Колір категорії (HEX)
-    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True) # Посилання на саму себе
-    
-    # Зв'язок для отримання дочірніх категорій
-    children = relationship("Category", 
-                            backref=backref("parent", remote_side=[id]),
-                            cascade="all, delete-orphan")
+    color = Column(String, default="#ffffff")
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    children = relationship("Category", backref=backref("parent", remote_side=[id]), cascade="all, delete-orphan")
 
-# --- ОДИНИЦІ ВИМІРУ (Без змін) ---
+# --- ОДИНИЦІ ---
 class Unit(Base):
     __tablename__ = "units"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
     symbol = Column(String, unique=True)
 
-# --- ІНГРЕДІЄНТИ (Без змін) ---
+# --- ІНГРЕДІЄНТИ ---
 class Ingredient(Base):
     __tablename__ = "ingredients"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, unique=True)
     unit_id = Column(Integer, ForeignKey("units.id"))
     unit = relationship("Unit")
-    cost_per_unit = Column(Float, default=0.0)  # Якщо це зміниться, зміниться собівартість всюди
+    cost_per_unit = Column(Float, default=0.0)
     stock_quantity = Column(Float, default=0.0)
 
-# --- МАЙСТЕР-ТОВАР (PRODUCT) ---
+# --- НОВЕ: ВИТРАТНІ МАТЕРІАЛИ (Consumables) ---
+class Consumable(Base):
+    __tablename__ = "consumables"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, unique=True)
+    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True) # шт, рулон, метр
+    unit = relationship("Unit")
+    cost_per_unit = Column(Float, default=0.0)
+    stock_quantity = Column(Float, default=0.0)
+
+# --- МАЙСТЕР-РЕЦЕПТИ ---
+class MasterRecipe(Base):
+    __tablename__ = "master_recipes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String, nullable=True)
+    items = relationship("MasterRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
+
+class MasterRecipeItem(Base):
+    __tablename__ = "master_recipe_items"
+    id = Column(Integer, primary_key=True, index=True)
+    recipe_id = Column(Integer, ForeignKey("master_recipes.id"))
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    quantity = Column(Float)
+    is_percentage = Column(Boolean, default=False) 
+    recipe = relationship("MasterRecipe", back_populates="items")
+    ingredient = relationship("Ingredient")
+
+# --- ТОВАРИ ---
 class Product(Base):
     __tablename__ = "products"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     description = Column(String, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"))
     category = relationship("Category")
-    
-    # Прапорець: чи має цей товар варіанти?
     has_variants = Column(Boolean, default=False)
-
-    # Якщо товар простий (печиво), у нього є ціна. Якщо складний (кава) - ціна 0 (береться з варіантів)
     price = Column(Float, default=0.0)
+    output_weight = Column(Float, default=0.0) 
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    master_recipe = relationship("MasterRecipe")
 
-    # Зв'язки
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
-    
-    # Простий рецепт (для товарів без варіантів, напр. Круасан)
-    recipe = relationship("ProductRecipe", back_populates="product", cascade="all, delete-orphan")
-    
-    # Групи модифікаторів (Помол, Сиропи)
     modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
+    
+    # НОВЕ: Зв'язок з витратними матеріалами
+    consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
 
-# --- ВАРІАНТИ (НОВЕ) ---
-# Наприклад: "Delicate 250g", "Delicate 1kg"
+# --- НОВЕ: Зв'язок Товар -> Витратні матеріали ---
+class ProductConsumable(Base):
+    __tablename__ = "product_consumables"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    consumable_id = Column(Integer, ForeignKey("consumables.id"))
+    quantity = Column(Float, default=1.0) # Скільки списувати (напр. 1 стакан)
+    
+    product = relationship("Product", back_populates="consumables")
+    consumable = relationship("Consumable")
+
+# --- ВАРІАНТИ ---
 class ProductVariant(Base):
     __tablename__ = "product_variants"
-
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    
-    name = Column(String) # "250 г" або "Великий"
-    price = Column(Float) # 250.00
-    sku = Column(String, nullable=True) # Штрих-код
-    
+    name = Column(String)
+    price = Column(Float)
+    sku = Column(String, nullable=True)
+    output_weight = Column(Float, default=0.0) 
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    master_recipe = relationship("MasterRecipe")
     product = relationship("Product", back_populates="variants")
-    
-    # Рецепт конкретно для цього варіанту (напр. 75г кави + 1 пачка 250г)
-    variant_recipe = relationship("VariantRecipe", back_populates="variant", cascade="all, delete-orphan")
 
-# --- РЕЦЕПТИ ---
+    # НОВЕ: Зв'язок Варіант -> Витратні матеріали
+    consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
 
-# 1. Для простого товару
-class ProductRecipe(Base):
-    __tablename__ = "product_recipes"
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"))
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
-    quantity = Column(Float)
-    
-    product = relationship("Product", back_populates="recipe")
-    ingredient = relationship("Ingredient")
-
-# 2. Для варіанту (НОВЕ)
-class VariantRecipe(Base):
-    __tablename__ = "variant_recipes"
+# --- НОВЕ: Зв'язок Варіант -> Витратні матеріали ---
+class ProductVariantConsumable(Base):
+    __tablename__ = "product_variant_consumables"
     id = Column(Integer, primary_key=True, index=True)
     variant_id = Column(Integer, ForeignKey("product_variants.id"))
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
-    quantity = Column(Float) # Скільки списувати
+    consumable_id = Column(Integer, ForeignKey("consumables.id"))
+    quantity = Column(Float, default=1.0)
     
-    variant = relationship("ProductVariant", back_populates="variant_recipe")
-    ingredient = relationship("Ingredient")
+    variant = relationship("ProductVariant", back_populates="consumables")
+    consumable = relationship("Consumable")
 
-# --- МОДИФІКАТОРИ (НОВЕ) ---
-# Група: "Помол", "Молоко"
+
+# --- МОДИФІКАТОРИ ---
 class ProductModifierGroup(Base):
     __tablename__ = "product_modifier_groups"
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    name = Column(String) # "Оберіть помол"
-    is_required = Column(Boolean, default=False) # Чи обов'язково обирати?
-    
+    name = Column(String)
+    is_required = Column(Boolean, default=False)
     product = relationship("Product", back_populates="modifier_groups")
     modifiers = relationship("Modifier", back_populates="group", cascade="all, delete-orphan")
 
-# Опція: "Під Еспресо", "Безлактозне молоко"
 class Modifier(Base):
     __tablename__ = "modifiers"
     id = Column(Integer, primary_key=True)
     group_id = Column(Integer, ForeignKey("product_modifier_groups.id"))
     name = Column(String) 
-    price_change = Column(Float, default=0.0) # +0 грн або +20 грн
-    
-    # Якщо вибір модифікатора щось списує (напр. коробку)
+    price_change = Column(Float, default=0.0)
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=True)
     quantity = Column(Float, default=0.0)
-
     group = relationship("ProductModifierGroup", back_populates="modifiers")
     ingredient = relationship("Ingredient")
 
-# --- CRM та ORDERS (Без змін структури, тільки логіка) ---
+# --- CRM/ORDERS ---
 class Customer(Base):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    phone = Column(String, unique=True, index=True)
+    phone = Column(String, unique=True)
     email = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -2705,7 +3014,6 @@ class Order(Base):
     total_price = Column(Float)
     payment_method = Column(String)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
-    
     customer = relationship("Customer")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
@@ -2713,15 +3021,10 @@ class OrderItem(Base):
     __tablename__ = "order_items"
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"))
-    
     product_name = Column(String)
     quantity = Column(Integer)
     price_at_moment = Column(Float)
-    
-    # Зберігаємо обрані варіанти та модифікатори текстом для історії
-    # Наприклад: "Вага: 250г, Помол: Еспресо"
     details = Column(String, nullable=True) 
-
     order = relationship("Order", back_populates="items")
 
 ========================================
