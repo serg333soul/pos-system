@@ -1,46 +1,23 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
+import { useStatistics } from '@/composables/useStatistics'
+import SalesTable from './SalesTable.vue'
 
-const orders = ref([])
-const loading = ref(true)
+const { 
+  orders, loading, 
+  showDetailModal, selectedOrder, 
+  fetchOrders, openDetails, closeDetails 
+} = useStatistics()
 
-// Для модального вікна
-const showDetailModal = ref(false)
-const selectedOrder = ref(null)
-
-// Функція форматування дати
+// Helper for date formatting (duplicate need for modal, can be util)
 const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return date.toLocaleString('uk-UA', {
+  return new Date(dateString).toLocaleString('uk-UA', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   })
 }
 
-// Завантаження історії
-const fetchOrders = async () => {
-  loading.value = true
-  try {
-    const res = await fetch('/api/orders/')
-    if (res.ok) {
-      orders.value = await res.json()
-    }
-  } catch (err) {
-    console.error("Помилка завантаження статистики:", err)
-  } finally {
-    loading.value = false
-  }
-}
-
-// Відкрити деталі
-const openDetails = (order) => {
-  selectedOrder.value = order
-  showDetailModal.value = true
-}
-
-onMounted(() => {
-  fetchOrders()
-})
+onMounted(() => fetchOrders())
 </script>
 
 <template>
@@ -56,77 +33,22 @@ onMounted(() => {
       </button>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <table class="w-full text-left">
-        <thead class="bg-gray-100 text-gray-500 uppercase text-xs">
-          <tr>
-            <th class="p-4">ID / Час</th>
-            <th class="p-4">Клієнт</th> <th class="p-4">Товари (Коротко)</th>
-            <th class="p-4">Оплата</th>
-            <th class="p-4 text-right">Сума</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-if="orders.length === 0" class="text-center text-gray-400">
-            <td colspan="5" class="p-8">Історія замовлень порожня</td>
-          </tr>
-
-          <tr v-for="order in orders" :key="order.id" 
-              @click="openDetails(order)"
-              class="hover:bg-blue-50 transition cursor-pointer group">
-            
-            <td class="p-4">
-              <div class="font-bold text-gray-800 group-hover:text-blue-600 transition">#{{ order.id }}</div>
-              <div class="text-sm text-gray-500">{{ formatDate(order.created_at) }}</div>
-            </td>
-
-            <td class="p-4">
-                <div v-if="order.customer">
-                    <div class="font-bold text-gray-700">{{ order.customer.name }}</div>
-                    <div class="text-xs text-gray-400">{{ order.customer.phone }}</div>
-                </div>
-                <div v-else class="text-gray-400 text-sm italic">Гість</div>
-            </td>
-
-            <td class="p-4">
-              <div class="text-sm text-gray-600">
-                 {{ order.items.length }} позицій
-                 <span class="text-xs text-gray-400">({{ order.items[0]?.product_name }}...)</span>
-              </div>
-            </td>
-
-            <td class="p-4">
-              <span v-if="order.payment_method === 'card'" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">
-                <i class="fas fa-credit-card mr-1"></i> Картка
-              </span>
-              <span v-else class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
-                <i class="fas fa-money-bill-wave mr-1"></i> Готівка
-              </span>
-            </td>
-
-            <td class="p-4 text-right font-mono font-bold text-lg text-gray-800">
-              {{ order.total_price }} ₴
-            </td>
-
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
 
     <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up">
             
             <div class="p-6 bg-gray-50 border-b flex justify-between items-start">
                 <div>
                     <h3 class="text-2xl font-bold text-gray-800">Чек #{{ selectedOrder.id }}</h3>
                     <p class="text-gray-500 text-sm">{{ formatDate(selectedOrder.created_at) }}</p>
                 </div>
-                <button @click="showDetailModal = false" class="text-gray-400 hover:text-gray-600">
+                <button @click="closeDetails" class="text-gray-400 hover:text-gray-600">
                     <i class="fas fa-times text-2xl"></i>
                 </button>
             </div>
 
-            <div class="p-6 overflow-y-auto">
+            <div class="p-6 overflow-y-auto custom-scrollbar">
                 
                 <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-blue-200 text-blue-600 flex items-center justify-center text-lg">
@@ -148,6 +70,7 @@ onMounted(() => {
                     <div v-for="item in selectedOrder.items" :key="item.id" class="flex justify-between items-center text-sm">
                         <div class="flex items-center gap-2">
                             <span class="font-bold text-gray-800">{{ item.product_name }}</span>
+                            <span v-if="item.details" class="text-xs text-gray-400">({{ item.details }})</span>
                         </div>
                         <div class="flex items-center gap-4">
                             <span class="text-gray-500">x{{ item.quantity }}</span>
@@ -177,3 +100,11 @@ onMounted(() => {
 
   </div>
 </template>
+
+<style scoped>
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>

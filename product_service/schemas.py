@@ -55,6 +55,18 @@ class Consumable(ConsumableBase):
     unit: Optional[Unit] = None
     class Config: from_attributes = True
 
+# Схема для запису (Link)
+class ProductIngredientLink(BaseModel):
+    ingredient_id: int
+    quantity: float
+
+# Схема для читання (Read)
+class ProductIngredientRead(BaseModel):
+    ingredient_id: int
+    quantity: float
+    ingredient_name: Optional[str] = None
+    class Config: from_attributes = True
+
 # Схема для прив'язки витратних матеріалів до товару (для запису)
 class ProductConsumableLink(BaseModel):
     consumable_id: int
@@ -131,13 +143,17 @@ class VariantCreate(BaseModel):
     sku: Optional[str] = None
     output_weight: float = 0.0
     master_recipe_id: Optional[int] = None
+    stock_quantity: float = 0.0
     # При створенні використовуємо Link (тільки ID та кількість)
     consumables: List[ProductConsumableLink] = []
+
+    ingredients: List[ProductIngredientLink] = []
 
 class Variant(VariantCreate):
     id: int
     # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
-    consumables: List[ProductConsumableRead] = [] 
+    consumables: List[ProductConsumableRead] = []
+    ingredients: List[ProductIngredientRead] = [] 
     class Config: from_attributes = True
 
 # --- PRODUCTS ---
@@ -149,6 +165,9 @@ class ProductBase(BaseModel):
     price: float = 0.0 
     output_weight: float = 0.0 
     master_recipe_id: Optional[int] = None
+
+    track_stock: bool = False
+    stock_quantity: float = 0.0
 
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
@@ -170,6 +189,26 @@ class Product(ProductBase):
     process_groups: List[ProcessGroup] = []
 
     class Config: from_attributes = True
+
+class StockDeductionItem(BaseModel):
+    id: int
+    type: str  # 'product' або 'product_variant'
+    quantity: float
+    order_id: int
+
+# --- INVENTORY TRANSACTIONS ---
+class InventoryTransactionRead(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    entity_name: str
+    change_amount: float
+    balance_after: float
+    reason: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 # --- ORDERS ---
 class SoldItemModifier(BaseModel):

@@ -100,10 +100,13 @@ class Product(Base):
     master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
     master_recipe = relationship("MasterRecipe")
 
+    # --- НОВІ ПОЛЯ ---
+    track_stock = Column(Boolean, default=False) # Чи вести складський облік цього товару
+    stock_quantity = Column(Float, default=0.0)  # Залишок (для простих товарів)
+
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
     consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
-
     # НОВЕ: Зв'язок з групами процесів
     process_groups = relationship("ProcessGroup", secondary=product_process_groups, back_populates="products")
 
@@ -129,8 +132,14 @@ class ProductVariant(Base):
     output_weight = Column(Float, default=0.0) 
     master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
     master_recipe = relationship("MasterRecipe")
+
+    # --- НОВЕ ПОЛЕ ---
+    stock_quantity = Column(Float, default=0.0) # Залишок конкретного варіанту
+
     product = relationship("Product", back_populates="variants")
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
+    # !!! НОВЕ: Зв'язок з інгредієнтами !!!
+    ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
 
 class ProductVariantConsumable(Base):
     __tablename__ = "product_variant_consumables"
@@ -141,6 +150,17 @@ class ProductVariantConsumable(Base):
     
     variant = relationship("ProductVariant", back_populates="consumables")
     consumable = relationship("Consumable")
+
+# !!! НОВИЙ КЛАС: Інгредієнти варіанту !!!
+class ProductVariantIngredient(Base):
+    __tablename__ = "product_variant_ingredients"
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"))
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    quantity = Column(Float, default=0.0) # Скільки грам/мл
+    
+    variant = relationship("ProductVariant", back_populates="ingredients")
+    ingredient = relationship("Ingredient")
 
 # --- МОДИФІКАТОРИ ---
 class ProductModifierGroup(Base):
@@ -192,3 +212,29 @@ class OrderItem(Base):
     price_at_moment = Column(Float)
     details = Column(String, nullable=True) 
     order = relationship("Order", back_populates="items")
+
+# --- ІСТОРІЯ РУХУ ТОВАРІВ (TRANSACTIONS) ---
+class InventoryTransaction(Base):
+    __tablename__ = "inventory_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Тип сутності: 'ingredient', 'consumable', 'product'
+    entity_type = Column(String, index=True) 
+    
+    # ID сутності (ingredient_id, consumable_id або product_id)
+    entity_id = Column(Integer, index=True)
+    
+    # Назва на момент транзакції (щоб якщо видалили товар, історія лишилась)
+    entity_name = Column(String)
+    
+    # Зміна кількості: +5.0 (прихід), -0.5 (списання)
+    change_amount = Column(Float)
+    
+    # Залишок ПІСЛЯ транзакції (для контролю)
+    balance_after = Column(Float)
+    
+    # Причина: 'manual_update', 'sale_order_#105', 'waste', 'restock'
+    reason = Column(String)
+    
+    created_at = Column(DateTime, default=datetime.now)

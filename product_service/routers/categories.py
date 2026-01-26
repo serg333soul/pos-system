@@ -1,12 +1,8 @@
-# FILE: product_service/routers/categories.py
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import database, schemas, models
 
-# Створюємо роутер. Всі шляхи тут будуть починатися з /categories (ми це вкажемо в main.py, але тут можна лишити /)
-# tags=["Categories"] додає гарний заголовок в документації /docs
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
 @router.post("/", response_model=schemas.Category)
@@ -31,3 +27,36 @@ def create_category(category: schemas.CategoryCreate, db: Session = Depends(data
 @router.get("/", response_model=List[schemas.Category])
 def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
     return db.query(models.Category).offset(skip).limit(limit).all()
+
+# !!! НОВЕ: Оновлення категорії !!!
+@router.put("/{category_id}", response_model=schemas.Category)
+def update_category(category_id: int, category_data: schemas.CategoryCreate, db: Session = Depends(database.get_db)):
+    db_category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not db_category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Оновлюємо поля
+    db_category.name = category_data.name
+    db_category.slug = category_data.slug
+    db_category.color = category_data.color
+    
+    # Захист від циклічності (категорія не може бути батьком сама собі)
+    if category_data.parent_id == category_id:
+         raise HTTPException(status_code=400, detail="Category cannot be its own parent")
+         
+    db_category.parent_id = category_data.parent_id
+
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+# !!! НОВЕ: Видалення категорії !!!
+@router.delete("/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(database.get_db)):
+    db_category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not db_category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    db.delete(db_category)
+    db.commit()
+    return {"status": "deleted"}

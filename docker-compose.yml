@@ -13,10 +13,17 @@ services:
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
     depends_on:
       - postgres_db
+        
 
   # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
   postgres_db:
     image: postgres:13
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d products_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     container_name: pos_postgres
     restart: always
     environment:

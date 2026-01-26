@@ -1,32 +1,34 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useCart } from '@/composables/useCart'
 
 const props = defineProps({
   isOpen: Boolean,
   product: Object 
 })
 
-const emit = defineEmits(['close', 'add-to-cart'])
+const emit = defineEmits(['close'])
+
+const { addToCart } = useCart()
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
-const selectedProcesses = ref({}) // <-- НОВЕ: Зберігаємо вибір процесів (key: group_id, value: option_name)
+const selectedProcesses = ref({}) 
 
-// --- Ініціалізація при ВІДКРИТТІ вікна ---
+// --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen && props.product) {
-    // 1. Скидаємо вибір
     selectedVariant.value = null
     selectedModifiers.value = {}
-    selectedProcesses.value = {} // <-- Скидаємо процеси
+    selectedProcesses.value = {} 
 
-    // 2. АВТО-ВИБІР Варіанту (перший/найдешевший)
+    // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
       const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
       selectedVariant.value = sorted[0]
     }
 
-    // 3. АВТО-ВИБІР Модифікаторів (якщо required)
+    // Auto-select Required Modifiers
     if (props.product.modifier_groups) {
       props.product.modifier_groups.forEach(group => {
         if (group.is_required && group.modifiers.length > 0) {
@@ -35,8 +37,7 @@ watch(() => props.isOpen, (isOpen) => {
       })
     }
 
-    // 4. НОВЕ: АВТО-ВИБІР Процесів (завжди обираємо перший варіант за замовчуванням)
-    // Це пришвидшує роботу касира: "Під еспресо" стоїть за замовчуванням
+    // Auto-select First Process Option
     if (props.product.process_groups) {
         props.product.process_groups.forEach(pg => {
             if (pg.options && pg.options.length > 0) {
@@ -66,44 +67,41 @@ const currentPrice = computed(() => {
       }
     })
   }
-  
   return price
 })
 
-const handleAddToCart = () => {
+// Генерація назви для кошика
+const generateName = () => {
+  let name = props.product.name
+  if (selectedVariant.value) {
+    name += ` (${selectedVariant.value.name})`
+  }
+  const processValues = Object.values(selectedProcesses.value)
+  if (processValues.length > 0) {
+      name += ` [${processValues.join(', ')}]`
+  }
+  return name
+}
+
+const handleConfirm = async () => {
   if (props.product.has_variants && !selectedVariant.value) {
       alert("Будь ласка, оберіть розмір/варіант")
       return
   }
 
+  // Формуємо об'єкт для кошика (співпадає з backend схемою)
   const payload = {
-    product: props.product,
+    product_id: props.product.id,
     variant_id: selectedVariant.value ? selectedVariant.value.id : null,
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    finalPrice: currentPrice.value,
-    generatedName: generateName() 
+    quantity: 1, // За замовчуванням 1
+    // Додаткові поля для UI, які не йдуть в БД, але можуть бути корисні для оптимістичного оновлення
+    name: generateName(),
+    price: currentPrice.value
   }
-  emit('add-to-cart', payload)
+
+  await addToCart(payload) // Викликаємо глобальну дію
   emit('close')
-}
-
-// --- ГЕНЕРАЦІЯ НАЗВИ ДЛЯ ЧЕКУ ---
-const generateName = () => {
-  let name = props.product.name
-  
-  // Додаємо варіант (L, M, 250г...)
-  if (selectedVariant.value) {
-    name += ` (${selectedVariant.value.name})`
-  }
-
-  // НОВЕ: Додаємо процеси (Помол: Під еспресо)
-  // Ми просто додаємо їх у рядок назви, щоб бариста бачив це на чеку/екрані
-  const processValues = Object.values(selectedProcesses.value)
-  if (processValues.length > 0) {
-      name += ` [${processValues.join(', ')}]`
-  }
-
-  return name
 }
 </script>
 
@@ -190,7 +188,7 @@ const generateName = () => {
           {{ currentPrice }} ₴
         </div>
         <button 
-          @click="handleAddToCart"
+          @click="handleConfirm"
           class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-lg shadow-purple-200 active:scale-95 flex items-center gap-2"
         >
           <i class="fas fa-cart-plus"></i> Додати
@@ -202,15 +200,9 @@ const generateName = () => {
 </template>
 
 <style scoped>
-.animate-fade-in-up {
-  animation: fadeInUp 0.3s ease-out;
-}
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-/* Додаємо стилі для скролбару, якщо їх ще немає в глобальних */
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
 </style>

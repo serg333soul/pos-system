@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
-  modelValue: [String, Number], // Це ID обраного інгредієнта (v-model)
+  modelValue: [String, Number], // ID інгредієнта
   ingredients: { type: Array, default: () => [] },
   placeholder: { type: String, default: 'Оберіть інгредієнт...' }
 })
@@ -13,14 +13,12 @@ const isOpen = ref(false)
 const searchQuery = ref('')
 const containerRef = ref(null)
 
-// Знаходимо назву обраного інгредієнта по ID
 const selectedName = computed(() => {
   if (!props.modelValue) return ''
   const found = props.ingredients.find(i => i.id === props.modelValue)
   return found ? found.name : ''
 })
 
-// Фільтруємо список на основі пошуку
 const filteredList = computed(() => {
   if (!searchQuery.value) return props.ingredients
   const lower = searchQuery.value.toLowerCase()
@@ -30,7 +28,6 @@ const filteredList = computed(() => {
 const toggleDropdown = () => {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
-    // При відкритті фокус на пошук і очистка попереднього пошуку
     searchQuery.value = ''
   }
 }
@@ -40,15 +37,15 @@ const selectItem = (id) => {
   isOpen.value = false
 }
 
-// Закриття при кліку поза елементом
+// Click outside logic
 const handleClickOutside = (event) => {
   if (containerRef.value && !containerRef.value.contains(event.target)) {
     isOpen.value = false
   }
 }
 
-onMounted(() => { document.addEventListener('click', handleClickOutside) })
-onUnmounted(() => { document.removeEventListener('click', handleClickOutside) })
+onMounted(() => document.addEventListener('click', handleClickOutside))
+onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </script>
 
 <template>
@@ -69,7 +66,6 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside) })
       <div class="p-2 border-b bg-gray-50">
         <input 
           v-model="searchQuery" 
-          ref="searchInput"
           class="w-full text-sm border border-gray-300 rounded px-2 py-1 outline-none focus:border-purple-500"
           placeholder="Пошук..." 
           @click.stop
@@ -106,4 +102,7 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside) })
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Scrollbar styles (optional global) */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
 </style>

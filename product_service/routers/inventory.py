@@ -2,9 +2,10 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, desc
 from typing import List
 import database, schemas, models
+from services.inventory_logger import InventoryLogger
 
 router = APIRouter(tags=["Inventory"])
 
@@ -39,11 +40,27 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     db_ingredient = db.query(models.Ingredient).filter(models.Ingredient.id == ingredient_id).first()
     if not db_ingredient: raise HTTPException(status_code=404, detail="Ingredient not found")
     
-    # Оновлюємо поля
+    # 1. Зберігаємо старий баланс
+    old_balance = db_ingredient.stock_quantity
+    
+    # 2. Оновлюємо поля
     db_ingredient.name = ingredient_data.name
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
-    # stock_quantity зазвичай не оновлюють через PUT, але поки лишимо
+    
+    # 3. Якщо залишок змінився - пишемо це
+    if ingredient_data.stock_quantity != old_balance:
+        db_ingredient.stock_quantity = ingredient_data.stock_quantity
+        # ЛОГУВАННЯ
+        InventoryLogger.log(
+            db, 
+            entity_type="ingredient", 
+            entity_id=db_ingredient.id, 
+            entity_name=db_ingredient.name, 
+            old_balance=old_balance, 
+            new_balance=db_ingredient.stock_quantity, 
+            reason="manual_correction"
+        )
     
     db.commit(); db.refresh(db_ingredient)
     return db_ingredient
@@ -75,7 +92,23 @@ def read_consumables(db: Session = Depends(database.get_db)):
 def update_consumable(id: int, item: schemas.ConsumableCreate, db: Session = Depends(database.get_db)):
     db_c = db.query(models.Consumable).filter(models.Consumable.id == id).first()
     if not db_c: raise HTTPException(status_code=404)
+    
+    old_balance = db_c.stock_quantity # <-- Зберігаємо старе
+
+    # Оновлюємо все
     for k, v in item.dict().items(): setattr(db_c, k, v)
+    
+    # ЛОГУВАННЯ
+    InventoryLogger.log(
+        db,
+        entity_type="consumable",
+        entity_id=db_c.id,
+        entity_name=db_c.name,
+        old_balance=old_balance,
+        new_balance=db_c.stock_quantity,
+        reason="manual_correction"
+    )
+
     db.commit(); db.refresh(db_c)
     return db_c
 
@@ -85,3 +118,29 @@ def delete_consumable(id: int, db: Session = Depends(database.get_db)):
     if not db_c: raise HTTPException(status_code=404)
     db.delete(db_c); db.commit()
     return {"status": "deleted"}
+
+# === ДОДАТИ В КІНЕЦЬ ФАЙЛУ inventory.py ===
+
+# === ІСТОРІЯ РУХУ ===
+# === ІСТОРІЯ РУХУ ===
+@router.get("/history/", response_model=List[schemas.InventoryTransactionRead])
+def get_inventory_history(
+    entity_type: str = None, 
+    entity_id: int = None, 
+    limit: int = 50, 
+    db: Session = Depends(database.get_db)
+):
+    # --- ДІАГНОСТИЧНИЙ ПРІНТ ---
+    print(f"\n[HISTORY REQUEST] Searching for: Type={entity_type}, ID={entity_id}")
+    
+    query = db.query(models.InventoryTransaction)
+    
+    if entity_type:
+        query = query.filter(models.InventoryTransaction.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(models.InventoryTransaction.entity_id == entity_id)
+    
+    results = query.order_by(desc(models.InventoryTransaction.created_at)).limit(limit).all()
+    
+    print(f"[HISTORY RESULT] Found {len(results)} records.\n")
+    return results

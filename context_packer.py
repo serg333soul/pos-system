@@ -1,87 +1,119 @@
 import os
 
-# --- НАЛАШТУВАННЯ ---
-OUTPUT_FILE = 'full_project_context.txt'
+# --- КОНФІГУРАЦІЯ ---
 
-# Папки, які МИ ІГНОРУЄМО (найважливіше для економії місця)
+# Папки, які ми ПОВНІСТЮ ігноруємо (не заходимо всередину)
 IGNORE_DIRS = {
-    '.git', 'node_modules', '__pycache__', 'venv', '.idea', '.vscode', 
-    'dist', 'build', 'coverage', 'tmp', 'logs', 'pg_data', 'redis_data'
+    '.git', 'node_modules', '__pycache__', 'venv', 'env', '.idea', '.vscode', 
+    'dist', 'build', 'postgres_data', '.pytest_cache', 'migrations'
 }
 
-# Файли, які МИ ІГНОРУЄМО (бо вони великі або не несуть логіки коду)
+# Файли, які ми ігноруємо (не показуємо в дереві і не читаємо)
 IGNORE_FILES = {
-    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock',
-    'context_packer.py', OUTPUT_FILE, '.DS_Store', 'favicon.ico'
+    'package-lock.json', 'yarn.lock', 'collect_code.py', '.DS_Store', 
+    'pnpm-lock.yaml', 'poetry.lock', 'full_project_context.txt' # Ігноруємо сам файл результату
 }
 
-# Розширення файлів, які ми ХОЧЕМО бачити (тільки код і конфіги)
+# Розширення файлів, код яких нам ПОТРІБЕН
+# (Всі інші файли будуть показані в дереві, але їх вміст не буде зчитано)
 ALLOWED_EXTENSIONS = {
-    '.py', '.js', '.vue', '.html', '.css', '.json', 
-    '.yml', '.yaml', '.sql', '.conf', '.sh', '.md', '.txt', '.env.example'
+    '.py', '.js', '.vue', '.html', '.css', '.scss', 
+    '.yml', '.yaml', '.json', '.sql', '.dockerfile', 
+    '.sh', '.md', '.txt'
 }
 
-def get_file_size_mb(file_path):
-    return os.path.getsize(file_path) / (1024 * 1024)
+EXACT_FILES_TO_READ = {'Dockerfile', 'docker-compose.yml', 'requirements.txt', 'package.json'}
 
-def pack_project():
-    project_content = ""
-    root_dir = os.getcwd()
-    file_count = 0
+def get_size_format(b, factor=1024, suffix="B"):
+    """Конвертує байти в читабельний формат (KB, MB, etc.)"""
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
+        if b < factor:
+            return f"{b:.2f}{unit}{suffix}"
+        b /= factor
+    return f"{b:.2f}Y{suffix}"
+
+def get_project_tree(start_path='.'):
+    """Генерує візуальне дерево проекту."""
+    tree_output = []
     
-    print(f"🚀 Починаю сканування проєкту: {root_dir}")
-    print(f"🚫 Ігнорую папки: {', '.join(IGNORE_DIRS)}")
-
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        # Видаляємо ігноровані папки зі списку сканування
-        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
-
-        for filename in filenames:
-            if filename in IGNORE_FILES:
-                continue
+    for root, dirs, files in os.walk(start_path):
+        # Фільтруємо папки "на льоту"
+        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+        
+        level = root.replace(start_path, '').count(os.sep)
+        indent = ' ' * 4 * level
+        folder_name = os.path.basename(root)
+        if folder_name == '.':
+            folder_name = os.path.basename(os.getcwd())
             
-            ext = os.path.splitext(filename)[1]
-            
-            # Спеціальна перевірка: Dockerfile не має розширення, але він нам потрібен
-            is_dockerfile = filename.startswith('Dockerfile')
-            
-            if ext in ALLOWED_EXTENSIONS or is_dockerfile:
-                file_path = os.path.join(dirpath, filename)
-                rel_path = os.path.relpath(file_path, root_dir)
+        tree_output.append(f"{indent}📂 {folder_name}/")
+        
+        subindent = ' ' * 4 * (level + 1)
+        for f in files:
+            if f not in IGNORE_FILES:
+                tree_output.append(f"{subindent}📄 {f}")
                 
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        
-                    # Додаємо розділювачі, щоб AI розумів де початок файлу
-                    project_content += f"\n{'='*40}\n"
-                    project_content += f"FILE: {rel_path}\n"
-                    project_content += f"{'='*40}\n"
-                    project_content += content + "\n"
+    return "\n".join(tree_output)
+
+def collect_project_code(output_file='full_project_context.txt'):
+    print("⏳ Аналізую структуру проекту та збираю код...")
+    
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        # 1. ЗАПИСУЄМО СТРУКТУРУ ПРОЕКТУ
+        outfile.write("="*50 + "\n")
+        outfile.write("PROJECT STRUCTURE (TREE VIEW)\n")
+        outfile.write("="*50 + "\n")
+        outfile.write(get_project_tree('.'))
+        outfile.write("\n\n" + "="*50 + "\n")
+        outfile.write("FILE CONTENTS\n")
+        outfile.write("="*50 + "\n\n")
+
+        # 2. ЗАПИСУЄМО ВМІСТ ФАЙЛІВ
+        file_count = 0
+        for root, dirs, files in os.walk('.'):
+            # Фільтруємо папки
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+            
+            for file in files:
+                if file in IGNORE_FILES:
+                    continue
+                
+                ext = os.path.splitext(file)[1]
+                
+                # Читаємо файл, тільки якщо він у списку дозволених
+                if ext in ALLOWED_EXTENSIONS or file in EXACT_FILES_TO_READ:
+                    file_path = os.path.join(root, file)
                     
-                    file_count += 1
-                    print(f"  📄 Додано: {rel_path}")
-                except Exception as e:
-                    print(f"  ⚠️ Помилка читання {rel_path}: {e}")
+                    # Записуємо заголовок файлу
+                    outfile.write(f"\n{'-'*50}\n")
+                    outfile.write(f"PATH: {file_path}\n")
+                    outfile.write(f"{'-'*50}\n")
+                    
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as infile:
+                            content = infile.read()
+                            if not content.strip():
+                                outfile.write("[EMPTY FILE]\n")
+                            else:
+                                outfile.write(content)
+                                outfile.write("\n") 
+                        file_count += 1
+                    except Exception as e:
+                        outfile.write(f"[ERROR READING FILE: {e}]\n")
 
-    # Записуємо результат
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write(project_content)
-    
-    # --- ЗВІТ ПРО РОЗМІР ---
-    size_mb = get_file_size_mb(OUTPUT_FILE)
-    print(f"\n✅ ГОТОВО! Оброблено файлів: {file_count}")
-    print(f"📦 Результат збережено у: {OUTPUT_FILE}")
-    print(f"📊 Розмір файлу: {size_mb:.2f} MB")
-    
-    if size_mb > 5.0:
-        print("\n⚠️  УВАГА: Файл досить великий (> 5 MB).")
-        print("   Можливо, ти захопив щось зайве (наприклад, файли БД або build).")
-        print("   Перевір IGNORE_DIRS у скрипті.")
-    elif size_mb > 1.0:
-         print("\nℹ️  Нормальний розмір для середнього проєкту.")
-    else:
-         print("\n✨ Компактний розмір. Можна сміливо кидати в чат.")
+    # --- ОТРИМАННЯ РОЗМІРУ ФАЙЛУ ---
+    file_size = os.path.getsize(output_file)
+    readable_size = get_size_format(file_size)
 
-if __name__ == "__main__":
-    pack_project()
+    print("-" * 40)
+    print(f"✅ Готово! Збережено {file_count} файлів.")
+    print(f"📁 Файл результату: {output_file}")
+    print(f"📊 Розмір файлу: {readable_size}")
+    print("-" * 40)
+    
+    # Попередження, якщо файл завеликий для чату
+    if file_size > 10 * 1024 * 1024: # 10 MB
+        print("⚠️ УВАГА: Файл досить великий (>10MB). Можливо, варто додати щось у IGNORE_DIRS.")
+
+if __name__ == '__main__':
+    collect_project_code()
