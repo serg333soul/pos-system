@@ -11,8 +11,9 @@ const activeTab = ref('ingredients')
 const search = ref('')
 const loading = ref(false)
 
-// Змінні для редагування
-const editingItem = ref(null)
+// --- ЗМІННІ ДЛЯ РЕДАГУВАННЯ ---
+// Зберігаємо не ID, а унікальний ключ (напр. 'product_5')
+const editingItemKey = ref(null) 
 const editValue = ref(0)
 
 // --- ЗМІННІ ДЛЯ ІСТОРІЇ ---
@@ -21,17 +22,13 @@ const historyItem = ref(null)
 
 // --- ФУНКЦІЯ ВІДКРИТТЯ ІСТОРІЇ ---
 const openHistory = (item) => {
-    // 1. Визначаємо правильний ID
-    // Якщо це список, ми зберегли справжній ID в original_id
     const realId = item.original_id || item.id
-
     console.log(`OPEN HISTORY: ${item.display_name} (Type: ${item.type}, ID: ${realId})`)
 
-    // 2. Формуємо об'єкт для модалки
     historyItem.value = {
-        id: realId,               // Модалка отримає вже чистий ID
-        type: item.type,          // 'ingredient', 'consumable', 'product', 'product_variant'
-        name: item.display_name   // Назва для заголовка
+        id: realId,
+        type: item.type,
+        name: item.display_name
     }
     isHistoryOpen.value = true
 }
@@ -46,7 +43,9 @@ const filteredItems = computed(() => {
             ...i, 
             type: 'ingredient', 
             display_name: i.name,
-            unit_symbol: i.unit?.symbol || '' 
+            unit_symbol: i.unit?.symbol || '',
+            // ГЕНЕРУЄМО УНІКАЛЬНИЙ КЛЮЧ
+            unique_key: `ingredient_${i.id}` 
         }))
     } 
     // 2. МАТЕРІАЛИ
@@ -55,7 +54,8 @@ const filteredItems = computed(() => {
             ...c, 
             type: 'consumable', 
             display_name: c.name,
-            unit_symbol: c.unit?.symbol || ''
+            unit_symbol: c.unit?.symbol || '',
+            unique_key: `consumable_${c.id}`
         }))
     } 
     // 3. ТОВАРИ (Розгортаємо варіанти!)
@@ -66,23 +66,27 @@ const filteredItems = computed(() => {
                 p.variants.forEach(v => {
                     list.push({
                         id: v.id, 
-                        original_id: v.id,       // <--- ВАЖЛИВО: ID варіанту
-                        type: 'product_variant', // <--- ВАЖЛИВО: Тип
+                        original_id: v.id,
+                        type: 'product_variant',
                         display_name: `${p.name} (${v.name})`, 
                         stock_quantity: v.stock_quantity,
                         unit_symbol: 'шт',
-                        product_id: p.id 
+                        product_id: p.id,
+                        // Унікальний ключ для варіанту
+                        unique_key: `product_variant_${v.id}`
                     })
                 })
             } else {
                 // Прості товари
                 list.push({
                     id: p.id,
-                    original_id: p.id,       // <--- ВАЖЛИВО: ID товару
-                    type: 'product',         // <--- ВАЖЛИВО: Тип
+                    original_id: p.id,
+                    type: 'product',
                     display_name: p.name,
                     stock_quantity: p.stock_quantity,
-                    unit_symbol: 'шт'
+                    unit_symbol: 'шт',
+                    // Унікальний ключ для продукту
+                    unique_key: `product_${p.id}`
                 })
             }
         })
@@ -97,7 +101,8 @@ const filteredItems = computed(() => {
 
 // --- ЛОГІКА РЕДАГУВАННЯ ЗАЛИШКІВ ---
 const startEdit = (item) => {
-    editingItem.value = item.id 
+    // Використовуємо унікальний ключ замість простого ID
+    editingItemKey.value = item.unique_key
     editValue.value = item.stock_quantity
 }
 
@@ -139,8 +144,7 @@ const saveEdit = async (item) => {
 
         item.stock_quantity = editValue.value
         await fetchWarehouseData()
-        editingItem.value = null
-        // alert("Збережено!") // Можна розкоментувати
+        editingItemKey.value = null // Закриваємо редагування за ключем
     } catch (e) {
         console.error(e)
         alert("Помилка оновлення залишку")
@@ -194,7 +198,7 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tr v-for="item in filteredItems" :key="item.type + item.id" class="hover:bg-gray-50 group">
+                    <tr v-for="item in filteredItems" :key="item.unique_key" class="hover:bg-gray-50 group">
                         
                         <td class="p-4 font-bold text-gray-700">
                             {{ item.display_name }}
@@ -208,7 +212,7 @@ onMounted(() => {
                         </td>
 
                         <td class="p-4 text-right font-mono font-bold">
-                            <div v-if="editingItem === item.id" class="flex items-center justify-end gap-2">
+                            <div v-if="editingItemKey === item.unique_key" class="flex items-center justify-end gap-2">
                                 <input 
                                     v-model.number="editValue" 
                                     type="number" 
@@ -222,11 +226,11 @@ onMounted(() => {
                         </td>
 
                         <td class="p-4 text-center">
-                            <div v-if="editingItem === item.id" class="flex justify-center gap-1">
+                            <div v-if="editingItemKey === item.unique_key" class="flex justify-center gap-1">
                                 <button @click="saveEdit(item)" class="bg-green-500 text-white w-7 h-7 rounded hover:bg-green-600 flex items-center justify-center">
                                     <i class="fas fa-check text-xs"></i>
                                 </button>
-                                <button @click="editingItem = null" class="bg-gray-300 text-gray-700 w-7 h-7 rounded hover:bg-gray-400 flex items-center justify-center">
+                                <button @click="editingItemKey = null" class="bg-gray-300 text-gray-700 w-7 h-7 rounded hover:bg-gray-400 flex items-center justify-center">
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                             </div>
