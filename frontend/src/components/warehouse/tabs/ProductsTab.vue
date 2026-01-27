@@ -1,9 +1,9 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue' // <--- Додав computed
+import { ref, onMounted, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 import { useProducts } from '@/composables/useProducts'
 
-// Отримуємо довідники (категорії, рецепти тощо)
+// Отримуємо довідники
 const { categories, recipes, ingredients, consumables } = useWarehouse()
 
 // Отримуємо функціонал товарів
@@ -27,7 +27,6 @@ const getCategoryName = (id) => {
     return c ? c.name : '-'
 }
 
-// --- НОВА ЛОГІКА ДЛЯ ОДИНИЦЬ ВИМІРУ ---
 const getIngredientUnit = (id) => {
     if (!id || !ingredients.value) return ''
     const ing = ingredients.value.find(i => i.id === id)
@@ -38,6 +37,85 @@ const currentIngredientPlaceholder = computed(() => {
     const unit = getIngredientUnit(tempVariantIngredient.value.ingredient_id)
     return unit ? `К-сть (${unit})` : 'К-сть'
 })
+
+// === 🔥 НОВА ЛОГІКА РОЗРАХУНКУ СОБІВАРТОСТІ (SCALING) ===
+
+const getIngredientCost = (id) => {
+    if (!ingredients.value) return 0
+    const ing = ingredients.value.find(i => i.id === id)
+    return ing ? ing.cost_per_unit : 0
+}
+
+const getConsumableCost = (id) => {
+    if (!consumables.value) return 0
+    const cons = consumables.value.find(c => c.id === id)
+    return cons ? cons.cost_per_unit : 0
+}
+
+/**
+ * Рахує вартість рецепту з урахуванням масштабування під вагу варіанту.
+ * @param {number} recipeId - ID рецепту
+ * @param {number} targetWeight - Вага готового варіанту (напр. 500 г)
+ */
+const getRecipeCost = (recipeId, targetWeight = null) => {
+    if (!recipeId || !recipes.value) return 0
+    const recipe = recipes.value.find(r => r.id === recipeId)
+    if (!recipe || !recipe.items || recipe.items.length === 0) return 0
+    
+    // 1. Рахуємо базову вартість та базову вагу рецепту
+    let recipeBaseCost = 0
+    let recipeBaseWeight = 0
+
+    recipe.items.forEach(item => {
+        const cost = getIngredientCost(item.ingredient_id)
+        recipeBaseCost += (cost * item.quantity)
+        recipeBaseWeight += item.quantity // Припускаємо, що quantity в рецепті це вага (або %)
+    })
+
+    // 2. Якщо задана цільова вага (варіанту) і базова вага рецепту > 0 -> МАСШТАБУЄМО
+    if (targetWeight && targetWeight > 0 && recipeBaseWeight > 0) {
+        const scaleRatio = targetWeight / recipeBaseWeight
+        return recipeBaseCost * scaleRatio
+    }
+
+    // Якщо вага варіанту не вказана, повертаємо "як є" в рецепті
+    return recipeBaseCost
+}
+
+const calculateVariantCost = (variant) => {
+    let total = 0
+
+    // 1. Рецепт (з урахуванням масштабування під output_weight)
+    if (variant.master_recipe_id) {
+        const weight = variant.output_weight || 0
+        total += getRecipeCost(variant.master_recipe_id, weight)
+    }
+
+    // 2. Додаткові інгредієнти варіанту (вони додаються зверху, не масштабуються від рецепту)
+    if (variant.ingredients && variant.ingredients.length > 0) {
+        variant.ingredients.forEach(vi => {
+            const cost = getIngredientCost(vi.ingredient_id)
+            total += (cost * vi.quantity)
+        })
+    }
+
+    // 3. Матеріали варіанту (пакування, наклейки - фіксована ціна)
+    if (variant.consumables && variant.consumables.length > 0) {
+        variant.consumables.forEach(vc => {
+            const cost = getConsumableCost(vc.consumable_id)
+            total += (cost * (vc.quantity || 1))
+        })
+    }
+
+    return parseFloat(total.toFixed(2))
+}
+
+const calculateProfit = (variant) => {
+    const cost = calculateVariantCost(variant)
+    const price = variant.price || 0
+    return (price - cost).toFixed(2)
+}
+
 // --------------------------------------
 
 const handleSave = async () => {
@@ -106,10 +184,26 @@ onMounted(async () => {
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Вихідна вага (г/мл)</label>
                         <input v-model.number="newProduct.output_weight" type="number" class="border p-2 rounded w-full text-sm">
+                        <p class="text-[10px] text-gray-400 mt-1">*Рецепт буде масштабовано під цю вагу</p>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Початковий залишок</label>
                         <input v-model.number="newProduct.stock_quantity" type="number" class="border p-2 rounded w-full text-sm" placeholder="0">
+                    </div>
+
+                    <div class="mt-2 p-2 bg-white/80 rounded border border-gray-200 text-sm shadow-sm">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-gray-500 text-xs">Собівартість:</span>
+                            <span class="font-bold text-gray-700 font-mono">
+                                {{ calculateVariantCost(newProduct) }} ₴
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-gray-400">Маржа:</span>
+                            <span class="font-bold font-mono" :class="calculateProfit(newProduct) > 0 ? 'text-green-600' : 'text-red-500'">
+                                {{ calculateProfit(newProduct) }} ₴
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -143,11 +237,26 @@ onMounted(async () => {
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[10px] uppercase font-bold text-gray-500">Назва</label>
-                                    <input v-model="variantBuilder.name" placeholder="напр. XL" class="w-full border p-1.5 rounded text-sm">
+                                    <input v-model="variantBuilder.name" placeholder="напр. 500г" class="w-full border p-1.5 rounded text-sm">
                                 </div>
                                 <div>
                                     <label class="text-[10px] uppercase font-bold text-gray-500">Ціна</label>
                                     <input v-model.number="variantBuilder.price" type="number" class="w-full border p-1.5 rounded text-sm">
+                                </div>
+                            </div>
+
+                            <div class="mt-2 p-2 bg-white/80 rounded border border-purple-200 text-sm shadow-sm">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-gray-500 text-xs">Собівартість (авто-масштаб):</span>
+                                    <span class="font-bold text-gray-700 font-mono">
+                                        {{ calculateVariantCost(variantBuilder) }} ₴
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-gray-400">Маржа:</span>
+                                    <span class="font-bold font-mono" :class="calculateProfit(variantBuilder) > 0 ? 'text-green-600' : 'text-red-500'">
+                                        {{ calculateProfit(variantBuilder) }} ₴
+                                    </span>
                                 </div>
                             </div>
                             
@@ -161,7 +270,7 @@ onMounted(async () => {
                                 </div>
                                 <div>
                                     <label class="text-[10px] uppercase font-bold text-gray-500">Вага готового (г/мл)</label>
-                                    <input v-model.number="variantBuilder.output_weight" type="number" class="w-full border p-1.5 rounded text-sm">
+                                    <input v-model.number="variantBuilder.output_weight" type="number" class="w-full border p-1.5 rounded text-sm" placeholder="напр. 500">
                                 </div>
                             </div>
                             
@@ -227,9 +336,10 @@ onMounted(async () => {
                             <div>
                                 <span class="font-bold">{{ v.name }}</span> - {{ v.price }} грн
                                 <div class="text-xs text-gray-400">
+                                    <span class="mr-2" :class="calculateProfit(v) > 0 ? 'text-green-500' : 'text-red-500'">
+                                        (Приб: {{ calculateProfit(v) }})
+                                    </span>
                                     <span v-if="v.master_recipe_id" class="text-purple-600 mr-2">📜 Рецепт ID: {{ v.master_recipe_id }}</span>
-                                    <span v-if="v.stock_quantity > 0" class="text-green-600 font-bold">Залишок: {{ v.stock_quantity }}</span>
-                                    <span v-if="v.ingredients?.length" class="text-blue-500 ml-2">Інгр: {{ v.ingredients.length }}</span>
                                 </div>
                             </div>
                             <div class="flex gap-2">

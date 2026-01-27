@@ -103,6 +103,7 @@ const handleConfirm = async () => {
   await addToCart(payload) // Викликаємо глобальну дію
   emit('close')
 }
+
 </script>
 
 <template>
