@@ -5,3 +5,7 @@ venv/
 .DS_Store
 .history/
 full_project_context.txt
+.vscode/
+node_modules/
+dist/
+postgres_data/
