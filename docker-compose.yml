@@ -12,7 +12,8 @@ services:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
     depends_on:
-      - postgres_db
+      postgres_db: 
+        condition: service_healthy  # <--- Чекати, поки база скаже "Я здорова"
         
 
   # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
@@ -43,7 +44,8 @@ services:
       # Зв'язок з Redis
       - REDIS_HOST=redis_db
     depends_on:
-      - redis_db
+      postgres_db:
+        condition: service_healthy
 
   # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
   redis_db:
@@ -57,7 +59,7 @@ services:
     container_name: pos_frontend # <-- НОВЕ ІМ'Я КОНТЕЙНЕРА
     restart: always
     ports:
-      - "8080:80"
+      - "80:80"
     depends_on:
       - product_service
       - order_service
