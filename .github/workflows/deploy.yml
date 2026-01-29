@@ -27,8 +27,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Збірка та Пуш PRODUCT SERVICE (Я помітив у тебе product_service, а не order_service в минулих чатах. Перевір це!)
-      # Я залишив тут product_service. Якщо у тебе order_service - зміни назву.
+      # 2. Збірка та Пуш PRODUCT SERVICE
       - name: Build and push Product Service
         uses: docker/build-push-action@v4
         with:
@@ -36,7 +35,15 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product_service:latest
 
-      # 3. Збірка та Пуш FRONTEND
+      # 3. Збірка та Пуш ORDER SERVICE (ДОДАНО!)
+      - name: Build and push Order Service
+        uses: docker/build-push-action@v4
+        with:
+          context: ./order_service
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order_service:latest
+
+      # 4. Збірка та Пуш FRONTEND
       - name: Build and push Frontend
         uses: docker/build-push-action@v4
         with:
@@ -44,17 +51,15 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest
       
-      # 4. Підключення до Tailscale VPN
+      # 5. Підключення до Tailscale VPN
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }} 
-          oauth-secret: ${{ secrets.TAILSCALE_SECRET }}
-          tags: tag:ci
-          # ЯКЩО ТИ ВИКОРИСТОВУЄШ AUTH KEY (простіший варіант), розкоментуй рядок нижче і закоментуй oauth рядки вище:
+          # Використовуємо Auth Key, який ти додав у секрети
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
 
-      # 5. Деплой на сервер через SSH (по Tailscale IP)
+      # 6. Деплой на сервер через SSH
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v0.1.10
         with:
@@ -65,19 +70,16 @@ jobs:
             # Логінимось в реєстр на сервері
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Переходимо в ПРАВИЛЬНУ папку
+            # Переходимо в папку проекту
             cd /mnt/ssd_storage/DevProjects/pos-system
             
-            # Оновлюємо код (docker-compose.yml)
+            # Оновлюємо код (щоб підтягнути docker-compose.prod.yml)
             git pull origin main
             
-            # Стягуємо нові образи
-            docker compose pull
-            
-            # Стягуємо нові образи
+            # Стягуємо нові образи (використовуючи обидва файли конфігурації)
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
             
-            # Перезапускаємо з урахуванням ПРОД конфігурації
+            # Перезапускаємо
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
             
             # Чистимо старі образи
