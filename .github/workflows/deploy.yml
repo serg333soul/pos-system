@@ -1,7 +1,11 @@
 name: CI/CD Pipeline
 
 on:
+  # Запускаємо на main (для деплою)
   push:
+    branches: [ "main" ]
+  # Запускаємо на будь-якому PR в main (для перевірок)
+  pull_request:
     branches: [ "main" ]
 
 env:
@@ -9,7 +13,22 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # --- 1. ТЕСТИ (Запускаються ЗАВЖДИ) ---
+  test:
+    name: Run Unit Tests   # <--- Ось це ім'я ми шукаємо в налаштуваннях
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Імітація тесту. Пізніше тут буде 'pytest'
+      - name: Run Dummy Test
+        run: echo "All tests passed! System is ready."
+
+  # --- 2. ДЕПЛОЙ (Тільки для гілки MAIN і тільки якщо тести пройшли) ---
   build-and-deploy:
+    needs: test                              # Чекаємо успіху тестів
+    if: github.ref == 'refs/heads/main'      # <--- ВАЖЛИВО: Не деплоїмо з тестових гілок!
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,7 +38,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 1. Логін в GitHub Container Registry
       - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
@@ -27,7 +45,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Збірка та Пуш PRODUCT SERVICE
+      # Build & Push Services
       - name: Build and push Product Service
         uses: docker/build-push-action@v4
         with:
@@ -35,7 +53,6 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product_service:latest
 
-      # 3. Збірка та Пуш ORDER SERVICE (ДОДАНО!)
       - name: Build and push Order Service
         uses: docker/build-push-action@v4
         with:
@@ -43,7 +60,6 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order_service:latest
 
-      # 4. Збірка та Пуш FRONTEND
       - name: Build and push Frontend
         uses: docker/build-push-action@v4
         with:
@@ -51,15 +67,13 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest
       
-      # 5. Підключення до Tailscale VPN
+      # VPN & SSH
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
-          # Використовуємо Auth Key, який ти додав у секрети
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
-      # 6. Деплой на сервер через SSH
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v0.1.10
         with:
@@ -67,30 +81,9 @@ jobs:
           username: ${{ secrets.USERNAME }} 
           key: ${{ secrets.SSH_KEY }}    
           script: |
-            # Логінимось в реєстр на сервері
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Переходимо в папку проекту
             cd /mnt/ssd_storage/DevProjects/pos-system
-            
-            # Оновлюємо код (щоб підтягнути docker-compose.prod.yml)
             git pull origin main
-            
-            # Стягуємо нові образи (використовуючи обидва файли конфігурації)
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
-            
-            # Перезапускаємо
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
-            
-            # Чистимо старі образи
             docker image prune -f
-  test:
-    name: Run Unit Tests  # <-- Це красиве ім'я, яке ми шукатимемо
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      # Простий крок, який імітує успішний тест
-      - name: Run Dummy Test
-        run: echo "All tests passed! System is ready."
