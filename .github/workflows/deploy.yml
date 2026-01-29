@@ -74,8 +74,11 @@ jobs:
             # Стягуємо нові образи
             docker compose pull
             
-            # Перезапускаємо
-            docker compose up -d --remove-orphans
+            # Стягуємо нові образи
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            
+            # Перезапускаємо з урахуванням ПРОД конфігурації
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
             
             # Чистимо старі образи
             docker image prune -f
