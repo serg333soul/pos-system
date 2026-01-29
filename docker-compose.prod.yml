@@ -1,0 +1,21 @@
+services:
+  # --- BACKEND SERVICES ---
+  order_service:
+    build:
+      context: . # Для локальної розробки контекст залишається
+    # Для продакшну беремо готовий образ з GHCR
+    image: ghcr.io/serg333soul/pos-system/order_service:latest
+    pull_policy: always # Завжди перевіряти оновлення в хмарі
+
+  product_service:
+    build:
+      context: .
+    image: ghcr.io/serg333soul/pos-system/product_service:latest
+    pull_policy: always
+
+  # --- FRONTEND SERVICE ---
+  frontend:
+    build:
+      context: .
+    image: ghcr.io/serg333soul/pos-system/frontend:latest
+    pull_policy: always
