@@ -31,22 +31,40 @@ class Unit(Base):
 # --- ІНГРЕДІЄНТИ ---
 class Ingredient(Base):
     __tablename__ = "ingredients"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, unique=True)
+    name = Column(String, index=True)
+    
+    # Зв'язок з Unit
     unit_id = Column(Integer, ForeignKey("units.id"))
     unit = relationship("Unit")
-    cost_per_unit = Column(Float, default=0.0)
+    
+    cost_per_unit = Column(Float)
     stock_quantity = Column(Float, default=0.0)
+    
+    # 👇 ДОДАНО: Зв'язок з категорією
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    category = relationship("Category")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- ВИТРАТНІ МАТЕРІАЛИ ---
 class Consumable(Base):
     __tablename__ = "consumables"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, unique=True)
+    name = Column(String, index=True)
+    cost_per_unit = Column(Float)
+    stock_quantity = Column(Integer, default=0)
+    
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
     unit = relationship("Unit")
-    cost_per_unit = Column(Float, default=0.0)
-    stock_quantity = Column(Float, default=0.0)
+
+    # 👇 ДОДАНО: Зв'язок з категорією (на майбутнє, якщо знадобиться для витратних)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    category = relationship("Category")
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- МАЙСТЕР-РЕЦЕПТИ ---
 class MasterRecipe(Base):

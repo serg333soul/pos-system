@@ -26,6 +26,14 @@ class UnitCreate(BaseModel):
     name: str
     symbol: str
 
+class IngredientCreate(BaseModel):
+    name: str
+    cost_per_unit: float
+    stock_quantity: float
+    unit_id: int
+    # Без нього API не прийме категорію при створенні
+    category_id: Optional[int] = None 
+
 class Ingredient(BaseModel):
     id: int
     name: str
@@ -33,27 +41,38 @@ class Ingredient(BaseModel):
     stock_quantity: float
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
-    class Config: from_attributes = True
-class IngredientCreate(BaseModel):
-    name: str
-    cost_per_unit: float
-    stock_quantity: float
-    unit_id: int
+    
+    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ (Вже є у тебе, але перевір тип category)
+    category_id: Optional[int] = None
+    category: Optional[Category] = None # Щоб фронтенд міг показати назву категорії
+    
+    class Config:
+        from_attributes = True   
 
-# --- НОВЕ: Consumables Schemas ---
+# --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
-    stock_quantity: float
-    unit_id: Optional[int] = None
+    stock_quantity: int
+    # category_id тут не додаємо, щоб не ламати логіку Base
 
 class ConsumableCreate(ConsumableBase):
-    pass
+    # 👇 ДОДАНО: Дозволяємо приймати ID категорії при створенні
+    category_id: Optional[int] = None 
+    unit_id: Optional[int] = None
 
 class Consumable(ConsumableBase):
     id: int
+    
+    # 👇 ДОДАНО: Щоб фронтенд бачив категорію
+    category_id: Optional[int] = None
+    category: Optional[Category] = None
+
+    unit_id: Optional[int] = None
     unit: Optional[Unit] = None
-    class Config: from_attributes = True
+    
+    class Config:
+        from_attributes = True
 
 # Схема для запису (Link)
 class ProductIngredientLink(BaseModel):
