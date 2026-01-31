@@ -1,15 +1,15 @@
 ==================================================
 📊 PROJECT STATISTICS (DEVOPS OVERVIEW)
 ==================================================
-Total Files Scanned: 60
-Total Lines of Code: 5244
+Total Files Scanned: 62
+Total Lines of Code: 5448
 Technique Breakdown:
   - .vue      : 20 files
   - .py       : 18 files
   - .js       : 9 files
   - No Ext    : 5 files
+  - .yml      : 3 files
   - .txt      : 2 files
-  - .yml      : 1 files
   - .md       : 1 files
   - .html     : 1 files
   - .conf     : 1 files
@@ -21,13 +21,11 @@ Technique Breakdown:
 ==================================================
 📂 /
         📄 .gitignore
+        📄 docker-compose.prod.yml
         📄 docker-compose.yml
-        📂 order_service/
-            📄 Dockerfile
-            📄 main.py
-            📄 requirements.txt
-            📄 schemas.py
-        📂 test_folder/
+        📂 .github/
+            📂 workflows/
+                📄 deploy.yml
         📂 frontend/
             📄 .gitignore
             📄 Dockerfile
@@ -38,16 +36,32 @@ Technique Breakdown:
             📄 postcss.config.js
             📄 tailwind.config.js
             📄 vite.config.js
+            📂 public/
+                📦 vite.svg
             📂 src/
                 📄 App.vue
                 📄 main.js
                 📄 style.css
+                📂 assets/
+                    📦 vue.svg
                 📂 components/
                     📂 common/
                         📄 IngredientSelect.vue
                         📄 Sidebar.vue
+                    📂 crm/
+                        📄 Customers.vue
+                        📄 CustomersTable.vue
+                    📂 pos/
+                        📄 CartDrawer.vue
+                        📄 ProductCard.vue
+                        📄 ProductModal.vue
+                    📂 stats/
+                        📄 SalesTable.vue
+                        📄 Statistics.vue
                     📂 warehouse/
                         📄 Warehouse.vue
+                        📂 modals/
+                            📄 HistoryModal.vue
                         📂 tabs/
                             📄 CategoriesTab.vue
                             📄 ConsumablesTab.vue
@@ -57,28 +71,17 @@ Technique Breakdown:
                             📄 RecipesTab.vue
                             📄 StockTab.vue
                             📄 UnitsTab.vue
-                        📂 modals/
-                            📄 HistoryModal.vue
-                    📂 pos/
-                        📄 CartDrawer.vue
-                        📄 ProductCard.vue
-                        📄 ProductModal.vue
-                    📂 crm/
-                        📄 Customers.vue
-                        📄 CustomersTable.vue
-                    📂 stats/
-                        📄 SalesTable.vue
-                        📄 Statistics.vue
-                📂 assets/
-                    📦 vue.svg
                 📂 composables/
                     📄 useCart.js
                     📄 useCustomers.js
                     📄 useProducts.js
                     📄 useStatistics.js
                     📄 useWarehouse.js
-            📂 public/
-                📦 vite.svg
+        📂 order_service/
+            📄 Dockerfile
+            📄 main.py
+            📄 requirements.txt
+            📄 schemas.py
         📂 product_service/
             📄 Dockerfile
             📄 database.py
@@ -104,7 +107,7 @@ Technique Breakdown:
 
 ============================================================
 FILE: .gitignore
-SIZE: 74 bytes
+SIZE: 128 bytes
 ============================================================
 __pycache__/
 *.pyc
@@ -113,10 +116,35 @@ venv/
 .DS_Store
 .history/
 full_project_context.txt
+.vscode/
+node_modules/
+dist/
+postgres_data/
+
+============================================================
+FILE: docker-compose.prod.yml
+SIZE: 587 bytes
+============================================================
+services:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    # Формат: ghcr.io/юзернейм/репозиторій/назва_сервісу:тег
+    image: ghcr.io/serg333soul/pos-system/product_service:latest
+    pull_policy: always 
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    image: ghcr.io/serg333soul/pos-system/order_service:latest
+    pull_policy: always
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  frontend:
+    image: ghcr.io/serg333soul/pos-system/frontend:latest
+    pull_policy: always
 
 ============================================================
 FILE: docker-compose.yml
-SIZE: 1891 bytes
+SIZE: 2103 bytes
 ============================================================
 #version: '3.8'
 
@@ -132,7 +160,8 @@ services:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
     depends_on:
-      - postgres_db
+      postgres_db: 
+        condition: service_healthy  # <--- Чекати, поки база скаже "Я здорова"
         
 
   # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
@@ -163,7 +192,8 @@ services:
       # Зв'язок з Redis
       - REDIS_HOST=redis_db
     depends_on:
-      - redis_db
+      postgres_db:
+        condition: service_healthy
 
   # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
   redis_db:
@@ -188,157 +218,102 @@ volumes:
 
 
 ============================================================
-FILE: order_service/Dockerfile
-SIZE: 409 bytes
+FILE: .github\workflows\deploy.yml
+SIZE: 3164 bytes
 ============================================================
-FROM python:3.9-slim
+name: CI/CD Pipeline
 
-WORKDIR /app
+on:
+  # Запускаємо на main (для деплою)
+  push:
+    branches: [ "main" ]
+  # Запускаємо на будь-якому PR в main (для перевірок)
+  pull_request:
+    branches: [ "main" ]
 
-# Копіюємо requirements і встановлюємо залежності
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
-# --- ВИПРАВЛЕННЯ ТУТ ---
-# Копіюємо ВСІ файли з поточної папки (main.py, schemas.py і т.д.)
-COPY . .
+jobs:
+  # --- 1. ТЕСТИ (Запускаються ЗАВЖДИ) ---
+  test:
+    name: Run Unit Tests   # <--- Ось це ім'я ми шукаємо в налаштуваннях
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Імітація тесту. Пізніше тут буде 'pytest'
+      - name: Run Dummy Test
+        run: echo "All tests passed! System is ready."
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+  # --- 2. ДЕПЛОЙ (Тільки для гілки MAIN і тільки якщо тести пройшли) ---
+  build-and-deploy:
+    needs: test                              # Чекаємо успіху тестів
+    if: github.ref == 'refs/heads/main'      # <--- ВАЖЛИВО: Не деплоїмо з тестових гілок!
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
-============================================================
-FILE: order_service/main.py
-SIZE: 3044 bytes
-============================================================
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import redis
-import os
-import json
-import uuid
-from typing import List
-from schemas import CartItemCreate, CartItem # Імпортуємо схеми
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-app = FastAPI()
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+      # Build & Push Services
+      - name: Build and push Product Service
+        uses: docker/build-push-action@v4
+        with:
+          context: ./product_service
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product_service:latest
 
-REDIS_HOST = os.getenv("REDIS_HOST", "pos_redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+      - name: Build and push Order Service
+        uses: docker/build-push-action@v4
+        with:
+          context: ./order_service
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order_service:latest
 
-# decode_responses=True економить нам час на декодування байтів
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-CART_KEY = "pos_cart_v2" # Змінимо ключ, щоб не конфліктувати зі старим
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest
+      
+      # VPN & SSH
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
 
-@app.get("/")
-def read_root():
-    return {"message": "Advanced Order Service is running!"}
-
-# --- ОТРИМАТИ КОШИК ---
-@app.get("/cart/", response_model=List[CartItem])
-def get_cart():
-    # Отримуємо всі дані з хешу
-    raw_data = r.hgetall(CART_KEY)
-    cart_items = []
-    
-    for key, value in raw_data.items():
-        try:
-            item = json.loads(value)
-            cart_items.append(item)
-        except json.JSONDecodeError:
-            continue
-            
-    return cart_items
-
-# --- ДОДАТИ ТОВАР ---
-@app.post("/cart/add", response_model=CartItem)
-def add_item(item_data: CartItemCreate):
-    # Генеруємо унікальний ID для цього запису в кошику
-    # Це дозволяє мати два однакових товари з різними модифікаторами
-    cart_item_id = str(uuid.uuid4())
-    
-    new_item = CartItem(
-        cart_item_id=cart_item_id,
-        **item_data.dict()
-    )
-    
-    # Зберігаємо JSON в Redis: Key=UUID, Value=JSON String
-    r.hset(CART_KEY, cart_item_id, json.dumps(new_item.dict()))
-    
-    return new_item
-
-# --- ЗМІНИТИ КІЛЬКІСТЬ (+/-) ---
-@app.post("/cart/{cart_item_id}/update")
-def update_quantity(cart_item_id: str, change: int):
-    raw_json = r.hget(CART_KEY, cart_item_id)
-    if not raw_json:
-        raise HTTPException(status_code=404, detail="Item not found")
-        
-    item = json.loads(raw_json)
-    new_qty = item['quantity'] + change
-    
-    if new_qty <= 0:
-        # Якщо кількість <= 0, видаляємо
-        r.hdel(CART_KEY, cart_item_id)
-        return {"status": "removed", "cart_item_id": cart_item_id}
-    else:
-        # Оновлюємо кількість
-        item['quantity'] = new_qty
-        r.hset(CART_KEY, cart_item_id, json.dumps(item))
-        return {"status": "updated", "quantity": new_qty}
-
-# --- ВИДАЛИТИ ТОВАР ---
-@app.delete("/cart/{cart_item_id}")
-def remove_item(cart_item_id: str):
-    r.hdel(CART_KEY, cart_item_id)
-    return {"status": "removed"}
-
-# --- ОЧИСТИТИ КОШИК ---
-@app.delete("/cart/")
-def clear_cart():
-    r.delete(CART_KEY)
-    return {"status": "cleared"}
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST }}      
+          username: ${{ secrets.USERNAME }} 
+          key: ${{ secrets.SSH_KEY }}    
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /mnt/ssd_storage/DevProjects/pos-system
+            git pull origin main
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
 
 ============================================================
-FILE: order_service/requirements.txt
-SIZE: 31 bytes
-============================================================
-fastapi
-uvicorn
-redis
-pydantic
-
-
-============================================================
-FILE: order_service/schemas.py
-SIZE: 588 bytes
-============================================================
-from pydantic import BaseModel
-from typing import List, Optional
-
-class ModifierItem(BaseModel):
-    modifier_id: int
-
-class CartItemCreate(BaseModel):
-    product_id: int
-    variant_id: Optional[int] = None
-    modifiers: List[ModifierItem] = []
-    quantity: int = 1
-    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
-    name: str 
-    price: float
-
-class CartItem(CartItemCreate):
-    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
-
-============================================================
-FILE: frontend/.gitignore
-SIZE: 253 bytes
+FILE: frontend\.gitignore
+SIZE: 277 bytes
 ============================================================
 # Logs
 logs
@@ -367,8 +342,8 @@ dist-ssr
 
 
 ============================================================
-FILE: frontend/Dockerfile
-SIZE: 485 bytes
+FILE: frontend\Dockerfile
+SIZE: 507 bytes
 ============================================================
 # --- ЕТАП 1: Збірка (Build) ---
 # ВИКОРИСТОВУЄМО ВЕРСІЮ 22, бо Vite 6/7 цього вимагає
@@ -395,8 +370,8 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 
 ============================================================
-FILE: frontend/README.md
-SIZE: 385 bytes
+FILE: frontend\README.md
+SIZE: 390 bytes
 ============================================================
 # Vue 3 + Vite
 
@@ -406,8 +381,8 @@ Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://
 
 
 ============================================================
-FILE: frontend/index.html
-SIZE: 463 bytes
+FILE: frontend\index.html
+SIZE: 476 bytes
 ============================================================
 <!DOCTYPE html>
 <html lang="en">
@@ -425,8 +400,8 @@ SIZE: 463 bytes
 </html>
 
 ============================================================
-FILE: frontend/nginx.conf
-SIZE: 1080 bytes
+FILE: frontend\nginx.conf
+SIZE: 1108 bytes
 ============================================================
 server {
     listen 80;
@@ -459,8 +434,8 @@ server {
 }
 
 ============================================================
-FILE: frontend/package.json
-SIZE: 463 bytes
+FILE: frontend\package.json
+SIZE: 486 bytes
 ============================================================
 {
   "name": "frontend",
@@ -488,8 +463,8 @@ SIZE: 463 bytes
 
 
 ============================================================
-FILE: frontend/postcss.config.js
-SIZE: 158 bytes
+FILE: frontend\postcss.config.js
+SIZE: 163 bytes
 ============================================================
 export default {
   plugins: {
@@ -499,8 +474,8 @@ export default {
 }
 
 ============================================================
-FILE: frontend/tailwind.config.js
-SIZE: 185 bytes
+FILE: frontend\tailwind.config.js
+SIZE: 195 bytes
 ============================================================
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -515,8 +490,8 @@ export default {
 }
 
 ============================================================
-FILE: frontend/vite.config.js
-SIZE: 961 bytes
+FILE: frontend\vite.config.js
+SIZE: 993 bytes
 ============================================================
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
@@ -553,8 +528,8 @@ export default defineConfig({
 })
 
 ============================================================
-FILE: frontend/src/App.vue
-SIZE: 4625 bytes
+FILE: frontend\src\App.vue
+SIZE: 4740 bytes
 ============================================================
 <script setup>
 import { ref, onMounted } from 'vue'
@@ -674,8 +649,8 @@ onMounted(() => {
 </template>
 
 ============================================================
-FILE: frontend/src/main.js
-SIZE: 111 bytes
+FILE: frontend\src\main.js
+SIZE: 116 bytes
 ============================================================
 import { createApp } from 'vue'
 import './style.css'
@@ -685,8 +660,8 @@ createApp(App).mount('#app')
 
 
 ============================================================
-FILE: frontend/src/style.css
-SIZE: 59 bytes
+FILE: frontend\src\style.css
+SIZE: 62 bytes
 ============================================================
 @tailwind base;
 @tailwind components;
@@ -694,8 +669,8 @@ SIZE: 59 bytes
 
 
 ============================================================
-FILE: frontend/src/components/common/IngredientSelect.vue
-SIZE: 3817 bytes
+FILE: frontend\src\components\common\IngredientSelect.vue
+SIZE: 3924 bytes
 ============================================================
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
@@ -807,8 +782,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </style>
 
 ============================================================
-FILE: frontend/src/components/common/Sidebar.vue
-SIZE: 2125 bytes
+FILE: frontend\src\components\common\Sidebar.vue
+SIZE: 2195 bytes
 ============================================================
 <script setup>
 import { computed } from 'vue'
@@ -883,8 +858,980 @@ const navigate = (pageId) => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/Warehouse.vue
-SIZE: 3664 bytes
+FILE: frontend\src\components\crm\Customers.vue
+SIZE: 11884 bytes
+============================================================
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import axios from 'axios'
+
+// --- КОНФІГУРАЦІЯ API ---
+const API_URL = 'http://localhost:8001/customers/'
+
+// --- СТАН ---
+const customers = ref([])
+const showModal = ref(false)
+const searchQuery = ref('')
+const isEditing = ref(false)
+const editingId = ref(null)
+
+// Форма
+const formData = ref({
+    name: '',
+    phone: '',
+    email: '',
+    notes: ''
+})
+
+// --- API ЗАПИТИ ---
+
+const fetchCustomers = async () => {
+    try {
+        const res = await axios.get(API_URL)
+        console.log("Отримані клієнти:", res.data)
+        customers.value = res.data
+    } catch (err) {
+        console.error("Помилка завантаження клієнтів:", err)
+    }
+}
+
+const handleSave = async () => {
+    if (!formData.value.name) return alert("Ім'я обов'язкове!")
+    if (!formData.value.phone) return alert("Телефон обов'язковий!")
+
+    try {
+        if (isEditing.value) {
+            await axios.put(`${API_URL}${editingId.value}`, formData.value)
+        } else {
+            await axios.post(API_URL, formData.value)
+        }
+        
+        closeModal()
+        await fetchCustomers()
+    } catch (err) {
+        console.error(err)
+        alert("Помилка при збереженні. Можливо такий телефон вже існує.")
+    }
+}
+
+const deleteCustomer = async (id) => {
+    if(!confirm("Видалити цього клієнта з бази?")) return
+    try {
+        await axios.delete(`${API_URL}${id}`)
+        fetchCustomers()
+    } catch (err) {
+        alert("Помилка видалення")
+    }
+}
+
+// --- ЛОГІКА ІНТЕРФЕЙСУ ---
+
+const openCreateModal = () => {
+    isEditing.value = false
+    editingId.value = null
+    formData.value = { name: '', phone: '', email: '', notes: '' }
+    showModal.value = true
+}
+
+const openEditModal = (customer) => {
+    isEditing.value = true
+    editingId.value = customer.id
+    formData.value = {
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email || '',
+        notes: customer.notes || ''
+    }
+    showModal.value = true
+}
+
+const closeModal = () => {
+    showModal.value = false
+    formData.value = { name: '', phone: '', email: '', notes: '' }
+}
+
+const filteredCustomers = computed(() => {
+    if (!searchQuery.value) return customers.value
+    const q = searchQuery.value.toLowerCase()
+    return customers.value.filter(c => 
+        c.name.toLowerCase().includes(q) || 
+        (c.phone && c.phone.includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q))
+    )
+})
+
+onMounted(fetchCustomers)
+</script>
+
+<template>
+    <div class="h-full w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden md:ml-64 transition-all duration-300" style="width: calc(100% - 16rem);">
+        
+        <div class="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/50">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">Клієнти</h2>
+                <p class="text-xs text-gray-500">База контактів CRM</p>
+            </div>
+
+            <div class="flex w-full md:w-auto gap-3">
+                <div class="relative flex-1 md:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                        <i class="fas fa-search"></i>
+                    </span>
+                    <input 
+                        v-model="searchQuery" 
+                        type="text" 
+                        placeholder="Пошук (ім'я, тел, email)..." 
+                        class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none text-sm transition bg-white"
+                    >
+                </div>
+
+                <button 
+                    @click="openCreateModal" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold shadow-lg shadow-blue-100 transition transform active:scale-95 flex items-center gap-2 whitespace-nowrap text-sm"
+                >
+                    <i class="fas fa-user-plus"></i>
+                    <span>Додати</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-auto">
+            <table class="w-full text-left text-sm text-gray-600">
+                <thead class="bg-gray-50 text-xs uppercase font-bold text-gray-500 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                        <th class="p-4 border-b">Клієнт</th>
+                        <th class="p-4 border-b">Телефон</th>
+                        <th class="p-4 border-b">Email</th>
+                        <th class="p-4 border-b">Нотатки</th>
+                        <th class="p-4 border-b text-center">Дії</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr v-if="filteredCustomers.length === 0">
+                        <td colspan="5" class="p-8 text-center text-gray-400">
+                            <div class="flex flex-col items-center gap-2">
+                                <i class="fas fa-users-slash text-2xl"></i>
+                                <span>Клієнтів не знайдено</span>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr v-for="c in filteredCustomers" :key="c.id" class="hover:bg-blue-50/30 transition group">
+                        
+                        <td class="p-4 font-medium text-gray-900">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-200 shadow-sm shrink-0">
+                                    {{ c.name ? c.name.charAt(0).toUpperCase() : '?' }}
+                                </div>
+                                <div class="flex flex-col">
+                                    <span v-if="c.name">{{ c.name }}</span>
+                                    <span v-else class="text-red-500 text-xs font-bold">MISSING NAME (ID: {{ c.id }})</span>
+                                </div>
+                            </div>
+                        </td>
+                        
+                        <td class="p-4">
+                             <span class="font-mono text-xs text-gray-700 bg-gray-50/50 px-2 py-1 rounded border border-gray-100">
+                                {{ c.phone || '---' }}
+                             </span>
+                        </td>
+                        
+                        <td class="p-4 text-blue-500">
+                            {{ c.email || '-' }}
+                        </td>
+                        
+                        <td class="p-4 text-xs italic text-gray-400 max-w-xs truncate">
+                            {{ c.notes || '-' }}
+                        </td>
+                        
+                        <td class="p-4 text-center">
+                            <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    @click="openEditModal(c)" 
+                                    class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
+                                    title="Редагувати"
+                                >
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                                <button 
+                                    @click="deleteCustomer(c.id)" 
+                                    class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
+                                    title="Видалити"
+                                >
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div v-if="showModal" class="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 transform transition-all scale-100">
+                <div class="flex justify-between items-center mb-6 border-b pb-4 border-gray-100">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        {{ isEditing ? 'Редагувати клієнта' : 'Новий клієнт' }}
+                    </h2>
+                    <button @click="closeModal" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+                        &times;
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Ім'я <span class="text-red-500">*</span></label>
+                        <input v-model="formData.name" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="ПІБ">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Телефон <span class="text-red-500">*</span></label>
+                        <input v-model="formData.phone" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="+380...">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Email</label>
+                        <input v-model="formData.email" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="client@mail.com">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Нотатки</label>
+                        <textarea v-model="formData.notes" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition h-24 resize-none" placeholder="Уподобання, день народження..."></textarea>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-8 pt-4 border-t border-gray-50">
+                    <button @click="closeModal" class="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition">Скасувати</button>
+                    <button @click="handleSave" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition transform active:scale-95">
+                        {{ isEditing ? 'Зберегти зміни' : 'Створити' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</template>
+
+============================================================
+FILE: frontend\src\components\crm\CustomersTable.vue
+SIZE: 2512 bytes
+============================================================
+<script setup>
+defineProps({
+  customers: Array,
+  loading: Boolean
+})
+
+const emit = defineEmits(['edit', 'delete', 'history'])
+</script>
+
+<template>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-left">
+      <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+        <tr>
+          <th class="p-4">Ім'я</th>
+          <th class="p-4">Телефон</th>
+          <th class="p-4">Email / Нотатки</th>
+          <th class="p-4 text-center">Дії</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <tr v-if="customers.length === 0" class="text-center text-gray-400">
+          <td colspan="4" class="p-8">
+              <span v-if="loading"><i class="fas fa-spinner fa-spin"></i> Завантаження...</span>
+              <span v-else>Клієнтів не знайдено</span>
+          </td>
+        </tr>
+
+        <tr v-for="c in customers" :key="c.id" class="hover:bg-blue-50 transition group">
+          <td class="p-4 font-bold text-gray-800">
+              <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
+                      {{ c.name.charAt(0) }}
+                  </div>
+                  {{ c.name }}
+              </div>
+          </td>
+          <td class="p-4 font-mono text-gray-600">{{ c.phone }}</td>
+          <td class="p-4 text-sm text-gray-500">
+              <div v-if="c.email">{{ c.email }}</div>
+              <div v-if="c.notes" class="italic text-xs mt-1">"{{ c.notes }}"</div>
+          </td>
+          <td class="p-4 text-center flex justify-center gap-2">
+              <button @click="emit('history', c)" class="text-purple-400 hover:text-purple-600 transition px-2" title="Історія покупок">
+                  <i class="fas fa-history"></i>
+              </button>
+              <button @click="emit('edit', c)" class="text-gray-400 hover:text-blue-500 transition px-2" title="Редагувати">
+                  <i class="fas fa-pen"></i>
+              </button>
+              <button @click="emit('delete', c.id)" class="text-gray-400 hover:text-red-500 transition px-2" title="Видалити">
+                  <i class="fas fa-trash"></i>
+              </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+============================================================
+FILE: frontend\src\components\pos\CartDrawer.vue
+SIZE: 8091 bytes
+============================================================
+<script setup>
+import { ref, watch, onMounted } from 'vue'
+import { useCart } from '@/composables/useCart'
+
+const props = defineProps({
+  isOpen: Boolean
+})
+
+const emit = defineEmits(['close'])
+
+// Підключаємо логіку кошика
+const { 
+  cartItems, 
+  totalSum, 
+  paymentMethod, 
+  isProcessing, 
+  selectedCustomer,
+  fetchCart, 
+  updateQty, 
+  removeItem, 
+  clearCart, 
+  processCheckout,
+  setCustomer,
+  removeCustomer
+} = useCart()
+
+// --- UI Local State (Пошук клієнта) ---
+const customerSearch = ref('')
+const customerResults = ref([])
+
+const handleSearchCustomer = async () => {
+  if (customerSearch.value.length < 2) { customerResults.value = []; return }
+  try {
+    const res = await fetch(`/api/customers/search/?q=${customerSearch.value}`)
+    if (res.ok) customerResults.value = await res.json()
+  } catch (err) { console.error(err) }
+}
+
+const selectCustomerUI = (c) => {
+  setCustomer(c) // Записуємо в глобальний стан
+  customerSearch.value = ''
+  customerResults.value = []
+}
+
+const handleCheckout = async () => {
+  const res = await processCheckout()
+  alert(res.text)
+  if (res.success) {
+    emit('close')
+  }
+}
+
+// Завантажуємо кошик при відкритті
+watch(() => props.isOpen, (val) => {
+  if (val) fetchCart()
+})
+</script>
+
+<template>
+  <div class="fixed inset-0 z-50 flex justify-end transition-opacity duration-300" 
+       :class="isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'">
+    
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')"></div>
+
+    <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col transition-transform duration-300 transform"
+         :class="isOpen ? 'translate-x-0' : 'translate-x-full'">
+      
+      <div class="p-5 bg-gray-900 text-white flex justify-between items-center shadow-md">
+        <h2 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-shopping-cart"></i> Кошик</h2>
+        <div class="flex gap-3">
+            <button @click="clearCart(false)" class="text-gray-400 hover:text-red-400 transition" title="Очистити все"><i class="fas fa-trash-alt"></i></button>
+            <button @click="emit('close')" class="text-gray-400 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 bg-gray-50 custom-scrollbar">
+        <div v-if="cartItems.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
+          <i class="fas fa-shopping-basket text-6xl mb-4 opacity-20"></i>
+          <p>Кошик порожній</p>
+        </div>
+
+        <div v-else class="space-y-3">
+          <div v-for="item in cartItems" :key="item.cart_item_id" 
+               class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
+            
+            <div class="flex justify-between items-start">
+              <span class="font-bold text-gray-800 text-lg leading-tight">{{ item.name }}</span>
+              <span class="font-mono font-bold text-gray-900 whitespace-nowrap">{{ (item.price * item.quantity).toFixed(2) }} ₴</span>
+            </div>
+
+            <div class="flex justify-between items-center bg-gray-50 rounded-lg p-1">
+                <div class="flex items-center gap-3">
+                    <button @click="updateQty(item.cart_item_id, -1)" 
+                            class="w-8 h-8 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center justify-center font-bold shadow-sm active:scale-95">-</button>
+                    <span class="w-6 text-center font-bold text-gray-800">{{ item.quantity }}</span>
+                    <button @click="updateQty(item.cart_item_id, 1)" 
+                            class="w-8 h-8 rounded-full bg-gray-800 text-white hover:bg-gray-700 flex items-center justify-center font-bold shadow-sm active:scale-95">+</button>
+                </div>
+                
+                <button @click="removeItem(item.cart_item_id)" class="text-red-400 hover:text-red-600 p-2">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Клієнт</label>
+            <div v-if="!selectedCustomer" class="relative">
+                <div class="flex items-center border rounded-lg bg-gray-50 overflow-hidden">
+                    <i class="fas fa-search text-gray-400 ml-3"></i>
+                    <input v-model="customerSearch" @input="handleSearchCustomer" placeholder="Телефон або ім'я..." class="w-full p-2 bg-transparent outline-none text-sm">
+                </div>
+                <div v-if="customerResults.length > 0" class="absolute bottom-full left-0 w-full bg-white border shadow-xl rounded-lg mb-1 max-h-40 overflow-y-auto z-10">
+                    <div v-for="c in customerResults" :key="c.id" @click="selectCustomerUI(c)" class="p-2 hover:bg-blue-50 cursor-pointer border-b flex justify-between items-center">
+                         <div><div class="font-bold text-sm">{{ c.name }}</div><div class="text-xs text-gray-500">{{ c.phone }}</div></div>
+                         <i class="fas fa-plus-circle text-blue-500"></i>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="flex justify-between items-center bg-blue-50 border border-blue-200 p-2 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">{{ selectedCustomer.name.charAt(0) }}</div>
+                    <div><div class="font-bold text-sm text-blue-900">{{ selectedCustomer.name }}</div><div class="text-xs text-blue-600">{{ selectedCustomer.phone }}</div></div>
+                </div>
+                <button @click="removeCustomer" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Оплата</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button @click="paymentMethod = 'cash'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-money-bill-wave"></i> Готівка </button>
+                <button @click="paymentMethod = 'card'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-credit-card"></i> Картка </button>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-center text-2xl font-bold mb-4 text-gray-800">
+          <span>Разом:</span><span>{{ totalSum.toFixed(2) }} ₴</span>
+        </div>
+        
+        <button @click="handleCheckout" :disabled="cartItems.length === 0 || isProcessing" class="w-full py-4 rounded-xl font-bold text-lg text-white transition shadow-lg flex justify-center items-center gap-2 disabled:bg-gray-400" :class="paymentMethod === 'cash' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'">
+          <span v-if="isProcessing"><i class="fas fa-spinner fa-spin"></i> Обробка...</span>
+          <span v-else>Оплатити</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+============================================================
+FILE: frontend\src\components\pos\ProductCard.vue
+SIZE: 3195 bytes
+============================================================
+<script setup>
+import { computed } from 'vue'
+
+const props = defineProps({ 
+  product: { type: Object, required: true } 
+})
+
+// Явно вказуємо, що компонент реагує на клік, хоча це native event
+const emit = defineEmits(['click'])
+
+// Логіка іконок (View Logic)
+const productIcon = computed(() => {
+  const name = props.product.name?.toLowerCase() || ''
+  const cat = props.product.category?.name?.toLowerCase() || ''
+  
+  if (name.includes('кава') || name.includes('еспресо') || cat.includes('напої')) return 'fas fa-mug-hot'
+  if (name.includes('чай')) return 'fas fa-leaf'
+  if (name.includes('торт') || name.includes('десерт') || cat.includes('десерти')) return 'fas fa-birthday-cake'
+  if (name.includes('круасан')) return 'fas fa-bread-slice'
+  
+  return 'fas fa-box'
+})
+
+// Логіка кольорів (View Logic)
+const cardColor = computed(() => {
+  const slug = props.product.category?.slug || ''
+  const colors = {
+    'hot-drinks': 'bg-orange-50 text-orange-600 border-orange-100',
+    'desserts': 'bg-pink-50 text-pink-600 border-pink-100'
+  }
+  return colors[slug] || 'bg-white text-gray-700 border-gray-100'
+})
+
+const hasOptions = computed(() => {
+  return props.product.has_variants || (props.product.modifier_groups && props.product.modifier_groups.length > 0)
+})
+
+// Логіка ціни: показуємо мінімальну, якщо є варіанти
+const displayPrice = computed(() => {
+  if (props.product.has_variants && props.product.variants?.length > 0) {
+    const prices = props.product.variants.map(v => v.price)
+    return Math.min(...prices)
+  }
+  return props.product.price
+})
+</script>
+
+<template>
+  <div 
+    @click="emit('click', product)"
+    class="relative group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-2xl border overflow-hidden bg-white"
+  >
+    <div class="h-32 flex items-center justify-center text-5xl transition-transform group-hover:scale-110" :class="cardColor">
+      <i :class="productIcon"></i>
+    </div>
+
+    <div class="p-4">
+      <div v-if="product.category" class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+        {{ product.category.name }}
+      </div>
+      
+      <h3 class="font-bold text-lg text-gray-800 leading-tight mb-2 line-clamp-2 min-h-[3.5rem]">
+        {{ product.name }}
+      </h3>
+      
+      <div class="flex justify-between items-center mt-3">
+        <div class="flex flex-col">
+            <span v-if="product.has_variants" class="text-xs text-gray-400">від</span>
+            <span class="text-xl font-bold text-gray-900">{{ displayPrice }} ₴</span>
+        </div>
+        
+        <button class="w-8 h-8 rounded-full flex items-center justify-center transition shadow-lg"
+            :class="hasOptions ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-gray-900 hover:bg-green-500 text-white'">
+          <i class="fas" :class="hasOptions ? 'fa-sliders-h text-xs' : 'fa-plus text-xs'"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+============================================================
+FILE: frontend\src\components\pos\ProductModal.vue
+SIZE: 8287 bytes
+============================================================
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { useCart } from '@/composables/useCart'
+
+const props = defineProps({
+  isOpen: Boolean,
+  product: Object 
+})
+
+const emit = defineEmits(['close'])
+
+const { addToCart } = useCart()
+
+const selectedVariant = ref(null)
+const selectedModifiers = ref({}) 
+const selectedProcesses = ref({}) 
+
+// --- Ініціалізація (Reset & Defaults) ---
+watch(() => props.isOpen, (isOpen) => {
+  if (isOpen && props.product) {
+    selectedVariant.value = null
+    selectedModifiers.value = {}
+    selectedProcesses.value = {} 
+
+    // Auto-select Variant (cheapest)
+    if (props.product.variants && props.product.variants.length > 0) {
+      const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
+      selectedVariant.value = sorted[0]
+    }
+
+    // Auto-select Required Modifiers
+    if (props.product.modifier_groups) {
+      props.product.modifier_groups.forEach(group => {
+        if (group.is_required && group.modifiers.length > 0) {
+          selectedModifiers.value[group.id] = group.modifiers[0].id
+        }
+      })
+    }
+
+    // Auto-select First Process Option
+    if (props.product.process_groups) {
+        props.product.process_groups.forEach(pg => {
+            if (pg.options && pg.options.length > 0) {
+                selectedProcesses.value[pg.id] = pg.options[0].name
+            }
+        })
+    }
+  }
+})
+
+const currentPrice = computed(() => {
+  if (!props.product) return 0
+  let price = 0
+  
+  if (props.product.has_variants && selectedVariant.value) {
+    price += selectedVariant.value.price
+  } else {
+    price += props.product.price
+  }
+  
+  if (props.product.modifier_groups) {
+    props.product.modifier_groups.forEach(group => {
+      const modId = selectedModifiers.value[group.id]
+      if (modId) {
+        const mod = group.modifiers.find(m => m.id === modId)
+        if (mod) price += mod.price_change
+      }
+    })
+  }
+  return price
+})
+
+// Генерація назви для кошика
+const generateName = () => {
+  let name = props.product.name
+  if (selectedVariant.value) {
+    name += ` (${selectedVariant.value.name})`
+  }
+  const processValues = Object.values(selectedProcesses.value)
+  if (processValues.length > 0) {
+      name += ` [${processValues.join(', ')}]`
+  }
+  return name
+}
+
+const handleConfirm = async () => {
+  if (props.product.has_variants && !selectedVariant.value) {
+      alert("Будь ласка, оберіть розмір/варіант")
+      return
+  }
+
+  // Формуємо об'єкт для кошика (співпадає з backend схемою)
+  const payload = {
+    product_id: props.product.id,
+    variant_id: selectedVariant.value ? selectedVariant.value.id : null,
+    modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
+    quantity: 1, // За замовчуванням 1
+    // Додаткові поля для UI, які не йдуть в БД, але можуть бути корисні для оптимістичного оновлення
+    name: generateName(),
+    price: currentPrice.value
+  }
+
+  await addToCart(payload) // Викликаємо глобальну дію
+  emit('close')
+}
+
+</script>
+
+<template>
+  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')"></div>
+
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up">
+      
+      <div class="p-6 bg-gray-50 border-b flex justify-between items-start">
+        <div>
+           <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+             {{ product.category?.name || 'Товар' }}
+           </div>
+           <h2 class="text-3xl font-bold text-gray-800 leading-none">{{ product.name }}</h2>
+        </div>
+        <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm hover:shadow transition">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+        
+        <div v-if="product.has_variants && product.variants.length > 0">
+          <label class="block text-sm font-bold text-gray-900 mb-3">Оберіть розмір/вагу:</label>
+          <div class="grid grid-cols-3 gap-3">
+            <button 
+              v-for="variant in product.variants" 
+              :key="variant.id"
+              @click="selectedVariant = variant"
+              class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1"
+              :class="selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 text-gray-600'"
+            >
+              <span class="font-bold">{{ variant.name }}</span>
+              <span class="text-xs">{{ variant.price }} ₴</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
+            <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                <label class="block text-sm font-bold text-indigo-900 mb-2">
+                    {{ pg.name }}
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <button 
+                        v-for="opt in pg.options" 
+                        :key="opt.id"
+                        @click="selectedProcesses[pg.id] = opt.name"
+                        class="px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border"
+                        :class="selectedProcesses[pg.id] === opt.name ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
+                    >
+                        {{ opt.name }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="product.modifier_groups && product.modifier_groups.length > 0" class="space-y-4">
+          <div v-for="group in product.modifier_groups" :key="group.id" class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <label class="block text-sm font-bold text-gray-700 mb-2">
+              {{ group.name }} <span v-if="!group.is_required" class="text-gray-400 font-normal text-xs">(Опціонально)</span>
+            </label>
+            
+            <div class="flex flex-wrap gap-2">
+              <button 
+                v-for="mod in group.modifiers" 
+                :key="mod.id"
+                @click="selectedModifiers[group.id] = mod.id"
+                class="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm border"
+                :class="selectedModifiers[group.id] === mod.id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'"
+              >
+                {{ mod.name }}
+                <span v-if="mod.price_change > 0" class="text-xs opacity-70 ml-1">+{{ mod.price_change }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="p-6 border-t bg-gray-50 flex justify-between items-center">
+        <div class="text-2xl font-bold text-gray-900">
+          {{ currentPrice }} ₴
+        </div>
+        <button 
+          @click="handleConfirm"
+          class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-lg shadow-purple-200 active:scale-95 flex items-center gap-2"
+        >
+          <i class="fas fa-cart-plus"></i> Додати
+        </button>
+      </div>
+
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+</style>
+
+============================================================
+FILE: frontend\src\components\stats\SalesTable.vue
+SIZE: 3134 bytes
+============================================================
+<script setup>
+defineProps({
+  orders: Array,
+  loading: Boolean
+})
+
+const emit = defineEmits(['view-details'])
+
+// Helper for date formatting inside template
+const formatDate = (dateString) => {
+  const date = new Date(dateString)
+  return date.toLocaleString('uk-UA', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+</script>
+
+<template>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <table class="w-full text-left">
+        <thead class="bg-gray-100 text-gray-500 uppercase text-xs">
+          <tr>
+            <th class="p-4">ID / Час</th>
+            <th class="p-4">Клієнт</th> 
+            <th class="p-4">Товари (Коротко)</th>
+            <th class="p-4">Оплата</th>
+            <th class="p-4 text-right">Сума</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-if="orders.length === 0" class="text-center text-gray-400">
+            <td colspan="5" class="p-8">
+                <span v-if="loading"><i class="fas fa-spinner fa-spin"></i> Завантаження...</span>
+                <span v-else>Історія замовлень порожня</span>
+            </td>
+          </tr>
+
+          <tr v-for="order in orders" :key="order.id" 
+              @click="emit('view-details', order)"
+              class="hover:bg-blue-50 transition cursor-pointer group">
+            
+            <td class="p-4">
+              <div class="font-bold text-gray-800 group-hover:text-blue-600 transition">#{{ order.id }}</div>
+              <div class="text-sm text-gray-500">{{ formatDate(order.created_at) }}</div>
+            </td>
+
+            <td class="p-4">
+                <div v-if="order.customer">
+                    <div class="font-bold text-gray-700">{{ order.customer.name }}</div>
+                    <div class="text-xs text-gray-400">{{ order.customer.phone }}</div>
+                </div>
+                <div v-else class="text-gray-400 text-sm italic">Гість</div>
+            </td>
+
+            <td class="p-4">
+              <div class="text-sm text-gray-600">
+                 {{ order.items.length }} позицій
+                 <span class="text-xs text-gray-400">({{ order.items[0]?.product_name }}...)</span>
+              </div>
+            </td>
+
+            <td class="p-4">
+              <span v-if="order.payment_method === 'card'" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">
+                <i class="fas fa-credit-card mr-1"></i> Картка
+              </span>
+              <span v-else class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
+                <i class="fas fa-money-bill-wave mr-1"></i> Готівка
+              </span>
+            </td>
+
+            <td class="p-4 text-right font-mono font-bold text-lg text-gray-800">
+              {{ order.total_price }} ₴
+            </td>
+
+          </tr>
+        </tbody>
+      </table>
+    </div>
+</template>
+
+============================================================
+FILE: frontend\src\components\stats\Statistics.vue
+SIZE: 5156 bytes
+============================================================
+<script setup>
+import { onMounted } from 'vue'
+import { useStatistics } from '@/composables/useStatistics'
+import SalesTable from './SalesTable.vue'
+
+const { 
+  orders, loading, 
+  showDetailModal, selectedOrder, 
+  fetchOrders, openDetails, closeDetails 
+} = useStatistics()
+
+// Helper for date formatting (duplicate need for modal, can be util)
+const formatDate = (dateString) => {
+  return new Date(dateString).toLocaleString('uk-UA', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+onMounted(() => fetchOrders())
+</script>
+
+<template>
+  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
+    
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl font-bold text-gray-800">📊 Історія продажів</h2>
+        <p class="text-gray-500">Натисніть на замовлення для деталей</p>
+      </div>
+      <button @click="fetchOrders" class="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition">
+        <i class="fas fa-sync-alt" :class="{'fa-spin': loading}"></i>
+      </button>
+    </div>
+
+    <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
+
+    <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up">
+            
+            <div class="p-6 bg-gray-50 border-b flex justify-between items-start">
+                <div>
+                    <h3 class="text-2xl font-bold text-gray-800">Чек #{{ selectedOrder.id }}</h3>
+                    <p class="text-gray-500 text-sm">{{ formatDate(selectedOrder.created_at) }}</p>
+                </div>
+                <button @click="closeDetails" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto custom-scrollbar">
+                
+                <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-200 text-blue-600 flex items-center justify-center text-lg">
+                        <i class="fas" :class="selectedOrder.customer ? 'fa-user' : 'fa-user-secret'"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-blue-400 uppercase">Покупець</div>
+                        <div class="font-bold text-gray-800 text-lg">
+                            {{ selectedOrder.customer ? selectedOrder.customer.name : 'Гість' }}
+                        </div>
+                        <div v-if="selectedOrder.customer" class="text-sm text-gray-600">
+                            {{ selectedOrder.customer.phone }}
+                        </div>
+                    </div>
+                </div>
+
+                <h4 class="font-bold text-gray-700 mb-3 border-b pb-2">Товари</h4>
+                <div class="space-y-3">
+                    <div v-for="item in selectedOrder.items" :key="item.id" class="flex justify-between items-center text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-gray-800">{{ item.product_name }}</span>
+                            <span v-if="item.details" class="text-xs text-gray-400">({{ item.details }})</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-gray-500">x{{ item.quantity }}</span>
+                            <span class="font-mono font-bold">{{ item.price_at_moment * item.quantity }} ₴</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="p-6 bg-gray-50 border-t">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-500">Метод оплати:</span>
+                    <span class="font-bold uppercase text-sm" 
+                          :class="selectedOrder.payment_method === 'card' ? 'text-blue-600' : 'text-green-600'">
+                        {{ selectedOrder.payment_method === 'card' ? 'Банківська картка' : 'Готівка' }}
+                    </span>
+                </div>
+                <div class="flex justify-between items-center text-3xl font-bold text-gray-900 mt-2">
+                    <span>Разом:</span>
+                    <span>{{ selectedOrder.total_price }} ₴</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+============================================================
+FILE: frontend\src\components\warehouse\Warehouse.vue
+SIZE: 3726 bytes
 ============================================================
 <script setup>
 import { ref, onMounted, defineAsyncComponent } from 'vue'
@@ -951,8 +1898,144 @@ onMounted(() => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/CategoriesTab.vue
-SIZE: 8038 bytes
+FILE: frontend\src\components\warehouse\modals\HistoryModal.vue
+SIZE: 5164 bytes
+============================================================
+<script setup>
+import { ref, watch } from 'vue'
+
+const props = defineProps({
+  isOpen: Boolean,
+  item: Object // Очікуємо об'єкт: { id, type, name }
+})
+
+const emit = defineEmits(['close'])
+const history = ref([])
+const loading = ref(false)
+const error = ref(null)
+
+const formatDate = (dateStr) => {
+  return new Date(dateStr).toLocaleString('uk-UA', { 
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+  })
+}
+
+const fetchHistory = async () => {
+  if (!props.item) return
+  
+  loading.value = true
+  history.value = [] 
+  error.value = null
+
+  try {
+    // URL формується з чистого ID, який ми передали з StockTab
+    const url = `/api/history/?entity_type=${props.item.type}&entity_id=${props.item.id}`
+    
+    console.log("HISTORY MODAL: Requesting ->", url)
+    
+    const res = await fetch(url)
+    
+    if (res.ok) {
+        history.value = await res.json()
+        console.log("HISTORY MODAL: Success! Records found:", history.value.length)
+    } else {
+        console.error("HISTORY MODAL: Server returned status", res.status)
+        error.value = "Помилка сервера"
+    }
+  } catch (e) {
+    console.error("HISTORY MODAL: Network error", e)
+    error.value = "Помилка з'єднання"
+  } finally {
+    loading.value = false
+  }
+}
+
+// Слідкуємо за відкриттям
+watch(() => props.isOpen, (val) => {
+  if (val) {
+    fetchHistory()
+  }
+}, { immediate: true })
+</script>
+
+<template>
+  <div v-if="isOpen" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" @click.self="$emit('close')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-fade-in-up">
+      
+      <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+        <div>
+           <div class="text-xs uppercase font-bold text-gray-400">Історія руху</div>
+           <h3 class="font-bold text-lg text-gray-800">{{ item?.name }}</h3>
+           <p class="text-xs text-gray-400">ID: {{ item?.id }} | Type: {{ item?.type }}</p>
+        </div>
+        <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200">
+            <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-0 custom-scrollbar relative min-h-[200px]">
+         
+         <div v-if="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-500 mb-2"></i> 
+            <span class="text-gray-500">Завантаження...</span>
+         </div>
+
+         <div v-else-if="error" class="p-8 text-center text-red-500">
+            <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+            <p>{{ error }}</p>
+         </div>
+
+         <div v-else-if="history.length === 0" class="p-8 text-center text-gray-400">
+            <i class="fas fa-history text-4xl mb-3 opacity-30"></i>
+            <p>Історія порожня</p>
+         </div>
+         
+         <table v-else class="w-full text-sm text-left">
+           <thead class="bg-gray-100 text-gray-500 text-xs uppercase sticky top-0">
+             <tr>
+               <th class="p-3">Дата</th>
+               <th class="p-3">Причина</th>
+               <th class="p-3 text-right">Зміна</th>
+               <th class="p-3 text-right">Залишок</th>
+             </tr>
+           </thead>
+           <tbody class="divide-y divide-gray-100">
+             <tr v-for="h in history" :key="h.id" class="hover:bg-gray-50 transition-colors">
+               <td class="p-3 text-gray-500 whitespace-nowrap font-mono text-xs">{{ formatDate(h.created_at) }}</td>
+               
+               <td class="p-3">
+                 <span v-if="h.reason === 'manual_correction'" class="bg-gray-200 text-gray-600 px-2 py-1 rounded text-[10px] font-bold">Корекція</span>
+                 <span v-else-if="h.reason && h.reason.includes('sale')" class="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">Продаж</span>
+                 <span v-else class="text-gray-700 font-bold text-xs">{{ h.reason }}</span>
+               </td>
+
+               <td class="p-3 text-right font-mono font-bold" :class="h.change_amount > 0 ? 'text-green-600' : 'text-red-500'">
+                 {{ h.change_amount > 0 ? '+' : '' }}{{ h.change_amount }}
+               </td>
+               
+               <td class="p-3 text-right font-mono text-gray-600">
+                 {{ h.balance_after }}
+               </td>
+             </tr>
+           </tbody>
+         </table>
+      </div>
+
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+============================================================
+FILE: frontend\src\components\warehouse\tabs\CategoriesTab.vue
+SIZE: 8205 bytes
 ============================================================
 <script setup>
 import { ref } from 'vue'
@@ -1124,8 +2207,8 @@ const handleDelete = async (id) => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/ConsumablesTab.vue
-SIZE: 3963 bytes
+FILE: frontend\src\components\warehouse\tabs\ConsumablesTab.vue
+SIZE: 4030 bytes
 ============================================================
 <script setup>
 import { ref } from 'vue'
@@ -1197,22 +2280,57 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/IngredientsTab.vue
-SIZE: 4380 bytes
+FILE: frontend\src\components\warehouse\tabs\IngredientsTab.vue
+SIZE: 6699 bytes
 ============================================================
 <script setup>
-import { ref } from 'vue'
+// 👇 ДОДАНО: onMounted (це було пропущено)
+import { ref, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 
 // Використовуємо глобальні дані
 const { ingredients, units, createItem, deleteItem } = useWarehouse()
 
-const newIngredient = ref({ name: '', unit_id: '', cost_per_unit: 0, stock_quantity: 0 })
+// Локальний стан для категорій
+const categories = ref([])
+
+const newIngredient = ref({ 
+    name: '', 
+    unit_id: '', 
+    cost_per_unit: 0, 
+    stock_quantity: 0, 
+    category_id: null 
+})
+
+// Функція завантаження категорій з бекенду
+const fetchCategories = async () => {
+    try {
+        const response = await fetch('/api/categories/') 
+        if (response.ok) {
+            categories.value = await response.json()
+        }
+    } catch (e) {
+        console.error("Помилка завантаження категорій:", e)
+    }
+}
+
+// Завантажуємо категорії при відкритті вкладки
+onMounted(() => {
+    fetchCategories()
+})
 
 const handleCreate = async () => {
     if(!newIngredient.value.name) return
     const success = await createItem('/api/ingredients/', newIngredient.value)
-    if(success) newIngredient.value = {name:'',unit_id:'',cost_per_unit:0,stock_quantity:0}
+    if(success) {
+        newIngredient.value = {
+            name:'',
+            unit_id:'',
+            cost_per_unit:0,
+            stock_quantity:0,
+            category_id: null
+        }
+    }
 }
 
 const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
@@ -1222,28 +2340,46 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
             <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3>
+            
             <div class="space-y-5">
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва інгредієнта</label>
                     <input v-model="newIngredient.name" placeholder="Напр. Кава в зернах" class="border p-2 rounded-lg w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition">
                 </div>
+
                 <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Категорія</label>
+                        <select v-model="newIngredient.category_id" class="border p-2 rounded-lg w-full bg-white h-[42px]">
+                            <option :value="null">Без категорії</option>
+                            <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                                {{ cat.name }}
+                            </option>
+                        </select>
+                    </div>
+
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Одиниця виміру</label>
                         <select v-model="newIngredient.unit_id" class="border p-2 rounded-lg w-full bg-white h-[42px]">
                             <option value="" disabled>Оберіть...</option>
-                            <option v-for="u in units" :key="u.id" :value="u.id">{{u.name}} ({{u.symbol}})</option>
+                            <option v-for="u in units" :key="u.id" :value="u.id">
+                                {{u.name}} ({{u.symbol}})
+                            </option>
                         </select>
                     </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label>
-                        <input v-model="newIngredient.cost_per_unit" type="number" placeholder="0.00" class="border p-2 rounded-lg w-full">
+                        <input v-model="newIngredient.cost_per_unit" type="number" step="0.01" placeholder="0.00" class="border p-2 rounded-lg w-full">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
+                        <input v-model="newIngredient.stock_quantity" type="number" step="0.01" placeholder="0" class="border p-2 rounded-lg w-full">
                     </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Початковий залишок на складі</label>
-                    <input v-model="newIngredient.stock_quantity" type="number" placeholder="0" class="border p-2 rounded-lg w-full">
-                </div>
+
                 <button @click="handleCreate" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2">
                     <i class="fas fa-plus mr-2"></i> Додати в базу
                 </button>
@@ -1253,19 +2389,32 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
         <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
             <table class="w-full text-sm text-left">
                 <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
-                    <tr><th class="p-4">Назва</th><th class="p-4 text-right">Залишок</th><th class="p-4 text-center">Дії</th></tr>
+                    <tr>
+                        <th class="p-4">Назва</th>
+                        <th class="p-4 text-right">Залишок</th>
+                        <th class="p-4 text-center">Дії</th>
+                    </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50">
                         <td class="p-4 font-bold text-gray-700">
                             {{ i.name }}
-                            <div class="text-xs text-gray-400 font-normal">Собівартість: {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}</div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span v-if="i.category" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
+                                    {{ i.category.name }}
+                                </span>
+                                <span class="text-xs text-gray-400 font-normal">
+                                    {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}
+                                </span>
+                            </div>
                         </td>
                         <td class="p-4 text-right font-mono text-lg" :class="i.stock_quantity > 0 ? 'text-green-600' : 'text-red-500'">
                             {{ i.stock_quantity }} <span class="text-xs text-gray-400 font-sans">{{ i.unit?.symbol }}</span>
                         </td>
                         <td class="p-4 text-center">
-                            <button @click="handleDelete(i.id)" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button>
+                            <button @click="handleDelete(i.id)" class="text-gray-400 hover:text-red-500 px-2 transition">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </td>
                     </tr>
                 </tbody>
@@ -1275,8 +2424,8 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/ProcessesTab.vue
-SIZE: 3531 bytes
+FILE: frontend\src\components\warehouse\tabs\ProcessesTab.vue
+SIZE: 3593 bytes
 ============================================================
 <script setup>
 import { ref } from 'vue'
@@ -1343,8 +2492,8 @@ const deleteProcessOption = (optionId) => deleteItem(`/api/processes/options/${o
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/ProductsTab.vue
-SIZE: 26924 bytes
+FILE: frontend\src\components\warehouse\tabs\ProductsTab.vue
+SIZE: 27367 bytes
 ============================================================
 <script setup>
 import { ref, onMounted, computed } from 'vue'
@@ -1792,8 +2941,8 @@ onMounted(async () => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/RecipesTab.vue
-SIZE: 8158 bytes
+FILE: frontend\src\components\warehouse\tabs\RecipesTab.vue
+SIZE: 8305 bytes
 ============================================================
 <script setup>
 import { ref, computed } from 'vue'
@@ -1945,8 +3094,8 @@ const handleDelete = (id) => deleteItem(`/api/recipes/${id}`)
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/StockTab.vue
-SIZE: 11131 bytes
+FILE: frontend\src\components\warehouse\tabs\StockTab.vue
+SIZE: 11389 bytes
 ============================================================
 <script setup>
 import { ref, computed, onMounted } from 'vue'
@@ -2209,8 +3358,8 @@ onMounted(() => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/tabs/UnitsTab.vue
-SIZE: 1952 bytes
+FILE: frontend\src\components\warehouse\tabs\UnitsTab.vue
+SIZE: 1988 bytes
 ============================================================
 <script setup>
 import { ref } from 'vue'
@@ -2251,1116 +3400,8 @@ const handleCreate = async () => {
 </template>
 
 ============================================================
-FILE: frontend/src/components/warehouse/modals/HistoryModal.vue
-SIZE: 5034 bytes
-============================================================
-<script setup>
-import { ref, watch } from 'vue'
-
-const props = defineProps({
-  isOpen: Boolean,
-  item: Object // Очікуємо об'єкт: { id, type, name }
-})
-
-const emit = defineEmits(['close'])
-const history = ref([])
-const loading = ref(false)
-const error = ref(null)
-
-const formatDate = (dateStr) => {
-  return new Date(dateStr).toLocaleString('uk-UA', { 
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
-  })
-}
-
-const fetchHistory = async () => {
-  if (!props.item) return
-  
-  loading.value = true
-  history.value = [] 
-  error.value = null
-
-  try {
-    // URL формується з чистого ID, який ми передали з StockTab
-    const url = `/api/history/?entity_type=${props.item.type}&entity_id=${props.item.id}`
-    
-    console.log("HISTORY MODAL: Requesting ->", url)
-    
-    const res = await fetch(url)
-    
-    if (res.ok) {
-        history.value = await res.json()
-        console.log("HISTORY MODAL: Success! Records found:", history.value.length)
-    } else {
-        console.error("HISTORY MODAL: Server returned status", res.status)
-        error.value = "Помилка сервера"
-    }
-  } catch (e) {
-    console.error("HISTORY MODAL: Network error", e)
-    error.value = "Помилка з'єднання"
-  } finally {
-    loading.value = false
-  }
-}
-
-// Слідкуємо за відкриттям
-watch(() => props.isOpen, (val) => {
-  if (val) {
-    fetchHistory()
-  }
-}, { immediate: true })
-</script>
-
-<template>
-  <div v-if="isOpen" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" @click.self="$emit('close')">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-fade-in-up">
-      
-      <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-        <div>
-           <div class="text-xs uppercase font-bold text-gray-400">Історія руху</div>
-           <h3 class="font-bold text-lg text-gray-800">{{ item?.name }}</h3>
-           <p class="text-xs text-gray-400">ID: {{ item?.id }} | Type: {{ item?.type }}</p>
-        </div>
-        <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200">
-            <i class="fas fa-times text-xl"></i>
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-0 custom-scrollbar relative min-h-[200px]">
-         
-         <div v-if="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10">
-            <i class="fas fa-spinner fa-spin text-3xl text-blue-500 mb-2"></i> 
-            <span class="text-gray-500">Завантаження...</span>
-         </div>
-
-         <div v-else-if="error" class="p-8 text-center text-red-500">
-            <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
-            <p>{{ error }}</p>
-         </div>
-
-         <div v-else-if="history.length === 0" class="p-8 text-center text-gray-400">
-            <i class="fas fa-history text-4xl mb-3 opacity-30"></i>
-            <p>Історія порожня</p>
-         </div>
-         
-         <table v-else class="w-full text-sm text-left">
-           <thead class="bg-gray-100 text-gray-500 text-xs uppercase sticky top-0">
-             <tr>
-               <th class="p-3">Дата</th>
-               <th class="p-3">Причина</th>
-               <th class="p-3 text-right">Зміна</th>
-               <th class="p-3 text-right">Залишок</th>
-             </tr>
-           </thead>
-           <tbody class="divide-y divide-gray-100">
-             <tr v-for="h in history" :key="h.id" class="hover:bg-gray-50 transition-colors">
-               <td class="p-3 text-gray-500 whitespace-nowrap font-mono text-xs">{{ formatDate(h.created_at) }}</td>
-               
-               <td class="p-3">
-                 <span v-if="h.reason === 'manual_correction'" class="bg-gray-200 text-gray-600 px-2 py-1 rounded text-[10px] font-bold">Корекція</span>
-                 <span v-else-if="h.reason && h.reason.includes('sale')" class="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">Продаж</span>
-                 <span v-else class="text-gray-700 font-bold text-xs">{{ h.reason }}</span>
-               </td>
-
-               <td class="p-3 text-right font-mono font-bold" :class="h.change_amount > 0 ? 'text-green-600' : 'text-red-500'">
-                 {{ h.change_amount > 0 ? '+' : '' }}{{ h.change_amount }}
-               </td>
-               
-               <td class="p-3 text-right font-mono text-gray-600">
-                 {{ h.balance_after }}
-               </td>
-             </tr>
-           </tbody>
-         </table>
-      </div>
-
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-</style>
-
-============================================================
-FILE: frontend/src/components/pos/CartDrawer.vue
-SIZE: 7940 bytes
-============================================================
-<script setup>
-import { ref, watch, onMounted } from 'vue'
-import { useCart } from '@/composables/useCart'
-
-const props = defineProps({
-  isOpen: Boolean
-})
-
-const emit = defineEmits(['close'])
-
-// Підключаємо логіку кошика
-const { 
-  cartItems, 
-  totalSum, 
-  paymentMethod, 
-  isProcessing, 
-  selectedCustomer,
-  fetchCart, 
-  updateQty, 
-  removeItem, 
-  clearCart, 
-  processCheckout,
-  setCustomer,
-  removeCustomer
-} = useCart()
-
-// --- UI Local State (Пошук клієнта) ---
-const customerSearch = ref('')
-const customerResults = ref([])
-
-const handleSearchCustomer = async () => {
-  if (customerSearch.value.length < 2) { customerResults.value = []; return }
-  try {
-    const res = await fetch(`/api/customers/search/?q=${customerSearch.value}`)
-    if (res.ok) customerResults.value = await res.json()
-  } catch (err) { console.error(err) }
-}
-
-const selectCustomerUI = (c) => {
-  setCustomer(c) // Записуємо в глобальний стан
-  customerSearch.value = ''
-  customerResults.value = []
-}
-
-const handleCheckout = async () => {
-  const res = await processCheckout()
-  alert(res.text)
-  if (res.success) {
-    emit('close')
-  }
-}
-
-// Завантажуємо кошик при відкритті
-watch(() => props.isOpen, (val) => {
-  if (val) fetchCart()
-})
-</script>
-
-<template>
-  <div class="fixed inset-0 z-50 flex justify-end transition-opacity duration-300" 
-       :class="isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'">
-    
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')"></div>
-
-    <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col transition-transform duration-300 transform"
-         :class="isOpen ? 'translate-x-0' : 'translate-x-full'">
-      
-      <div class="p-5 bg-gray-900 text-white flex justify-between items-center shadow-md">
-        <h2 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-shopping-cart"></i> Кошик</h2>
-        <div class="flex gap-3">
-            <button @click="clearCart(false)" class="text-gray-400 hover:text-red-400 transition" title="Очистити все"><i class="fas fa-trash-alt"></i></button>
-            <button @click="emit('close')" class="text-gray-400 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
-        </div>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-4 bg-gray-50 custom-scrollbar">
-        <div v-if="cartItems.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
-          <i class="fas fa-shopping-basket text-6xl mb-4 opacity-20"></i>
-          <p>Кошик порожній</p>
-        </div>
-
-        <div v-else class="space-y-3">
-          <div v-for="item in cartItems" :key="item.cart_item_id" 
-               class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
-            
-            <div class="flex justify-between items-start">
-              <span class="font-bold text-gray-800 text-lg leading-tight">{{ item.name }}</span>
-              <span class="font-mono font-bold text-gray-900 whitespace-nowrap">{{ (item.price * item.quantity).toFixed(2) }} ₴</span>
-            </div>
-
-            <div class="flex justify-between items-center bg-gray-50 rounded-lg p-1">
-                <div class="flex items-center gap-3">
-                    <button @click="updateQty(item.cart_item_id, -1)" 
-                            class="w-8 h-8 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center justify-center font-bold shadow-sm active:scale-95">-</button>
-                    <span class="w-6 text-center font-bold text-gray-800">{{ item.quantity }}</span>
-                    <button @click="updateQty(item.cart_item_id, 1)" 
-                            class="w-8 h-8 rounded-full bg-gray-800 text-white hover:bg-gray-700 flex items-center justify-center font-bold shadow-sm active:scale-95">+</button>
-                </div>
-                
-                <button @click="removeItem(item.cart_item_id)" class="text-red-400 hover:text-red-600 p-2">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="p-6 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        
-        <div class="mb-4">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Клієнт</label>
-            <div v-if="!selectedCustomer" class="relative">
-                <div class="flex items-center border rounded-lg bg-gray-50 overflow-hidden">
-                    <i class="fas fa-search text-gray-400 ml-3"></i>
-                    <input v-model="customerSearch" @input="handleSearchCustomer" placeholder="Телефон або ім'я..." class="w-full p-2 bg-transparent outline-none text-sm">
-                </div>
-                <div v-if="customerResults.length > 0" class="absolute bottom-full left-0 w-full bg-white border shadow-xl rounded-lg mb-1 max-h-40 overflow-y-auto z-10">
-                    <div v-for="c in customerResults" :key="c.id" @click="selectCustomerUI(c)" class="p-2 hover:bg-blue-50 cursor-pointer border-b flex justify-between items-center">
-                         <div><div class="font-bold text-sm">{{ c.name }}</div><div class="text-xs text-gray-500">{{ c.phone }}</div></div>
-                         <i class="fas fa-plus-circle text-blue-500"></i>
-                    </div>
-                </div>
-            </div>
-            <div v-else class="flex justify-between items-center bg-blue-50 border border-blue-200 p-2 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">{{ selectedCustomer.name.charAt(0) }}</div>
-                    <div><div class="font-bold text-sm text-blue-900">{{ selectedCustomer.name }}</div><div class="text-xs text-blue-600">{{ selectedCustomer.phone }}</div></div>
-                </div>
-                <button @click="removeCustomer" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-times"></i></button>
-            </div>
-        </div>
-
-        <div class="mb-4">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Оплата</label>
-            <div class="grid grid-cols-2 gap-3">
-                <button @click="paymentMethod = 'cash'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-money-bill-wave"></i> Готівка </button>
-                <button @click="paymentMethod = 'card'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-credit-card"></i> Картка </button>
-            </div>
-        </div>
-
-        <div class="flex justify-between items-center text-2xl font-bold mb-4 text-gray-800">
-          <span>Разом:</span><span>{{ totalSum.toFixed(2) }} ₴</span>
-        </div>
-        
-        <button @click="handleCheckout" :disabled="cartItems.length === 0 || isProcessing" class="w-full py-4 rounded-xl font-bold text-lg text-white transition shadow-lg flex justify-center items-center gap-2 disabled:bg-gray-400" :class="paymentMethod === 'cash' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'">
-          <span v-if="isProcessing"><i class="fas fa-spinner fa-spin"></i> Обробка...</span>
-          <span v-else>Оплатити</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</template>
-
-============================================================
-FILE: frontend/src/components/pos/ProductCard.vue
-SIZE: 3117 bytes
-============================================================
-<script setup>
-import { computed } from 'vue'
-
-const props = defineProps({ 
-  product: { type: Object, required: true } 
-})
-
-// Явно вказуємо, що компонент реагує на клік, хоча це native event
-const emit = defineEmits(['click'])
-
-// Логіка іконок (View Logic)
-const productIcon = computed(() => {
-  const name = props.product.name?.toLowerCase() || ''
-  const cat = props.product.category?.name?.toLowerCase() || ''
-  
-  if (name.includes('кава') || name.includes('еспресо') || cat.includes('напої')) return 'fas fa-mug-hot'
-  if (name.includes('чай')) return 'fas fa-leaf'
-  if (name.includes('торт') || name.includes('десерт') || cat.includes('десерти')) return 'fas fa-birthday-cake'
-  if (name.includes('круасан')) return 'fas fa-bread-slice'
-  
-  return 'fas fa-box'
-})
-
-// Логіка кольорів (View Logic)
-const cardColor = computed(() => {
-  const slug = props.product.category?.slug || ''
-  const colors = {
-    'hot-drinks': 'bg-orange-50 text-orange-600 border-orange-100',
-    'desserts': 'bg-pink-50 text-pink-600 border-pink-100'
-  }
-  return colors[slug] || 'bg-white text-gray-700 border-gray-100'
-})
-
-const hasOptions = computed(() => {
-  return props.product.has_variants || (props.product.modifier_groups && props.product.modifier_groups.length > 0)
-})
-
-// Логіка ціни: показуємо мінімальну, якщо є варіанти
-const displayPrice = computed(() => {
-  if (props.product.has_variants && props.product.variants?.length > 0) {
-    const prices = props.product.variants.map(v => v.price)
-    return Math.min(...prices)
-  }
-  return props.product.price
-})
-</script>
-
-<template>
-  <div 
-    @click="emit('click', product)"
-    class="relative group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-2xl border overflow-hidden bg-white"
-  >
-    <div class="h-32 flex items-center justify-center text-5xl transition-transform group-hover:scale-110" :class="cardColor">
-      <i :class="productIcon"></i>
-    </div>
-
-    <div class="p-4">
-      <div v-if="product.category" class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-        {{ product.category.name }}
-      </div>
-      
-      <h3 class="font-bold text-lg text-gray-800 leading-tight mb-2 line-clamp-2 min-h-[3.5rem]">
-        {{ product.name }}
-      </h3>
-      
-      <div class="flex justify-between items-center mt-3">
-        <div class="flex flex-col">
-            <span v-if="product.has_variants" class="text-xs text-gray-400">від</span>
-            <span class="text-xl font-bold text-gray-900">{{ displayPrice }} ₴</span>
-        </div>
-        
-        <button class="w-8 h-8 rounded-full flex items-center justify-center transition shadow-lg"
-            :class="hasOptions ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-gray-900 hover:bg-green-500 text-white'">
-          <i class="fas" :class="hasOptions ? 'fa-sliders-h text-xs' : 'fa-plus text-xs'"></i>
-        </button>
-      </div>
-    </div>
-  </div>
-</template>
-
-============================================================
-FILE: frontend/src/components/pos/ProductModal.vue
-SIZE: 8079 bytes
-============================================================
-<script setup>
-import { ref, computed, watch } from 'vue'
-import { useCart } from '@/composables/useCart'
-
-const props = defineProps({
-  isOpen: Boolean,
-  product: Object 
-})
-
-const emit = defineEmits(['close'])
-
-const { addToCart } = useCart()
-
-const selectedVariant = ref(null)
-const selectedModifiers = ref({}) 
-const selectedProcesses = ref({}) 
-
-// --- Ініціалізація (Reset & Defaults) ---
-watch(() => props.isOpen, (isOpen) => {
-  if (isOpen && props.product) {
-    selectedVariant.value = null
-    selectedModifiers.value = {}
-    selectedProcesses.value = {} 
-
-    // Auto-select Variant (cheapest)
-    if (props.product.variants && props.product.variants.length > 0) {
-      const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
-      selectedVariant.value = sorted[0]
-    }
-
-    // Auto-select Required Modifiers
-    if (props.product.modifier_groups) {
-      props.product.modifier_groups.forEach(group => {
-        if (group.is_required && group.modifiers.length > 0) {
-          selectedModifiers.value[group.id] = group.modifiers[0].id
-        }
-      })
-    }
-
-    // Auto-select First Process Option
-    if (props.product.process_groups) {
-        props.product.process_groups.forEach(pg => {
-            if (pg.options && pg.options.length > 0) {
-                selectedProcesses.value[pg.id] = pg.options[0].name
-            }
-        })
-    }
-  }
-})
-
-const currentPrice = computed(() => {
-  if (!props.product) return 0
-  let price = 0
-  
-  if (props.product.has_variants && selectedVariant.value) {
-    price += selectedVariant.value.price
-  } else {
-    price += props.product.price
-  }
-  
-  if (props.product.modifier_groups) {
-    props.product.modifier_groups.forEach(group => {
-      const modId = selectedModifiers.value[group.id]
-      if (modId) {
-        const mod = group.modifiers.find(m => m.id === modId)
-        if (mod) price += mod.price_change
-      }
-    })
-  }
-  return price
-})
-
-// Генерація назви для кошика
-const generateName = () => {
-  let name = props.product.name
-  if (selectedVariant.value) {
-    name += ` (${selectedVariant.value.name})`
-  }
-  const processValues = Object.values(selectedProcesses.value)
-  if (processValues.length > 0) {
-      name += ` [${processValues.join(', ')}]`
-  }
-  return name
-}
-
-const handleConfirm = async () => {
-  if (props.product.has_variants && !selectedVariant.value) {
-      alert("Будь ласка, оберіть розмір/варіант")
-      return
-  }
-
-  // Формуємо об'єкт для кошика (співпадає з backend схемою)
-  const payload = {
-    product_id: props.product.id,
-    variant_id: selectedVariant.value ? selectedVariant.value.id : null,
-    modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    quantity: 1, // За замовчуванням 1
-    // Додаткові поля для UI, які не йдуть в БД, але можуть бути корисні для оптимістичного оновлення
-    name: generateName(),
-    price: currentPrice.value
-  }
-
-  await addToCart(payload) // Викликаємо глобальну дію
-  emit('close')
-}
-
-</script>
-
-<template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')"></div>
-
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up">
-      
-      <div class="p-6 bg-gray-50 border-b flex justify-between items-start">
-        <div>
-           <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
-             {{ product.category?.name || 'Товар' }}
-           </div>
-           <h2 class="text-3xl font-bold text-gray-800 leading-none">{{ product.name }}</h2>
-        </div>
-        <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm hover:shadow transition">
-          <i class="fas fa-times text-xl"></i>
-        </button>
-      </div>
-
-      <div class="p-6 overflow-y-auto space-y-6 custom-scrollbar">
-        
-        <div v-if="product.has_variants && product.variants.length > 0">
-          <label class="block text-sm font-bold text-gray-900 mb-3">Оберіть розмір/вагу:</label>
-          <div class="grid grid-cols-3 gap-3">
-            <button 
-              v-for="variant in product.variants" 
-              :key="variant.id"
-              @click="selectedVariant = variant"
-              class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1"
-              :class="selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 text-gray-600'"
-            >
-              <span class="font-bold">{{ variant.name }}</span>
-              <span class="text-xs">{{ variant.price }} ₴</span>
-            </button>
-          </div>
-        </div>
-
-        <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
-            <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                <label class="block text-sm font-bold text-indigo-900 mb-2">
-                    {{ pg.name }}
-                </label>
-                <div class="flex flex-wrap gap-2">
-                    <button 
-                        v-for="opt in pg.options" 
-                        :key="opt.id"
-                        @click="selectedProcesses[pg.id] = opt.name"
-                        class="px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border"
-                        :class="selectedProcesses[pg.id] === opt.name ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
-                    >
-                        {{ opt.name }}
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div v-if="product.modifier_groups && product.modifier_groups.length > 0" class="space-y-4">
-          <div v-for="group in product.modifier_groups" :key="group.id" class="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <label class="block text-sm font-bold text-gray-700 mb-2">
-              {{ group.name }} <span v-if="!group.is_required" class="text-gray-400 font-normal text-xs">(Опціонально)</span>
-            </label>
-            
-            <div class="flex flex-wrap gap-2">
-              <button 
-                v-for="mod in group.modifiers" 
-                :key="mod.id"
-                @click="selectedModifiers[group.id] = mod.id"
-                class="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm border"
-                :class="selectedModifiers[group.id] === mod.id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'"
-              >
-                {{ mod.name }}
-                <span v-if="mod.price_change > 0" class="text-xs opacity-70 ml-1">+{{ mod.price_change }}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="p-6 border-t bg-gray-50 flex justify-between items-center">
-        <div class="text-2xl font-bold text-gray-900">
-          {{ currentPrice }} ₴
-        </div>
-        <button 
-          @click="handleConfirm"
-          class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-lg shadow-purple-200 active:scale-95 flex items-center gap-2"
-        >
-          <i class="fas fa-cart-plus"></i> Додати
-        </button>
-      </div>
-
-    </div>
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-</style>
-
-============================================================
-FILE: frontend/src/components/crm/Customers.vue
-SIZE: 11636 bytes
-============================================================
-<script setup>
-import { ref, onMounted, computed } from 'vue'
-import axios from 'axios'
-
-// --- КОНФІГУРАЦІЯ API ---
-const API_URL = 'http://localhost:8001/customers/'
-
-// --- СТАН ---
-const customers = ref([])
-const showModal = ref(false)
-const searchQuery = ref('')
-const isEditing = ref(false)
-const editingId = ref(null)
-
-// Форма
-const formData = ref({
-    name: '',
-    phone: '',
-    email: '',
-    notes: ''
-})
-
-// --- API ЗАПИТИ ---
-
-const fetchCustomers = async () => {
-    try {
-        const res = await axios.get(API_URL)
-        console.log("Отримані клієнти:", res.data)
-        customers.value = res.data
-    } catch (err) {
-        console.error("Помилка завантаження клієнтів:", err)
-    }
-}
-
-const handleSave = async () => {
-    if (!formData.value.name) return alert("Ім'я обов'язкове!")
-    if (!formData.value.phone) return alert("Телефон обов'язковий!")
-
-    try {
-        if (isEditing.value) {
-            await axios.put(`${API_URL}${editingId.value}`, formData.value)
-        } else {
-            await axios.post(API_URL, formData.value)
-        }
-        
-        closeModal()
-        await fetchCustomers()
-    } catch (err) {
-        console.error(err)
-        alert("Помилка при збереженні. Можливо такий телефон вже існує.")
-    }
-}
-
-const deleteCustomer = async (id) => {
-    if(!confirm("Видалити цього клієнта з бази?")) return
-    try {
-        await axios.delete(`${API_URL}${id}`)
-        fetchCustomers()
-    } catch (err) {
-        alert("Помилка видалення")
-    }
-}
-
-// --- ЛОГІКА ІНТЕРФЕЙСУ ---
-
-const openCreateModal = () => {
-    isEditing.value = false
-    editingId.value = null
-    formData.value = { name: '', phone: '', email: '', notes: '' }
-    showModal.value = true
-}
-
-const openEditModal = (customer) => {
-    isEditing.value = true
-    editingId.value = customer.id
-    formData.value = {
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email || '',
-        notes: customer.notes || ''
-    }
-    showModal.value = true
-}
-
-const closeModal = () => {
-    showModal.value = false
-    formData.value = { name: '', phone: '', email: '', notes: '' }
-}
-
-const filteredCustomers = computed(() => {
-    if (!searchQuery.value) return customers.value
-    const q = searchQuery.value.toLowerCase()
-    return customers.value.filter(c => 
-        c.name.toLowerCase().includes(q) || 
-        (c.phone && c.phone.includes(q)) ||
-        (c.email && c.email.toLowerCase().includes(q))
-    )
-})
-
-onMounted(fetchCustomers)
-</script>
-
-<template>
-    <div class="h-full w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden md:ml-64 transition-all duration-300" style="width: calc(100% - 16rem);">
-        
-        <div class="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/50">
-            <div>
-                <h2 class="text-xl font-bold text-gray-800">Клієнти</h2>
-                <p class="text-xs text-gray-500">База контактів CRM</p>
-            </div>
-
-            <div class="flex w-full md:w-auto gap-3">
-                <div class="relative flex-1 md:w-64">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                        <i class="fas fa-search"></i>
-                    </span>
-                    <input 
-                        v-model="searchQuery" 
-                        type="text" 
-                        placeholder="Пошук (ім'я, тел, email)..." 
-                        class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none text-sm transition bg-white"
-                    >
-                </div>
-
-                <button 
-                    @click="openCreateModal" 
-                    class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold shadow-lg shadow-blue-100 transition transform active:scale-95 flex items-center gap-2 whitespace-nowrap text-sm"
-                >
-                    <i class="fas fa-user-plus"></i>
-                    <span>Додати</span>
-                </button>
-            </div>
-        </div>
-
-        <div class="flex-1 overflow-auto">
-            <table class="w-full text-left text-sm text-gray-600">
-                <thead class="bg-gray-50 text-xs uppercase font-bold text-gray-500 sticky top-0 z-10 shadow-sm">
-                    <tr>
-                        <th class="p-4 border-b">Клієнт</th>
-                        <th class="p-4 border-b">Телефон</th>
-                        <th class="p-4 border-b">Email</th>
-                        <th class="p-4 border-b">Нотатки</th>
-                        <th class="p-4 border-b text-center">Дії</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    <tr v-if="filteredCustomers.length === 0">
-                        <td colspan="5" class="p-8 text-center text-gray-400">
-                            <div class="flex flex-col items-center gap-2">
-                                <i class="fas fa-users-slash text-2xl"></i>
-                                <span>Клієнтів не знайдено</span>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr v-for="c in filteredCustomers" :key="c.id" class="hover:bg-blue-50/30 transition group">
-                        
-                        <td class="p-4 font-medium text-gray-900">
-                            <div class="flex items-center gap-3">
-                                <div class="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-200 shadow-sm shrink-0">
-                                    {{ c.name ? c.name.charAt(0).toUpperCase() : '?' }}
-                                </div>
-                                <div class="flex flex-col">
-                                    <span v-if="c.name">{{ c.name }}</span>
-                                    <span v-else class="text-red-500 text-xs font-bold">MISSING NAME (ID: {{ c.id }})</span>
-                                </div>
-                            </div>
-                        </td>
-                        
-                        <td class="p-4">
-                             <span class="font-mono text-xs text-gray-700 bg-gray-50/50 px-2 py-1 rounded border border-gray-100">
-                                {{ c.phone || '---' }}
-                             </span>
-                        </td>
-                        
-                        <td class="p-4 text-blue-500">
-                            {{ c.email || '-' }}
-                        </td>
-                        
-                        <td class="p-4 text-xs italic text-gray-400 max-w-xs truncate">
-                            {{ c.notes || '-' }}
-                        </td>
-                        
-                        <td class="p-4 text-center">
-                            <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    @click="openEditModal(c)" 
-                                    class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
-                                    title="Редагувати"
-                                >
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                <button 
-                                    @click="deleteCustomer(c.id)" 
-                                    class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
-                                    title="Видалити"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div v-if="showModal" class="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 transform transition-all scale-100">
-                <div class="flex justify-between items-center mb-6 border-b pb-4 border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-800">
-                        {{ isEditing ? 'Редагувати клієнта' : 'Новий клієнт' }}
-                    </h2>
-                    <button @click="closeModal" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-                        &times;
-                    </button>
-                </div>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Ім'я <span class="text-red-500">*</span></label>
-                        <input v-model="formData.name" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="ПІБ">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Телефон <span class="text-red-500">*</span></label>
-                        <input v-model="formData.phone" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="+380...">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Email</label>
-                        <input v-model="formData.email" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition" placeholder="client@mail.com">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Нотатки</label>
-                        <textarea v-model="formData.notes" class="w-full border-gray-200 border p-3 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none bg-gray-50 focus:bg-white transition h-24 resize-none" placeholder="Уподобання, день народження..."></textarea>
-                    </div>
-                </div>
-
-                <div class="flex gap-3 mt-8 pt-4 border-t border-gray-50">
-                    <button @click="closeModal" class="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition">Скасувати</button>
-                    <button @click="handleSave" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition transform active:scale-95">
-                        {{ isEditing ? 'Зберегти зміни' : 'Створити' }}
-                    </button>
-                </div>
-            </div>
-        </div>
-
-    </div>
-</template>
-
-============================================================
-FILE: frontend/src/components/crm/CustomersTable.vue
-SIZE: 2455 bytes
-============================================================
-<script setup>
-defineProps({
-  customers: Array,
-  loading: Boolean
-})
-
-const emit = defineEmits(['edit', 'delete', 'history'])
-</script>
-
-<template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-    <table class="w-full text-left">
-      <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
-        <tr>
-          <th class="p-4">Ім'я</th>
-          <th class="p-4">Телефон</th>
-          <th class="p-4">Email / Нотатки</th>
-          <th class="p-4 text-center">Дії</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-100">
-        <tr v-if="customers.length === 0" class="text-center text-gray-400">
-          <td colspan="4" class="p-8">
-              <span v-if="loading"><i class="fas fa-spinner fa-spin"></i> Завантаження...</span>
-              <span v-else>Клієнтів не знайдено</span>
-          </td>
-        </tr>
-
-        <tr v-for="c in customers" :key="c.id" class="hover:bg-blue-50 transition group">
-          <td class="p-4 font-bold text-gray-800">
-              <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
-                      {{ c.name.charAt(0) }}
-                  </div>
-                  {{ c.name }}
-              </div>
-          </td>
-          <td class="p-4 font-mono text-gray-600">{{ c.phone }}</td>
-          <td class="p-4 text-sm text-gray-500">
-              <div v-if="c.email">{{ c.email }}</div>
-              <div v-if="c.notes" class="italic text-xs mt-1">"{{ c.notes }}"</div>
-          </td>
-          <td class="p-4 text-center flex justify-center gap-2">
-              <button @click="emit('history', c)" class="text-purple-400 hover:text-purple-600 transition px-2" title="Історія покупок">
-                  <i class="fas fa-history"></i>
-              </button>
-              <button @click="emit('edit', c)" class="text-gray-400 hover:text-blue-500 transition px-2" title="Редагувати">
-                  <i class="fas fa-pen"></i>
-              </button>
-              <button @click="emit('delete', c.id)" class="text-gray-400 hover:text-red-500 transition px-2" title="Видалити">
-                  <i class="fas fa-trash"></i>
-              </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</template>
-
-============================================================
-FILE: frontend/src/components/stats/SalesTable.vue
-SIZE: 3055 bytes
-============================================================
-<script setup>
-defineProps({
-  orders: Array,
-  loading: Boolean
-})
-
-const emit = defineEmits(['view-details'])
-
-// Helper for date formatting inside template
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return date.toLocaleString('uk-UA', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  })
-}
-</script>
-
-<template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <table class="w-full text-left">
-        <thead class="bg-gray-100 text-gray-500 uppercase text-xs">
-          <tr>
-            <th class="p-4">ID / Час</th>
-            <th class="p-4">Клієнт</th> 
-            <th class="p-4">Товари (Коротко)</th>
-            <th class="p-4">Оплата</th>
-            <th class="p-4 text-right">Сума</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-if="orders.length === 0" class="text-center text-gray-400">
-            <td colspan="5" class="p-8">
-                <span v-if="loading"><i class="fas fa-spinner fa-spin"></i> Завантаження...</span>
-                <span v-else>Історія замовлень порожня</span>
-            </td>
-          </tr>
-
-          <tr v-for="order in orders" :key="order.id" 
-              @click="emit('view-details', order)"
-              class="hover:bg-blue-50 transition cursor-pointer group">
-            
-            <td class="p-4">
-              <div class="font-bold text-gray-800 group-hover:text-blue-600 transition">#{{ order.id }}</div>
-              <div class="text-sm text-gray-500">{{ formatDate(order.created_at) }}</div>
-            </td>
-
-            <td class="p-4">
-                <div v-if="order.customer">
-                    <div class="font-bold text-gray-700">{{ order.customer.name }}</div>
-                    <div class="text-xs text-gray-400">{{ order.customer.phone }}</div>
-                </div>
-                <div v-else class="text-gray-400 text-sm italic">Гість</div>
-            </td>
-
-            <td class="p-4">
-              <div class="text-sm text-gray-600">
-                 {{ order.items.length }} позицій
-                 <span class="text-xs text-gray-400">({{ order.items[0]?.product_name }}...)</span>
-              </div>
-            </td>
-
-            <td class="p-4">
-              <span v-if="order.payment_method === 'card'" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">
-                <i class="fas fa-credit-card mr-1"></i> Картка
-              </span>
-              <span v-else class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
-                <i class="fas fa-money-bill-wave mr-1"></i> Готівка
-              </span>
-            </td>
-
-            <td class="p-4 text-right font-mono font-bold text-lg text-gray-800">
-              {{ order.total_price }} ₴
-            </td>
-
-          </tr>
-        </tbody>
-      </table>
-    </div>
-</template>
-
-============================================================
-FILE: frontend/src/components/stats/Statistics.vue
-SIZE: 5047 bytes
-============================================================
-<script setup>
-import { onMounted } from 'vue'
-import { useStatistics } from '@/composables/useStatistics'
-import SalesTable from './SalesTable.vue'
-
-const { 
-  orders, loading, 
-  showDetailModal, selectedOrder, 
-  fetchOrders, openDetails, closeDetails 
-} = useStatistics()
-
-// Helper for date formatting (duplicate need for modal, can be util)
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString('uk-UA', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  })
-}
-
-onMounted(() => fetchOrders())
-</script>
-
-<template>
-  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
-    
-    <div class="flex justify-between items-center mb-8">
-      <div>
-        <h2 class="text-3xl font-bold text-gray-800">📊 Історія продажів</h2>
-        <p class="text-gray-500">Натисніть на замовлення для деталей</p>
-      </div>
-      <button @click="fetchOrders" class="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition">
-        <i class="fas fa-sync-alt" :class="{'fa-spin': loading}"></i>
-      </button>
-    </div>
-
-    <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
-
-    <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up">
-            
-            <div class="p-6 bg-gray-50 border-b flex justify-between items-start">
-                <div>
-                    <h3 class="text-2xl font-bold text-gray-800">Чек #{{ selectedOrder.id }}</h3>
-                    <p class="text-gray-500 text-sm">{{ formatDate(selectedOrder.created_at) }}</p>
-                </div>
-                <button @click="closeDetails" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-2xl"></i>
-                </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto custom-scrollbar">
-                
-                <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-blue-200 text-blue-600 flex items-center justify-center text-lg">
-                        <i class="fas" :class="selectedOrder.customer ? 'fa-user' : 'fa-user-secret'"></i>
-                    </div>
-                    <div>
-                        <div class="text-xs font-bold text-blue-400 uppercase">Покупець</div>
-                        <div class="font-bold text-gray-800 text-lg">
-                            {{ selectedOrder.customer ? selectedOrder.customer.name : 'Гість' }}
-                        </div>
-                        <div v-if="selectedOrder.customer" class="text-sm text-gray-600">
-                            {{ selectedOrder.customer.phone }}
-                        </div>
-                    </div>
-                </div>
-
-                <h4 class="font-bold text-gray-700 mb-3 border-b pb-2">Товари</h4>
-                <div class="space-y-3">
-                    <div v-for="item in selectedOrder.items" :key="item.id" class="flex justify-between items-center text-sm">
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-gray-800">{{ item.product_name }}</span>
-                            <span v-if="item.details" class="text-xs text-gray-400">({{ item.details }})</span>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <span class="text-gray-500">x{{ item.quantity }}</span>
-                            <span class="font-mono font-bold">{{ item.price_at_moment * item.quantity }} ₴</span>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            <div class="p-6 bg-gray-50 border-t">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-gray-500">Метод оплати:</span>
-                    <span class="font-bold uppercase text-sm" 
-                          :class="selectedOrder.payment_method === 'card' ? 'text-blue-600' : 'text-green-600'">
-                        {{ selectedOrder.payment_method === 'card' ? 'Банківська картка' : 'Готівка' }}
-                    </span>
-                </div>
-                <div class="flex justify-between items-center text-3xl font-bold text-gray-900 mt-2">
-                    <span>Разом:</span>
-                    <span>{{ selectedOrder.total_price }} ₴</span>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-  </div>
-</template>
-
-<style scoped>
-.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-</style>
-
-============================================================
-FILE: frontend/src/composables/useCart.js
-SIZE: 4278 bytes
+FILE: frontend\src\composables\useCart.js
+SIZE: 4422 bytes
 ============================================================
 import { ref, computed } from 'vue'
 
@@ -3509,8 +3550,8 @@ export function useCart() {
 }
 
 ============================================================
-FILE: frontend/src/composables/useCustomers.js
-SIZE: 3642 bytes
+FILE: frontend\src\composables\useCustomers.js
+SIZE: 3782 bytes
 ============================================================
 import { ref, watch } from 'vue'
 
@@ -3655,8 +3696,8 @@ export function useCustomers() {
 }
 
 ============================================================
-FILE: frontend/src/composables/useProducts.js
-SIZE: 8062 bytes
+FILE: frontend\src\composables\useProducts.js
+SIZE: 8253 bytes
 ============================================================
 import { ref, computed } from 'vue'
 import axios from 'axios'
@@ -3852,8 +3893,8 @@ export function useProducts() {
 }
 
 ============================================================
-FILE: frontend/src/composables/useStatistics.js
-SIZE: 936 bytes
+FILE: frontend\src\composables\useStatistics.js
+SIZE: 979 bytes
 ============================================================
 import { ref } from 'vue'
 
@@ -3901,8 +3942,8 @@ export function useStatistics() {
 }
 
 ============================================================
-FILE: frontend/src/composables/useWarehouse.js
-SIZE: 3946 bytes
+FILE: frontend\src\composables\useWarehouse.js
+SIZE: 4065 bytes
 ============================================================
 import { ref } from 'vue'
 
@@ -4026,8 +4067,157 @@ export function useWarehouse() {
 }
 
 ============================================================
-FILE: product_service/Dockerfile
-SIZE: 422 bytes
+FILE: order_service\Dockerfile
+SIZE: 421 bytes
+============================================================
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Копіюємо requirements і встановлюємо залежності
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- ВИПРАВЛЕННЯ ТУТ ---
+# Копіюємо ВСІ файли з поточної папки (main.py, schemas.py і т.д.)
+COPY . .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+============================================================
+FILE: order_service\main.py
+SIZE: 3137 bytes
+============================================================
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import redis
+import os
+import json
+import uuid
+from typing import List
+from schemas import CartItemCreate, CartItem # Імпортуємо схеми
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+REDIS_HOST = os.getenv("REDIS_HOST", "pos_redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
+# decode_responses=True економить нам час на декодування байтів
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+CART_KEY = "pos_cart_v2" # Змінимо ключ, щоб не конфліктувати зі старим
+
+@app.get("/")
+def read_root():
+    return {"message": "Advanced Order Service is running!"}
+
+# --- ОТРИМАТИ КОШИК ---
+@app.get("/cart/", response_model=List[CartItem])
+def get_cart():
+    # Отримуємо всі дані з хешу
+    raw_data = r.hgetall(CART_KEY)
+    cart_items = []
+    
+    for key, value in raw_data.items():
+        try:
+            item = json.loads(value)
+            cart_items.append(item)
+        except json.JSONDecodeError:
+            continue
+            
+    return cart_items
+
+# --- ДОДАТИ ТОВАР ---
+@app.post("/cart/add", response_model=CartItem)
+def add_item(item_data: CartItemCreate):
+    # Генеруємо унікальний ID для цього запису в кошику
+    # Це дозволяє мати два однакових товари з різними модифікаторами
+    cart_item_id = str(uuid.uuid4())
+    
+    new_item = CartItem(
+        cart_item_id=cart_item_id,
+        **item_data.dict()
+    )
+    
+    # Зберігаємо JSON в Redis: Key=UUID, Value=JSON String
+    r.hset(CART_KEY, cart_item_id, json.dumps(new_item.dict()))
+    
+    return new_item
+
+# --- ЗМІНИТИ КІЛЬКІСТЬ (+/-) ---
+@app.post("/cart/{cart_item_id}/update")
+def update_quantity(cart_item_id: str, change: int):
+    raw_json = r.hget(CART_KEY, cart_item_id)
+    if not raw_json:
+        raise HTTPException(status_code=404, detail="Item not found")
+        
+    item = json.loads(raw_json)
+    new_qty = item['quantity'] + change
+    
+    if new_qty <= 0:
+        # Якщо кількість <= 0, видаляємо
+        r.hdel(CART_KEY, cart_item_id)
+        return {"status": "removed", "cart_item_id": cart_item_id}
+    else:
+        # Оновлюємо кількість
+        item['quantity'] = new_qty
+        r.hset(CART_KEY, cart_item_id, json.dumps(item))
+        return {"status": "updated", "quantity": new_qty}
+
+# --- ВИДАЛИТИ ТОВАР ---
+@app.delete("/cart/{cart_item_id}")
+def remove_item(cart_item_id: str):
+    r.hdel(CART_KEY, cart_item_id)
+    return {"status": "removed"}
+
+# --- ОЧИСТИТИ КОШИК ---
+@app.delete("/cart/")
+def clear_cart():
+    r.delete(CART_KEY)
+    return {"status": "cleared"}
+
+============================================================
+FILE: order_service\requirements.txt
+SIZE: 35 bytes
+============================================================
+fastapi
+uvicorn
+redis
+pydantic
+
+
+============================================================
+FILE: order_service\schemas.py
+SIZE: 604 bytes
+============================================================
+from pydantic import BaseModel
+from typing import List, Optional
+
+class ModifierItem(BaseModel):
+    modifier_id: int
+
+class CartItemCreate(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    modifiers: List[ModifierItem] = []
+    quantity: int = 1
+    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
+    name: str 
+    price: float
+
+class CartItem(CartItemCreate):
+    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
+
+============================================================
+FILE: product_service\Dockerfile
+SIZE: 434 bytes
 ============================================================
 FROM python:3.9-slim
 
@@ -4044,8 +4234,8 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ============================================================
-FILE: product_service/database.py
-SIZE: 1169 bytes
+FILE: product_service\database.py
+SIZE: 1198 bytes
 ============================================================
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -4079,8 +4269,8 @@ def get_db():
         db.close()
 
 ============================================================
-FILE: product_service/main.py
-SIZE: 1430 bytes
+FILE: product_service\main.py
+SIZE: 1477 bytes
 ============================================================
 # FILE: product_service/main.py
 
@@ -4132,8 +4322,8 @@ def read_root():
     }
 
 ============================================================
-FILE: product_service/models.py
-SIZE: 10816 bytes
+FILE: product_service\models.py
+SIZE: 11536 bytes
 ============================================================
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
 from sqlalchemy.orm import relationship, backref
@@ -4168,22 +4358,37 @@ class Unit(Base):
 # --- ІНГРЕДІЄНТИ ---
 class Ingredient(Base):
     __tablename__ = "ingredients"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, unique=True)
+    name = Column(String, index=True)
+    
+    # Зв'язок з Unit
     unit_id = Column(Integer, ForeignKey("units.id"))
     unit = relationship("Unit")
-    cost_per_unit = Column(Float, default=0.0)
+    
+    cost_per_unit = Column(Float)
     stock_quantity = Column(Float, default=0.0)
+    
+    # 👇 ДОДАНО: Зв'язок з категорією
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    category = relationship("Category")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- ВИТРАТНІ МАТЕРІАЛИ ---
 class Consumable(Base):
     __tablename__ = "consumables"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, unique=True)
-    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
-    unit = relationship("Unit")
-    cost_per_unit = Column(Float, default=0.0)
-    stock_quantity = Column(Float, default=0.0)
+    name = Column(String, index=True)
+    cost_per_unit = Column(Float)
+    stock_quantity = Column(Integer, default=0)
+    
+    # 👇 ДОДАНО: Зв'язок з категорією (на майбутнє, якщо знадобиться для витратних)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    category = relationship("Category")
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- МАЙСТЕР-РЕЦЕПТИ ---
 class MasterRecipe(Base):
@@ -4377,8 +4582,8 @@ class InventoryTransaction(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 ============================================================
-FILE: product_service/requirements.txt
-SIZE: 52 bytes
+FILE: product_service\requirements.txt
+SIZE: 57 bytes
 ============================================================
 fastapi
 uvicorn
@@ -4388,8 +4593,8 @@ pydantic
 
 
 ============================================================
-FILE: product_service/schemas.py
-SIZE: 7179 bytes
+FILE: product_service\schemas.py
+SIZE: 7954 bytes
 ============================================================
 from pydantic import BaseModel
 from typing import List, Optional
@@ -4419,6 +4624,14 @@ class UnitCreate(BaseModel):
     name: str
     symbol: str
 
+class IngredientCreate(BaseModel):
+    name: str
+    cost_per_unit: float
+    stock_quantity: float
+    unit_id: int
+    # Без нього API не прийме категорію при створенні
+    category_id: Optional[int] = None 
+
 class Ingredient(BaseModel):
     id: int
     name: str
@@ -4426,12 +4639,13 @@ class Ingredient(BaseModel):
     stock_quantity: float
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
-    class Config: from_attributes = True
-class IngredientCreate(BaseModel):
-    name: str
-    cost_per_unit: float
-    stock_quantity: float
-    unit_id: int
+    
+    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ (Вже є у тебе, але перевір тип category)
+    category_id: Optional[int] = None
+    category: Optional[Category] = None # Щоб фронтенд міг показати назву категорії
+    
+    class Config:
+        from_attributes = True   
 
 # --- НОВЕ: Consumables Schemas ---
 class ConsumableBase(BaseModel):
@@ -4439,6 +4653,9 @@ class ConsumableBase(BaseModel):
     cost_per_unit: float
     stock_quantity: float
     unit_id: Optional[int] = None
+
+    category_id: Optional[int] = None
+    category: Optional[Category] = None
 
 class ConsumableCreate(ConsumableBase):
     pass
@@ -4645,14 +4862,14 @@ class OrderRead(BaseModel):
     class Config: from_attributes = True
 
 ============================================================
-FILE: product_service/routers/__init__.py
+FILE: product_service\routers\__init__.py
 SIZE: 0 bytes
 ============================================================
 
 
 ============================================================
-FILE: product_service/routers/categories.py
-SIZE: 2566 bytes
+FILE: product_service\routers\categories.py
+SIZE: 2627 bytes
 ============================================================
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -4718,8 +4935,8 @@ def delete_category(category_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 
 ============================================================
-FILE: product_service/routers/customers.py
-SIZE: 2226 bytes
+FILE: product_service\routers\customers.py
+SIZE: 2273 bytes
 ============================================================
 # FILE: product_service/routers/customers.py
 
@@ -4771,8 +4988,8 @@ def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db
     return db.query(models.Order).filter(models.Order.customer_id == customer_id).order_by(models.Order.created_at.desc()).all()
 
 ============================================================
-FILE: product_service/routers/inventory.py
-SIZE: 6304 bytes
+FILE: product_service\routers\inventory.py
+SIZE: 6450 bytes
 ============================================================
 # FILE: product_service/routers/inventory.py
 
@@ -4923,8 +5140,8 @@ def get_inventory_history(
 
 
 ============================================================
-FILE: product_service/routers/orders.py
-SIZE: 895 bytes
+FILE: product_service\routers\orders.py
+SIZE: 914 bytes
 ============================================================
 # FILE: product_service/routers/orders.py
 
@@ -4948,8 +5165,8 @@ def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.ge
     return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
 
 ============================================================
-FILE: product_service/routers/processes.py
-SIZE: 1933 bytes
+FILE: product_service\routers\processes.py
+SIZE: 1977 bytes
 ============================================================
 # FILE: product_service/routers/processes.py
 
@@ -4998,8 +5215,8 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 
 ============================================================
-FILE: product_service/routers/products.py
-SIZE: 5655 bytes
+FILE: product_service\routers\products.py
+SIZE: 5798 bytes
 ============================================================
 # FILE: product_service/routers/products.py
 
@@ -5147,8 +5364,8 @@ def deduct_stock_for_order(items: List[schemas.StockDeductionItem], db: Session 
     return {"status": "deducted"}
 
 ============================================================
-FILE: product_service/routers/recipes.py
-SIZE: 2677 bytes
+FILE: product_service\routers\recipes.py
+SIZE: 2739 bytes
 ============================================================
 # FILE: product_service/routers/recipes.py
 
@@ -5215,14 +5432,14 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 
 ============================================================
-FILE: product_service/services/__init__.py
+FILE: product_service\services\__init__.py
 SIZE: 0 bytes
 ============================================================
 
 
 ============================================================
-FILE: product_service/services/inventory_logger.py
-SIZE: 674 bytes
+FILE: product_service\services\inventory_logger.py
+SIZE: 693 bytes
 ============================================================
 from sqlalchemy.orm import Session
 import models
@@ -5246,8 +5463,8 @@ class InventoryLogger:
         db.add(transaction)
 
 ============================================================
-FILE: product_service/services/order_service.py
-SIZE: 8196 bytes
+FILE: product_service\services\order_service.py
+SIZE: 8341 bytes
 ============================================================
 from sqlalchemy.orm import Session
 import models, schemas
@@ -5397,8 +5614,8 @@ class OrderService:
             raise e # Прокидуємо помилку далі, щоб API повернув 500
 
 ============================================================
-FILE: product_service/services/product_service.py
-SIZE: 10576 bytes
+FILE: product_service\services\product_service.py
+SIZE: 10831 bytes
 ============================================================
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
