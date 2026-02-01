@@ -1,177 +1,179 @@
 import os
-import datetime
 from pathlib import Path
 
-# --- КОНФІГУРАЦІЯ (DevOps Settings) ---
+# --- КОНФІГУРАЦІЯ (AI Optimized) ---
 OUTPUT_FILE = 'full_project_context.txt'
 
-# Папки-ігнор (Системні, кеші, історія, залежності)
+# Ліміт розміру одного файлу (щоб не забивати контекст сміттям)
+MAX_FILE_SIZE_KB = 100  # 100 КБ
+
+# Папки-ігнор
 IGNORE_DIRS = {
     '.git', 'node_modules', '__pycache__', 'venv', 'env', '.idea', '.vscode', 
     'dist', 'build', 'postgres_data', '.pytest_cache', 'migrations', 
-    '.history', 'coverage', 'tmp', 'temp', 'logs'
+    '.history', 'coverage', 'tmp', 'temp', 'logs', 'assets' # assets часто бінарні або великі
 }
 
-# Файли-ігнор (Локи, конфіги редакторів, бінарники, сам скрипт)
+# Файли-ігнор
 IGNORE_FILES = {
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 
     '.DS_Store', 'context_packer.py', OUTPUT_FILE, 
-    'debug_db.py', '*.log', '*.sqlite', '*.db'
+    'debug_db.py', '*.log', '*.sqlite', '*.db', 'favicon.ico'
 }
 
-# Розширення для читання (Тільки текстові/код)
+# Розширення
 ALLOWED_EXTENSIONS = {
     '.py', '.js', '.jsx', '.ts', '.tsx', '.vue', '.html', '.css', '.scss', 
     '.yml', '.yaml', '.json', '.sql', '.dockerfile', '.sh', '.md', '.txt', 
-    '.conf', '.ini', '.toml'
+    '.conf', '.ini', '.toml', '.env.example' # Додано .env.example
 }
 
-# Файли без розширення, які треба читати
-EXACT_FILES_TO_READ = {
-    'Dockerfile', 'docker-compose.yml', 'requirements.txt', 'package.json', 
-    'Makefile', 'Procfile', '.gitignore', '.env.example', 'nginx.conf'
-}
-
-# Ліміт розміру одного файлу (щоб не читати бандли по 1MB) - 100 KB
-MAX_FILE_SIZE_BYTES = 100 * 1024 
-
-class ProjectPacker:
-    def __init__(self, root_dir):
-        self.root_dir = Path(root_dir)
-        self.stats = {"files": 0, "lines": 0, "extensions": {}}
+class ContextPacker:
+    def __init__(self):
+        self.project_root = Path('.')
         self.file_contents = []
         self.tree_structure = []
+        self.stats = {'files': 0, 'lines': 0, 'tokens_approx': 0}
+        self.extensions_stats = {}
 
     def should_ignore(self, path):
         # Перевірка папок
         for part in path.parts:
             if part in IGNORE_DIRS:
                 return True
-        # Перевірка імені файлу
+        
+        # Перевірка файлів
         if path.name in IGNORE_FILES:
             return True
-        if path.name.startswith('.'): 
-            if path.name not in EXACT_FILES_TO_READ and path.suffix not in ALLOWED_EXTENSIONS:
+            
+        # Перевірка розширення
+        if path.suffix not in ALLOWED_EXTENSIONS and path.name != 'Dockerfile':
+             # Спеціальний виняток для файлів типу .env.example
+            if not path.name.endswith('.example'): 
                 return True
+            
         return False
 
-    def is_text_file(self, path):
-        if path.name in EXACT_FILES_TO_READ:
-            return True
-        return path.suffix in ALLOWED_EXTENSIONS
-
     def get_readable_size(self, size_in_bytes):
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_in_bytes < 1024.0:
+        for unit in ['B', 'KB', 'MB']:
+            if size_in_bytes < 1024:
                 return f"{size_in_bytes:.2f} {unit}"
-            size_in_bytes /= 1024.0
-        return f"{size_in_bytes:.2f} TB"
+            size_in_bytes /= 1024
+        return f"{size_in_bytes:.2f} GB"
 
     def generate_tree(self):
-        self.tree_structure.append(f"📂 {self.root_dir.name}/")
-        for root, dirs, files in os.walk(self.root_dir):
+        # Генеруємо дерево для візуального розуміння структури
+        for root, dirs, files in os.walk(self.project_root):
+            # Фільтрація папок
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
             
-            level = root.replace(str(self.root_dir), '').count(os.sep)
-            indent = '    ' * (level + 1)
-            subindent = '    ' * (level + 2)
+            level = root.replace(str(self.project_root), '').count(os.sep)
+            indent = ' ' * 4 * level
+            self.tree_structure.append(f"{indent}📂 {os.path.basename(root)}/")
             
-            if root != str(self.root_dir):
-                self.tree_structure.append(f"{indent}📂 {os.path.basename(root)}/")
-            
-            for f in sorted(files):
-                file_path = Path(root) / f
-                if not self.should_ignore(file_path):
-                    marker = "📄"
-                    if not self.is_text_file(file_path):
-                        marker = "📦"
-                    self.tree_structure.append(f"{subindent}{marker} {f}")
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                if not self.should_ignore(Path(root) / f):
+                    self.tree_structure.append(f"{subindent}📄 {f}")
 
-    def collect_content(self):
-        print(f"🚀 Починаю сканування проекту: {self.root_dir}")
-        
-        for root, dirs, files in os.walk(self.root_dir):
+    def scan_files(self):
+        for root, dirs, files in os.walk(self.project_root):
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
-            
-            for file in sorted(files):
+
+            for file in files:
                 file_path = Path(root) / file
-                
                 if self.should_ignore(file_path):
                     continue
-                
-                if self.is_text_file(file_path):
-                    try:
-                        file_size = file_path.stat().st_size
-                        if file_size > MAX_FILE_SIZE_BYTES:
-                            self.add_file_entry(file_path, "[SKIPPED: FILE TOO LARGE]", file_size)
-                            continue
 
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read()
-                            lines = len(content.splitlines())
-                            ext = file_path.suffix or 'No Ext'
-                            self.stats["files"] += 1
-                            self.stats["lines"] += lines
-                            self.stats["extensions"][ext] = self.stats["extensions"].get(ext, 0) + 1
-                            
-                            self.add_file_entry(file_path, content, file_size)
-                            
-                    except Exception as e:
-                        print(f"⚠️ Помилка читання {file_path}: {e}")
+                # Перевірка розміру (Safety fuse)
+                file_size_kb = file_path.stat().st_size / 1024
+                if file_size_kb > MAX_FILE_SIZE_KB:
+                    print(f"⚠️ Skipped large file: {file_path} ({file_size_kb:.2f} KB)")
+                    self.file_contents.append(
+                        f'<file path="{file_path}">\n'
+                        f'\n'
+                        f'</file>\n'
+                    )
+                    continue
 
-    def add_file_entry(self, path, content, size):
-        relative_path = path.relative_to(self.root_dir)
-        header = (
-            f"\n{'='*60}\n"
-            f"FILE: {relative_path}\n"
-            f"SIZE: {size} bytes\n"
-            f"{'='*60}\n"
-        )
-        self.file_contents.append(header + content + "\n")
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        lines_count = len(content.splitlines())
+                        
+                        self.stats['files'] += 1
+                        self.stats['lines'] += lines_count
+                        self.stats['tokens_approx'] += len(content) // 4
+                        
+                        ext = file_path.suffix or 'No Ext'
+                        self.extensions_stats[ext] = self.extensions_stats.get(ext, 0) + 1
+
+                        # === ОСНОВНА ЗМІНА: XML FORMAT ===
+                        # Це дозволяє AI чітко бачити межі файлів
+                        self.file_contents.append(
+                            f'\n<file path="{file_path}">\n'
+                            f'{content}\n'
+                            f'</file>\n'
+                        )
+                        
+                        print(f"✅ Packed: {file_path}")
+                except Exception as e:
+                    print(f"❌ Error reading {file_path}: {e}")
+
+    def generate_ai_header(self):
+        """Створює 'System Prompt' для AI на початку файлу"""
+        header = []
+        header.append("")
+        header.append("")
+        header.append("")
+        header.append(f"")
+        header.append("\n")
+        return "\n".join(header)
 
     def generate_stats_block(self):
-        stats_text = [
-            "==================================================",
-            "📊 PROJECT STATISTICS (DEVOPS OVERVIEW)",
-            "==================================================",
-            f"Total Files Scanned: {self.stats['files']}",
-            f"Total Lines of Code: {self.stats['lines']}",
-            "Technique Breakdown:",
-        ]
-        sorted_exts = sorted(self.stats["extensions"].items(), key=lambda item: item[1], reverse=True)
-        for ext, count in sorted_exts:
-            stats_text.append(f"  - {ext:<10}: {count} files")
+        stats_text = []
+        stats_text.append("==================================================")
+        stats_text.append("📊 PROJECT STATISTICS")
+        stats_text.append("==================================================")
+        stats_text.append(f"Total Files: {self.stats['files']}")
+        stats_text.append(f"Total Lines: {self.stats['lines']}")
+        stats_text.append(f"Approx Tokens: ~{self.stats['tokens_approx']}")
+        stats_text.append("Extensions:")
+        for ext, count in sorted(self.extensions_stats.items(), key=lambda x: x[1], reverse=True):
+            stats_text.append(f"  - {ext:<10}: {count}")
         stats_text.append("==================================================\n")
         return "\n".join(stats_text)
 
     def save(self):
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            # 1. Інструкція для AI
+            f.write(self.generate_ai_header())
+            
+            # 2. Статистика для тебе
             f.write(self.generate_stats_block())
-            f.write("==================================================\n")
+            
+            # 3. Дерево проекту (Карта)
             f.write("🌳 PROJECT STRUCTURE\n")
             f.write("==================================================\n")
             f.write("\n".join(self.tree_structure))
             f.write("\n\n")
+            
+            # 4. Контент файлів
+            f.write("📦 FILE CONTENTS\n")
+            f.write("==================================================\n")
             f.write("".join(self.file_contents))
             
-        # --- ФІНАЛЬНИЙ ЗВІТ ---
         final_size = Path(OUTPUT_FILE).stat().st_size
         readable_size = self.get_readable_size(final_size)
         
         print("\n" + "="*50)
-        print(f"✅ Успішно! Результат збережено в: {OUTPUT_FILE}")
-        print(f"📊 Всього рядків коду: {self.stats['lines']}")
-        print(f"⚖️  РОЗМІР ФАЙЛУ КОНТЕКСТУ: {readable_size}")
-        
-        # Попередження, якщо файл завеликий
-        if final_size > 1.5 * 1024 * 1024: # 1.5 MB
-            print("⚠️  УВАГА: Файл великий (>1.5MB). Краще видалити зайві файли або логи.")
-        else:
-            print("👍 Розмір ідеальний для завантаження в чат.")
-        print("="*50)
+        print(f"✅ DONE! Context saved to: {OUTPUT_FILE}")
+        print(f"📊 Lines: {self.stats['lines']}")
+        print(f"⚖️  Size: {readable_size}")
 
-if __name__ == "__main__":
-    packer = ProjectPacker('.')
+if __name__ == '__main__':
+    packer = ContextPacker()
+    print("🚀 Starting AI Context Packer...")
     packer.generate_tree()
-    packer.collect_content()
+    packer.scan_files()
     packer.save()

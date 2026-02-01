@@ -172,7 +172,11 @@ class Variant(VariantCreate):
     id: int
     # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
     consumables: List[ProductConsumableRead] = []
-    ingredients: List[ProductIngredientRead] = [] 
+    ingredients: List[ProductIngredientRead] = []
+
+    cost_price: float = 0.0
+    margin: float = 0.0
+
     class Config: from_attributes = True
 
 # --- PRODUCTS ---
@@ -204,6 +208,9 @@ class Product(ProductBase):
     master_recipe: Optional[MasterRecipe] = None
     consumables: List[ProductConsumableRead] = [] 
     
+    cost_price: float = 0.0
+    margin: float = 0.0
+
     # НОВЕ: Повертаємо повні об'єкти груп процесів
     process_groups: List[ProcessGroup] = []
 

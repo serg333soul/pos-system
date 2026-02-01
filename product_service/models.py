@@ -128,6 +128,36 @@ class Product(Base):
     # НОВЕ: Зв'язок з групами процесів
     process_groups = relationship("ProcessGroup", secondary=product_process_groups, back_populates="products")
 
+    @property
+    def cost_price(self):
+        """Розрахунок собівартості базового товару"""
+        total = 0.0
+
+        # 1. Вартість рецепту (з масштабуванням)
+        if self.master_recipe:
+            recipe_cost = 0.0
+            recipe_weight = 0.0
+            
+            for item in self.master_recipe.items:
+                if item.ingredient:
+                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
+                    # Припускаємо, що кількість в рецепті = вага/об'єм
+                    recipe_weight += item.quantity 
+            
+            # Масштабування (Scaling)
+            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
+                scale_ratio = self.output_weight / recipe_weight
+                total += recipe_cost * scale_ratio
+            else:
+                total += recipe_cost
+
+        # 2. Загальні витратні матеріали товару
+        for pc in self.consumables:
+            if pc.consumable:
+                total += pc.consumable.cost_per_unit * pc.quantity
+
+        return round(total, 2)
+
 # --- Зв'язок Товар -> Витратні матеріали ---
 class ProductConsumable(Base):
     __tablename__ = "product_consumables"
@@ -158,6 +188,42 @@ class ProductVariant(Base):
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
     # !!! НОВЕ: Зв'язок з інгредієнтами !!!
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
+
+    @property
+    def cost_price(self):
+        """Розрахунок собівартості варіанту"""
+        total = 0.0
+
+        # 1. Рецепт (Масштабування)
+        if self.master_recipe:
+            recipe_cost = 0.0
+            recipe_weight = 0.0
+            for item in self.master_recipe.items:
+                if item.ingredient:
+                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
+                    recipe_weight += item.quantity
+            
+            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
+                scale_ratio = self.output_weight / recipe_weight
+                total += recipe_cost * scale_ratio
+            else:
+                total += recipe_cost
+        
+        # 2. Додаткові інгредієнти варіанту
+        for vi in self.ingredients:
+            if vi.ingredient:
+                total += vi.ingredient.cost_per_unit * vi.quantity
+
+        # 3. Витратні матеріали варіанту
+        for vc in self.consumables:
+            if vc.consumable:
+                total += vc.consumable.cost_per_unit * vc.quantity
+
+        return round(total, 2)
+
+    @property
+    def margin(self):
+        return round(self.price - self.cost_price, 2)
 
 class ProductVariantConsumable(Base):
     __tablename__ = "product_variant_consumables"
