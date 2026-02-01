@@ -7,15 +7,17 @@ const newProduct = ref({
     name: '', category_id: null, price: 0, has_variants: false,
     master_recipe_id: null, output_weight: 0,
     track_stock: false, stock_quantity: 0,
-    consumables: [], variants: [], process_group_ids: []
+    consumables: [], variants: [], process_group_ids: [],
+    // 👇 Додані поля для відображення (приходять з беку)
+    cost_price: 0, margin: 0 
 })
 
 const editingId = ref(null)
 const isEditing = ref(false)
 const productSearch = ref('')
 
-// --- НОВЕ: Стан редагування варіанту ---
-const editingVariantIndex = ref(null) // null = режим створення, число = індекс варіанту
+// Стан редагування варіанту
+const editingVariantIndex = ref(null) 
 
 // Тимчасові змінні
 const tempProductConsumable = ref({ consumable_id: "", quantity: 1 })
@@ -23,136 +25,142 @@ const tempVariantConsumable = ref({ consumable_id: "", quantity: 1 })
 const tempVariantIngredient = ref({ ingredient_id: "", quantity: 0 })
 
 const variantBuilder = ref({
-    name: '', price: 0, master_recipe_id: null, 
+    name: '', price: 0, sku: '', // 👈 SKU тепер тут
+    master_recipe_id: null, 
     output_weight: 0, stock_quantity: 0, 
-    consumables: [], ingredients: []
+    consumables: [], ingredients: [],
+    // 👇 Додані поля для відображення
+    cost_price: 0, margin: 0 
 })
 
 export function useProducts() {
     const warehouse = useWarehouse()
     const products = warehouse?.products || ref([])
     const consumables = warehouse?.consumables || ref([])
-    const ingredients = warehouse?.ingredients || ref([])
-    const fetchWarehouseData = warehouse?.fetchWarehouseData || (async ()=>{})
+    const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
 
-    const filteredProducts = computed(() => {
-        if (!products.value) return []
-        if (!productSearch.value) return products.value
-        return products.value.filter(p => p.name.toLowerCase().includes(productSearch.value.toLowerCase()))
-    })
+    // --- CRUD Товарів ---
+    const fetchProducts = async () => {
+        if (warehouse && warehouse.fetchProducts) {
+            await warehouse.fetchProducts()
+        }
+    }
 
-    const fetchProducts = async () => { await fetchWarehouseData() }
+    const resetForm = () => {
+        newProduct.value = {
+            name: '', category_id: null, price: 0, has_variants: false,
+            master_recipe_id: null, output_weight: 0,
+            track_stock: false, stock_quantity: 0,
+            consumables: [], variants: [], process_group_ids: [],
+            cost_price: 0, margin: 0
+        }
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [],
+            cost_price: 0, margin: 0
+        }
+        isEditing.value = false
+        editingId.value = null
+        editingVariantIndex.value = null
+    }
+
+    const prepareEdit = (product) => {
+        // Копіюємо об'єкт, щоб не змінювати його в списку до збереження
+        newProduct.value = JSON.parse(JSON.stringify(product))
+        editingId.value = product.id
+        isEditing.value = true
+        // Якщо process_group_ids не прийшли (старий формат), ініціалізуємо
+        if (!newProduct.value.process_group_ids) newProduct.value.process_group_ids = []
+    }
 
     const saveProduct = async () => {
-        if (!newProduct.value.name) return alert("Вкажіть назву товару!")
-        
-        const cleanPrice = newProduct.value.has_variants ? 0 : (parseFloat(newProduct.value.price) || 0)
-        const cleanWeight = parseFloat(newProduct.value.output_weight) || 0
-        const cleanStock = parseFloat(newProduct.value.stock_quantity) || 0
-        
-        const payload = {
-            ...newProduct.value,
-            category_id: newProduct.value.category_id || null,
-            master_recipe_id: newProduct.value.master_recipe_id || null,
-            price: cleanPrice,
-            output_weight: cleanWeight,
-            stock_quantity: cleanStock,
-            variants: newProduct.value.has_variants ? newProduct.value.variants : [] 
-        }
-
         try {
-            const url = isEditing.value 
-                ? `http://localhost:8001/products/${editingId.value}`
-                : 'http://localhost:8001/products/'
-            const method = isEditing.value ? 'put' : 'post'
+            // Формуємо payload
+            const payload = {
+                ...newProduct.value,
+                // Переконуємось, що числа є числами
+                price: parseFloat(newProduct.value.price),
+                stock_quantity: parseFloat(newProduct.value.stock_quantity),
+                output_weight: parseFloat(newProduct.value.output_weight),
+            }
 
-            await axios[method](url, payload)
+            if (isEditing.value) {
+                await axios.put(`/api/products/${editingId.value}`, payload)
+            } else {
+                await axios.post('/api/products/', payload)
+            }
+            
             await fetchProducts()
             resetForm()
             return true
-        } catch (err) {
-            console.error("Save error:", err)
-            alert("Помилка збереження")
+        } catch (e) {
+            console.error("Помилка збереження товару:", e)
+            alert("Помилка збереження: " + (e.response?.data?.detail || e.message))
             return false
         }
     }
 
     const deleteProduct = async (id) => {
-        if(!confirm("Видалити?")) return
+        if (!confirm('Видалити цей товар?')) return
         try {
-            await axios.delete(`http://localhost:8001/products/${id}`)
+            await axios.delete(`/api/products/${id}`)
             await fetchProducts()
-        } catch(e) { alert("Помилка видалення") }
-    }
-
-    const resetForm = () => {
-        isEditing.value = false
-        editingId.value = null
-        editingVariantIndex.value = null // Скидаємо редагування варіанту
-        newProduct.value = {
-            name: '', category_id: null, price: 0, has_variants: false,
-            master_recipe_id: null, output_weight: 0,
-            track_stock: false, stock_quantity: 0,
-            consumables: [], variants: [], process_group_ids: []
+        } catch (e) {
+            console.error(e)
+            alert("Не вдалося видалити товар")
         }
-        resetVariantBuilder()
     }
 
-    const resetVariantBuilder = () => {
-        variantBuilder.value = { name: '', price: 0, master_recipe_id: null, output_weight: 0, stock_quantity: 0, consumables: [], ingredients: [] }
-        editingVariantIndex.value = null
-    }
-
-    const prepareEdit = (p) => {
-        isEditing.value = true
-        editingId.value = p.id
-        const copy = JSON.parse(JSON.stringify(p))
-        if (copy.variants) {
-            copy.variants.forEach(v => {
-                if(v.consumables) v.consumables.forEach(c => c.name = c.consumable_name || c.name)
-                if(v.ingredients) v.ingredients.forEach(i => i.name = i.ingredient_name || i.name)
-            })
-        }
-        if (copy.consumables) copy.consumables.forEach(c => c.name = c.consumable_name || c.name)
-        newProduct.value = copy
-    }
-
-    // --- ЛОГІКА ВАРІАНТІВ (Оновлена) ---
-    
-    // 1. Функція збереження (Додавання АБО Оновлення)
+    // --- Варіанти ---
     const saveVariant = () => {
-        if(!variantBuilder.value.name) return alert("Вкажіть назву варіанту")
+        const v = JSON.parse(JSON.stringify(variantBuilder.value))
         
-        const variantData = JSON.parse(JSON.stringify(variantBuilder.value))
-
+        // Валідація вже на рівні UI, тут просто додаємо
         if (editingVariantIndex.value !== null) {
-            // ОНОВЛЕННЯ існуючого
-            newProduct.value.variants[editingVariantIndex.value] = variantData
+            newProduct.value.variants[editingVariantIndex.value] = v
+            editingVariantIndex.value = null
         } else {
-            // ДОДАВАННЯ нового
-            newProduct.value.variants.push(variantData)
+            newProduct.value.variants.push(v)
         }
-        resetVariantBuilder()
+        
+        // Очищення білдера (але SKU очищаємо, щоб не дублювати)
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [],
+            cost_price: 0, margin: 0
+        }
     }
 
-    // 2. Функція підготовки до редагування
     const editVariant = (index) => {
-        editingVariantIndex.value = index
-        // Копіюємо дані варіанту назад у форму
         variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]))
+        editingVariantIndex.value = index
     }
 
-    // 3. Скасування редагування
+    const removeVariant = (index) => {
+        newProduct.value.variants.splice(index, 1)
+        if (editingVariantIndex.value === index) {
+            editingVariantIndex.value = null
+            // Очистити форму
+            variantBuilder.value = {
+                name: '', price: 0, sku: '',
+                master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+                consumables: [], ingredients: [], cost_price: 0, margin: 0
+            }
+        }
+    }
+
     const cancelVariantEdit = () => {
-        resetVariantBuilder()
+        editingVariantIndex.value = null
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [], cost_price: 0, margin: 0
+        }
     }
 
-    const removeVariant = (i) => {
-        newProduct.value.variants.splice(i, 1)
-        if (editingVariantIndex.value === i) resetVariantBuilder()
-    }
-
-    // Інші методи (матеріали/інгредієнти)
+    // --- Допоміжні (Consumables / Ingredients) ---
     const addProductConsumable = () => {
         if(!tempProductConsumable.value.consumable_id) return
         const c = consumables.value.find(x => x.id === tempProductConsumable.value.consumable_id)
@@ -177,12 +185,17 @@ export function useProducts() {
     }
     const removeIngredientFromVariant = (i) => variantBuilder.value.ingredients.splice(i, 1)
 
+    // --- Фільтрація ---
+    const filteredProducts = computed(() => {
+        if (!productSearch.value) return products.value
+        const s = productSearch.value.toLowerCase()
+        return products.value.filter(p => p.name.toLowerCase().includes(s))
+    })
+
     return {
         newProduct, isEditing, editingId, productSearch, filteredProducts,
         variantBuilder, tempProductConsumable, tempVariantConsumable, tempVariantIngredient,
-        // Експортуємо нові змінні та методи
         editingVariantIndex, saveVariant, editVariant, cancelVariantEdit,
-        
         fetchProducts, saveProduct, deleteProduct, resetForm, prepareEdit,
         removeVariant,
         addProductConsumable, removeProductConsumable,

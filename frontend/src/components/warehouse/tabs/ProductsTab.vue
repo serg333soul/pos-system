@@ -12,6 +12,7 @@ const {
     variantBuilder, tempProductConsumable, tempVariantConsumable, tempVariantIngredient,
     resetForm, prepareEdit, saveProduct, deleteProduct, fetchProducts, filteredProducts, productSearch,
     
+    // Імпортуємо методи варіантів
     saveVariant, editVariant, cancelVariantEdit, editingVariantIndex, removeVariant, 
     
     addProductConsumable, removeProductConsumable,
@@ -51,74 +52,15 @@ const currentIngredientPlaceholder = computed(() => {
     return unit ? `Кількість (${unit})` : 'Кількість'
 })
 
-// === 🔥 ЛОГІКА РОЗРАХУНКУ СОБІВАРТОСТІ ===
-const getIngredientCost = (id) => {
-    if (!ingredients.value) return 0
-    const ing = ingredients.value.find(i => i.id === id)
-    return ing ? ing.cost_per_unit : 0
-}
-
-const getConsumableCost = (id) => {
-    if (!consumables.value) return 0
-    const cons = consumables.value.find(c => c.id === id)
-    return cons ? cons.cost_per_unit : 0
-}
-
-const getRecipeCost = (recipeId, targetWeight = null) => {
-    if (!recipeId || !recipes.value) return 0
-    const recipe = recipes.value.find(r => r.id === recipeId)
-    if (!recipe || !recipe.items || recipe.items.length === 0) return 0
-    
-    let recipeBaseCost = 0
-    let recipeBaseWeight = 0
-
-    recipe.items.forEach(item => {
-        const cost = getIngredientCost(item.ingredient_id)
-        recipeBaseCost += (cost * item.quantity)
-        recipeBaseWeight += item.quantity 
-    })
-
-    if (targetWeight && targetWeight > 0 && recipeBaseWeight > 0) {
-        const scaleRatio = targetWeight / recipeBaseWeight
-        return recipeBaseCost * scaleRatio
-    }
-    return recipeBaseCost
-}
-
-const calculateVariantCost = (variant) => {
-    let total = 0
-    if (variant.master_recipe_id) {
-        const weight = variant.output_weight || 0
-        total += getRecipeCost(variant.master_recipe_id, weight)
-    }
-    if (variant.ingredients && variant.ingredients.length > 0) {
-        variant.ingredients.forEach(vi => {
-            const cost = getIngredientCost(vi.ingredient_id)
-            total += (cost * vi.quantity)
-        })
-    }
-    if (variant.consumables && variant.consumables.length > 0) {
-        variant.consumables.forEach(vc => {
-            const cost = getConsumableCost(vc.consumable_id)
-            total += (cost * (vc.quantity || 1))
-        })
-    }
-    return parseFloat(total.toFixed(2))
-}
-
-const calculateProfit = (variant) => {
-    const cost = calculateVariantCost(variant)
-    const price = variant.price || 0
-    return (price - cost).toFixed(2)
-}
-
-// ==========================================================
+// === 🔥 ТУТ БУЛА МАТЕМАТИКА (ВИДАЛЕНО) ===
+// Тепер ми довіряємо бекенду. Frontend просто відображає дані.
 
 onMounted(() => {
     fetchProducts()
     fetchProcessGroups()
 })
 
+// 👇 ЖОРСТКА ВАЛІДАЦІЯ ВАРІАНТУ ПЕРЕД ЗБЕРЕЖЕННЯМ
 const handleVariantSave = async () => {
     if (!variantBuilder.value.name) {
         alert("⚠️ Помилка: Вкажіть назву варіанту!")
@@ -129,18 +71,19 @@ const handleVariantSave = async () => {
         return
     }
     if (!variantBuilder.value.sku) {
-        alert("⛔️ СТОП: Поле SKU (Артикул) обов'язкове!\n\nЯкщо вам ліньки вигадувати код, натисніть на кнопку 'Чарівна паличка' 🪄 біля поля, щоб згенерувати його автоматично.")
+        alert("⛔️ СТОП: Поле SKU (Артикул) обов'язкове!\n\nЯкщо вам ліньки вигадувати код, натисніть на кнопку 'Чарівна паличка' 🪄 біля поля.")
         return
     }
     await saveVariant()
 }
 
+// Обгортка для збереження головного товару
 const handleSave = async () => {
     if (!newProduct.value.process_group_ids) {
         newProduct.value.process_group_ids = []
     }
     if (newProduct.value.has_variants && newProduct.value.variants.length === 0) {
-        alert("⚠️ Ви увімкнули режим варіантів, але не додали жодного варіанту.\nЗаповніть форму варіанту і натисніть 'Додати варіант'.")
+        alert("⚠️ Ви увімкнули режим варіантів, але не додали жодного варіанту.")
         return
     }
 
@@ -329,17 +272,18 @@ const handleCancel = () => {
                                     </select>
                                 </div>
 
-                                <div class="mb-3 p-2 bg-purple-50 rounded border border-purple-100 text-xs shadow-sm">
-                                    <div class="flex justify-between items-center mb-1">
+                                <div v-if="editingVariantIndex === null" class="mb-3 p-2 bg-gray-50 rounded border border-gray-100 text-xs text-center text-gray-400 italic">
+                                    <i class="fas fa-calculator mr-1"></i> Собівартість буде розрахована сервером після збереження
+                                </div>
+                                <div v-else class="mb-3 p-2 bg-purple-50 rounded border border-purple-100 text-xs shadow-sm">
+                                     <div class="flex justify-between items-center mb-1">
                                         <span class="text-gray-500">Собівартість:</span>
-                                        <span class="font-bold text-gray-700 font-mono">
-                                            {{ calculateVariantCost(variantBuilder) }} ₴
-                                        </span>
+                                        <span class="font-bold text-gray-700 font-mono">{{ variantBuilder.cost_price }} ₴</span>
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-gray-400">Маржа:</span>
-                                        <span class="font-bold font-mono" :class="calculateProfit(variantBuilder) > 0 ? 'text-green-600' : 'text-red-500'">
-                                            {{ calculateProfit(variantBuilder) }} ₴
+                                        <span class="font-bold font-mono" :class="variantBuilder.margin > 0 ? 'text-green-600' : 'text-red-500'">
+                                            {{ variantBuilder.margin }} ₴
                                         </span>
                                     </div>
                                 </div>
@@ -395,8 +339,8 @@ const handleCancel = () => {
                                             <div class="font-bold text-sm">{{ v.name }} - {{ v.price }}₴</div>
                                             <div class="text-xs text-gray-400 flex gap-2">
                                                 <span class="bg-yellow-50 px-1 border border-yellow-100 rounded text-yellow-700 font-mono">{{ v.sku }}</span>
-                                                <span :class="calculateProfit(v) > 0 ? 'text-green-500' : 'text-red-500'">
-                                                    (Приб: {{ calculateProfit(v) }}₴)
+                                                <span v-if="v.margin !== undefined" :class="v.margin > 0 ? 'text-green-500' : 'text-red-500'">
+                                                    (Приб: {{ v.margin }}₴)
                                                 </span>
                                             </div>
                                             
@@ -464,6 +408,13 @@ const handleCancel = () => {
                             <td class="p-4">
                                 <div class="font-bold text-gray-800 text-base">{{ p.name }}</div>
                                 <div class="text-gray-500 font-mono">{{ p.price }} ₴</div>
+                                
+                                <div v-if="!p.has_variants && p.margin !== undefined" class="text-xs mt-1">
+                                     <span :class="p.margin > 0 ? 'text-green-600' : 'text-red-500'">
+                                        Прибуток: {{ p.margin }} ₴
+                                     </span>
+                                </div>
+                                
                                 <div v-if="p.description" class="text-xs text-gray-400 mt-1 line-clamp-1">{{ p.description }}</div>
                             </td>
                             <td class="p-4">
@@ -496,7 +447,7 @@ const handleCancel = () => {
                                                     <i class="fas fa-flask text-orange-400 text-[10px] mt-0.5"></i> 
                                                     <div class="flex flex-wrap gap-1">
                                                         <span v-for="vi in v.ingredients" :key="vi.id" class="bg-white border px-1 rounded">
-                                                            {{ ingredients.find(i => i.id === vi.ingredient_id)?.name }}: {{ vi.quantity }}
+                                                            {{ vi.ingredient_name || '?' }}: {{ vi.quantity }}
                                                         </span>
                                                     </div>
                                                 </div>
