@@ -42,19 +42,18 @@ class Ingredient(BaseModel):
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
     
-    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ (Вже є у тебе, але перевір тип category)
+    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ
     category_id: Optional[int] = None
     category: Optional[Category] = None # Щоб фронтенд міг показати назву категорії
     
     class Config:
-        from_attributes = True   
+        from_attributes = True    
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
     stock_quantity: int
-    # category_id тут не додаємо, щоб не ламати логіку Base
 
 class ConsumableCreate(ConsumableBase):
     # 👇 ДОДАНО: Дозволяємо приймати ID категорії при створенні
@@ -98,7 +97,7 @@ class ProductConsumableRead(BaseModel):
     consumable_name: Optional[str] = None
     class Config: from_attributes = True
 
-# --- PROCESSES (НОВЕ) ---
+# --- PROCESSES ---
 class ProcessOptionCreate(BaseModel):
     name: str # "Дрібний", "Зерно"
 class ProcessOption(ProcessOptionCreate):
@@ -170,10 +169,11 @@ class VariantCreate(BaseModel):
 
 class Variant(VariantCreate):
     id: int
-    # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
+    # При читанні використовуємо Read (з назвою)
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
 
+    # Додано для аналітики
     cost_price: float = 0.0
     margin: float = 0.0
 
@@ -200,6 +200,10 @@ class ProductCreate(ProductBase):
     # НОВЕ: Список ID груп процесів, які треба прив'язати
     process_group_ids: List[int] = [] 
 
+# 🔥 Відновлено ProductUpdate (може знадобитися для PATCH запитів)
+class ProductUpdate(ProductBase):
+    pass
+
 class Product(ProductBase):
     id: int
     category: Optional[Category] = None
@@ -208,17 +212,19 @@ class Product(ProductBase):
     master_recipe: Optional[MasterRecipe] = None
     consumables: List[ProductConsumableRead] = [] 
     
+    # Додано для аналітики
     cost_price: float = 0.0
     margin: float = 0.0
 
-    # НОВЕ: Повертаємо повні об'єкти груп процесів
+    # Повертаємо повні об'єкти груп процесів
     process_groups: List[ProcessGroup] = []
 
     class Config: from_attributes = True
 
+# 🔥 Відновлено StockDeductionItem (критично для роботи роутера products.py)
 class StockDeductionItem(BaseModel):
-    id: int
-    type: str  # 'product' або 'product_variant'
+    product_id: int
+    variant_id: Optional[int] = None
     quantity: float
     order_id: int
 
@@ -236,7 +242,7 @@ class InventoryTransactionRead(BaseModel):
     class Config:
         from_attributes = True
 
-# --- ORDERS ---
+# --- ORDERS (ZERO TRUST) ---
 class SoldItemModifier(BaseModel):
     modifier_id: int
 class SoldItem(BaseModel):
@@ -244,13 +250,11 @@ class SoldItem(BaseModel):
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-    # Тут ми не додаємо окреме поле для процесів, 
-    # бо вони приходять вже як частина назви або details, сформовані на фронті
-    # або ми додамо їх в майбутньому, якщо треба буде.
+
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
-    total_price: float
+    # ❌ total_price ВИДАЛЕНО! Це головна мета наших змін.
     customer_id: Optional[int] = None
 
 class CustomerCreate(BaseModel):
@@ -268,6 +272,7 @@ class OrderItemRead(BaseModel):
     price_at_moment: float
     details: Optional[str] = None
     class Config: from_attributes = True
+
 class OrderRead(BaseModel):
     id: int
     created_at: datetime

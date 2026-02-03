@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue'
 
-// Глобальний стан (зберігається, навіть якщо закрити компоненти)
 const cartItems = ref([])
 const isProcessing = ref(false)
 const paymentMethod = ref('cash')
@@ -8,7 +7,7 @@ const selectedCustomer = ref(null)
 
 export function useCart() {
   
-  // --- GETTERS ---
+  // Ця сума тепер ТІЛЬКИ для відображення користувачу
   const totalSum = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   })
@@ -17,8 +16,6 @@ export function useCart() {
     return cartItems.value.reduce((sum, item) => sum + item.quantity, 0)
   })
 
-  // --- ACTIONS ---
-  
   const fetchCart = async () => {
     try {
       const res = await fetch('/api/cart/')
@@ -26,73 +23,56 @@ export function useCart() {
         const items = await res.json()
         cartItems.value = items.sort((a, b) => a.name.localeCompare(b.name))
       }
-    } catch (err) {
-      console.error("Cart fetch error:", err)
-    }
+    } catch (err) { console.error("Cart fetch error:", err) }
   }
 
   const addToCart = async (payload) => {
-    // payload: { product_id, variant_id, modifiers, quantity, ... }
     try {
-      // --- ВИПРАВЛЕННЯ ТУТ: додано "/add" в кінці URL ---
-      const res = await fetch('/api/cart/add', {
+      const res = await fetch('/api/cart/add', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-
-      // --- ДОДАТКОВО: Перевірка на помилку сервера ---
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`)
-      }
-
-      await fetchCart() // Оновлюємо список
-    } catch (err) {
-      console.error("Add to cart error:", err)
-      alert("Не вдалося додати товар! Перевірте консоль.")
-    }
+      if (res.ok) await fetchCart()
+    } catch (err) { console.error(err) }
   }
-
-  const updateQty = async (cartItemId, change) => {
-    try {
-      await fetch(`/api/cart/${cartItemId}/update?change=${change}`, { method: 'POST' })
+  
+  const removeFromCart = async (itemId) => {
+     try {
+      await fetch(`/api/cart/${itemId}`, { method: 'DELETE' })
       await fetchCart()
     } catch (err) { console.error(err) }
   }
-
-  const removeItem = async (cartItemId) => {
-    if (!confirm('Видалити цей товар?')) return
+  
+  const clearCart = async () => {
     try {
-      await fetch(`/api/cart/${cartItemId}`, { method: 'DELETE' })
-      await fetchCart()
-    } catch (err) { console.error(err) }
+        await fetch('/api/cart/', { method: 'DELETE' })
+        cartItems.value = []
+    } catch(e) { console.error(e) }
   }
 
-  const clearCart = async (skipConfirm = false) => {
-    if (!skipConfirm && !confirm('Очистити весь кошик?')) return
-    try {
-      await fetch('/api/cart/', { method: 'DELETE' })
-      cartItems.value = []
-      selectedCustomer.value = null
-    } catch (err) { console.error(err) }
-  }
-
+  // 🔥 ОСНОВНА ЗМІНА ТУТ
   const processCheckout = async () => {
     if (cartItems.value.length === 0) return
     isProcessing.value = true
-
+    
     try {
       const payload = {
         items: cartItems.value.map(item => ({
           product_id: item.product_id,
-          variant_id: item.variant_id,
-          modifiers: item.modifiers,
-          quantity: item.quantity
+          variant_id: item.variant_id || null,
+          quantity: item.quantity,
+          // Безпечна обробка модифікаторів
+          modifiers: Array.isArray(item.modifiers) 
+            ? item.modifiers.map(m => (typeof m === 'number' ? { modifier_id: m } : m))
+            : []
         })),
         payment_method: paymentMethod.value,
-        total_price: totalSum.value,
+        // ❌ total_price БІЛЬШЕ НЕ ВІДПРАВЛЯЄМО!
         customer_id: selectedCustomer.value ? selectedCustomer.value.id : null
       }
+
+      console.log("📤 Checkout Request:", payload)
 
       const res = await fetch('/api/orders/checkout/', { 
         method: 'POST',
@@ -100,46 +80,38 @@ export function useCart() {
         body: JSON.stringify(payload)
       })
 
-      if (!res.ok) throw new Error("Помилка списання")
-
-      await fetch('/api/cart/', { method: 'DELETE' })
-      
-      const resultMsg = {
-        success: true,
-        text: `✅ Оплата успішна!\nСума: ${totalSum.value} ₴` + (selectedCustomer.value ? `\nКлієнт: ${selectedCustomer.value.name}` : '')
+      if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.detail || "Помилка при оплаті")
       }
+
+      const responseData = await res.json()
       
+      // Очищення
+      await fetch('/api/cart/', { method: 'DELETE' })
       cartItems.value = []
       selectedCustomer.value = null
       
-      return resultMsg
+      // Повертаємо результат із СЕРВЕРНОЮ сумою
+      return {
+        success: true,
+        text: `✅ Оплата успішна!\nСписано: ${responseData.total_price} ₴`
+      }
 
     } catch (err) {
       console.error(err)
-      return { success: false, text: "❌ Помилка при оплаті!" }
+      return { success: false, text: `❌ Помилка: ${err.message}` }
     } finally {
       isProcessing.value = false
     }
   }
 
-  // Робота з клієнтом
-  const setCustomer = (customer) => { selectedCustomer.value = customer }
+  const setCustomer = (c) => { selectedCustomer.value = c }
   const removeCustomer = () => { selectedCustomer.value = null }
 
   return {
-    cartItems,
-    isProcessing,
-    paymentMethod,
-    selectedCustomer,
-    totalSum,
-    cartCount,
-    fetchCart,
-    addToCart,
-    updateQty,
-    removeItem,
-    clearCart,
-    processCheckout,
-    setCustomer,
-    removeCustomer
+    cartItems, cartCount, totalSum, isProcessing, paymentMethod, selectedCustomer,
+    fetchCart, addToCart, removeFromCart, clearCart, processCheckout,
+    setCustomer, removeCustomer
   }
 }
