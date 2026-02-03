@@ -7,8 +7,8 @@
 📊 PROJECT STATISTICS
 ==================================================
 Total Files: 60
-Total Lines: 5578
-Approx Tokens: ~56723
+Total Lines: 5583
+Approx Tokens: ~56398
 Extensions:
   - .vue      : 20
   - .py       : 18
@@ -1096,32 +1096,18 @@ const emit = defineEmits(['edit', 'delete', 'history'])
 
 <file path="frontend\src\components\pos\CartDrawer.vue">
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
 
-const props = defineProps({
-  isOpen: Boolean
-})
-
+const props = defineProps({ isOpen: Boolean })
 const emit = defineEmits(['close'])
 
-// Підключаємо логіку кошика
 const { 
-  cartItems, 
-  totalSum, 
-  paymentMethod, 
-  isProcessing, 
-  selectedCustomer,
-  fetchCart, 
-  updateQty, 
-  removeItem, 
-  clearCart, 
-  processCheckout,
-  setCustomer,
-  removeCustomer
+  cartItems, totalSum, paymentMethod, isProcessing, selectedCustomer,
+  fetchCart, removeFromCart, clearCart, processCheckout,
+  setCustomer, removeCustomer
 } = useCart()
 
-// --- UI Local State (Пошук клієнта) ---
 const customerSearch = ref('')
 const customerResults = ref([])
 
@@ -1134,116 +1120,80 @@ const handleSearchCustomer = async () => {
 }
 
 const selectCustomerUI = (c) => {
-  setCustomer(c) // Записуємо в глобальний стан
+  setCustomer(c)
   customerSearch.value = ''
   customerResults.value = []
 }
 
 const handleCheckout = async () => {
   const res = await processCheckout()
-  alert(res.text)
-  if (res.success) {
+  
+  if (res && res.success) {
+    alert(res.text) // Покажемо суму від сервера
     emit('close')
+  } else {
+    alert(res ? res.text : "Невідома помилка")
   }
 }
 
-// Завантажуємо кошик при відкритті
 watch(() => props.isOpen, (val) => {
   if (val) fetchCart()
 })
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex justify-end transition-opacity duration-300" 
-       :class="isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'">
+  <div v-if="isOpen" class="fixed inset-0 bg-black/50 z-50" @click="$emit('close')"></div>
+  <div class="fixed top-0 right-0 h-full w-96 bg-white shadow-2xl z-50 transform transition-transform duration-300 flex flex-col"
+    :class="isOpen ? 'translate-x-0' : 'translate-x-full'">
     
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')"></div>
+    <div class="p-4 border-b flex justify-between bg-gray-50">
+      <h2 class="font-bold text-lg">🛒 Кошик</h2>
+      <button @click="$emit('close')">✕</button>
+    </div>
 
-    <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col transition-transform duration-300 transform"
-         :class="isOpen ? 'translate-x-0' : 'translate-x-full'">
+    <div class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div v-if="cartItems.length === 0" class="text-center text-gray-400 mt-10">Пусто...</div>
       
-      <div class="p-5 bg-gray-900 text-white flex justify-between items-center shadow-md">
-        <h2 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-shopping-cart"></i> Кошик</h2>
-        <div class="flex gap-3">
-            <button @click="clearCart(false)" class="text-gray-400 hover:text-red-400 transition" title="Очистити все"><i class="fas fa-trash-alt"></i></button>
-            <button @click="emit('close')" class="text-gray-400 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+      <div v-for="(item, idx) in cartItems" :key="idx" class="flex justify-between border-b pb-2">
+        <div>
+          <div class="font-bold">{{ item.product_name || item.name }}</div>
+          <div v-if="item.variant_name" class="text-xs text-purple-600">{{ item.variant_name }}</div>
+          <div class="text-xs text-gray-400">{{ item.quantity }} x {{ item.price }} ₴</div>
+        </div>
+        <div class="flex flex-col items-end gap-2">
+           <span class="font-bold">{{ (item.price * item.quantity).toFixed(2) }} ₴</span>
+           <button @click="removeFromCart(item.id)" class="text-red-500 text-xs">🗑</button>
         </div>
       </div>
+    </div>
 
-      <div class="flex-1 overflow-y-auto p-4 bg-gray-50 custom-scrollbar">
-        <div v-if="cartItems.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
-          <i class="fas fa-shopping-basket text-6xl mb-4 opacity-20"></i>
-          <p>Кошик порожній</p>
+    <div class="p-4 border-t bg-gray-50 space-y-4">
+        <div v-if="selectedCustomer" class="flex justify-between bg-blue-100 p-2 rounded text-blue-800 text-sm font-bold">
+            <span>👤 {{ selectedCustomer.name }}</span>
+            <button @click="removeCustomer">✕</button>
         </div>
-
-        <div v-else class="space-y-3">
-          <div v-for="item in cartItems" :key="item.cart_item_id" 
-               class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
-            
-            <div class="flex justify-between items-start">
-              <span class="font-bold text-gray-800 text-lg leading-tight">{{ item.name }}</span>
-              <span class="font-mono font-bold text-gray-900 whitespace-nowrap">{{ (item.price * item.quantity).toFixed(2) }} ₴</span>
-            </div>
-
-            <div class="flex justify-between items-center bg-gray-50 rounded-lg p-1">
-                <div class="flex items-center gap-3">
-                    <button @click="updateQty(item.cart_item_id, -1)" 
-                            class="w-8 h-8 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center justify-center font-bold shadow-sm active:scale-95">-</button>
-                    <span class="w-6 text-center font-bold text-gray-800">{{ item.quantity }}</span>
-                    <button @click="updateQty(item.cart_item_id, 1)" 
-                            class="w-8 h-8 rounded-full bg-gray-800 text-white hover:bg-gray-700 flex items-center justify-center font-bold shadow-sm active:scale-95">+</button>
-                </div>
-                
-                <button @click="removeItem(item.cart_item_id)" class="text-red-400 hover:text-red-600 p-2">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="p-6 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        
-        <div class="mb-4">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Клієнт</label>
-            <div v-if="!selectedCustomer" class="relative">
-                <div class="flex items-center border rounded-lg bg-gray-50 overflow-hidden">
-                    <i class="fas fa-search text-gray-400 ml-3"></i>
-                    <input v-model="customerSearch" @input="handleSearchCustomer" placeholder="Телефон або ім'я..." class="w-full p-2 bg-transparent outline-none text-sm">
-                </div>
-                <div v-if="customerResults.length > 0" class="absolute bottom-full left-0 w-full bg-white border shadow-xl rounded-lg mb-1 max-h-40 overflow-y-auto z-10">
-                    <div v-for="c in customerResults" :key="c.id" @click="selectCustomerUI(c)" class="p-2 hover:bg-blue-50 cursor-pointer border-b flex justify-between items-center">
-                         <div><div class="font-bold text-sm">{{ c.name }}</div><div class="text-xs text-gray-500">{{ c.phone }}</div></div>
-                         <i class="fas fa-plus-circle text-blue-500"></i>
-                    </div>
+        <div v-else>
+            <input v-model="customerSearch" @input="handleSearchCustomer" placeholder="Знайти клієнта..." class="w-full p-2 border rounded text-sm">
+            <div v-if="customerResults.length" class="absolute bg-white border shadow-lg w-64 max-h-40 overflow-auto z-10 mt-1">
+                <div v-for="c in customerResults" :key="c.id" @click="selectCustomerUI(c)" class="p-2 hover:bg-gray-100 cursor-pointer text-sm">
+                    {{ c.name }} ({{ c.phone }})
                 </div>
             </div>
-            <div v-else class="flex justify-between items-center bg-blue-50 border border-blue-200 p-2 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">{{ selectedCustomer.name.charAt(0) }}</div>
-                    <div><div class="font-bold text-sm text-blue-900">{{ selectedCustomer.name }}</div><div class="text-xs text-blue-600">{{ selectedCustomer.phone }}</div></div>
-                </div>
-                <button @click="removeCustomer" class="text-gray-400 hover:text-red-500 px-2"><i class="fas fa-times"></i></button>
-            </div>
         </div>
 
-        <div class="mb-4">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Оплата</label>
-            <div class="grid grid-cols-2 gap-3">
-                <button @click="paymentMethod = 'cash'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-money-bill-wave"></i> Готівка </button>
-                <button @click="paymentMethod = 'card'" class="py-2 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all" :class="paymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'"> <i class="fas fa-credit-card"></i> Картка </button>
-            </div>
+        <div class="flex gap-2">
+            <button @click="paymentMethod='cash'" :class="paymentMethod==='cash' ? 'bg-green-100 text-green-700 border-green-500' : 'bg-white border-gray-300'" class="flex-1 py-2 border rounded font-bold transition">💵 Готівка</button>
+            <button @click="paymentMethod='card'" :class="paymentMethod==='card' ? 'bg-blue-100 text-blue-700 border-blue-500' : 'bg-white border-gray-300'" class="flex-1 py-2 border rounded font-bold transition">💳 Картка</button>
         </div>
 
-        <div class="flex justify-between items-center text-2xl font-bold mb-4 text-gray-800">
-          <span>Разом:</span><span>{{ totalSum.toFixed(2) }} ₴</span>
+        <div class="flex justify-between text-xl font-bold">
+            <span>Разом:</span>
+            <span>{{ totalSum.toFixed(2) }} ₴</span>
         </div>
-        
-        <button @click="handleCheckout" :disabled="cartItems.length === 0 || isProcessing" class="w-full py-4 rounded-xl font-bold text-lg text-white transition shadow-lg flex justify-center items-center gap-2 disabled:bg-gray-400" :class="paymentMethod === 'cash' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'">
-          <span v-if="isProcessing"><i class="fas fa-spinner fa-spin"></i> Обробка...</span>
-          <span v-else>Оплатити</span>
+
+        <button @click="handleCheckout" :disabled="!cartItems.length || isProcessing" class="w-full py-3 bg-gray-800 text-white rounded-xl font-bold disabled:opacity-50">
+            {{ isProcessing ? 'Обробка...' : '✅ Оплатити' }}
         </button>
-      </div>
     </div>
   </div>
 </template>
@@ -2474,6 +2424,7 @@ const {
     variantBuilder, tempProductConsumable, tempVariantConsumable, tempVariantIngredient,
     resetForm, prepareEdit, saveProduct, deleteProduct, fetchProducts, filteredProducts, productSearch,
     
+    // Імпортуємо методи варіантів
     saveVariant, editVariant, cancelVariantEdit, editingVariantIndex, removeVariant, 
     
     addProductConsumable, removeProductConsumable,
@@ -2513,74 +2464,15 @@ const currentIngredientPlaceholder = computed(() => {
     return unit ? `Кількість (${unit})` : 'Кількість'
 })
 
-// === 🔥 ЛОГІКА РОЗРАХУНКУ СОБІВАРТОСТІ ===
-const getIngredientCost = (id) => {
-    if (!ingredients.value) return 0
-    const ing = ingredients.value.find(i => i.id === id)
-    return ing ? ing.cost_per_unit : 0
-}
-
-const getConsumableCost = (id) => {
-    if (!consumables.value) return 0
-    const cons = consumables.value.find(c => c.id === id)
-    return cons ? cons.cost_per_unit : 0
-}
-
-const getRecipeCost = (recipeId, targetWeight = null) => {
-    if (!recipeId || !recipes.value) return 0
-    const recipe = recipes.value.find(r => r.id === recipeId)
-    if (!recipe || !recipe.items || recipe.items.length === 0) return 0
-    
-    let recipeBaseCost = 0
-    let recipeBaseWeight = 0
-
-    recipe.items.forEach(item => {
-        const cost = getIngredientCost(item.ingredient_id)
-        recipeBaseCost += (cost * item.quantity)
-        recipeBaseWeight += item.quantity 
-    })
-
-    if (targetWeight && targetWeight > 0 && recipeBaseWeight > 0) {
-        const scaleRatio = targetWeight / recipeBaseWeight
-        return recipeBaseCost * scaleRatio
-    }
-    return recipeBaseCost
-}
-
-const calculateVariantCost = (variant) => {
-    let total = 0
-    if (variant.master_recipe_id) {
-        const weight = variant.output_weight || 0
-        total += getRecipeCost(variant.master_recipe_id, weight)
-    }
-    if (variant.ingredients && variant.ingredients.length > 0) {
-        variant.ingredients.forEach(vi => {
-            const cost = getIngredientCost(vi.ingredient_id)
-            total += (cost * vi.quantity)
-        })
-    }
-    if (variant.consumables && variant.consumables.length > 0) {
-        variant.consumables.forEach(vc => {
-            const cost = getConsumableCost(vc.consumable_id)
-            total += (cost * (vc.quantity || 1))
-        })
-    }
-    return parseFloat(total.toFixed(2))
-}
-
-const calculateProfit = (variant) => {
-    const cost = calculateVariantCost(variant)
-    const price = variant.price || 0
-    return (price - cost).toFixed(2)
-}
-
-// ==========================================================
+// === 🔥 ТУТ БУЛА МАТЕМАТИКА (ВИДАЛЕНО) ===
+// Тепер ми довіряємо бекенду. Frontend просто відображає дані.
 
 onMounted(() => {
     fetchProducts()
     fetchProcessGroups()
 })
 
+// 👇 ЖОРСТКА ВАЛІДАЦІЯ ВАРІАНТУ ПЕРЕД ЗБЕРЕЖЕННЯМ
 const handleVariantSave = async () => {
     if (!variantBuilder.value.name) {
         alert("⚠️ Помилка: Вкажіть назву варіанту!")
@@ -2591,18 +2483,19 @@ const handleVariantSave = async () => {
         return
     }
     if (!variantBuilder.value.sku) {
-        alert("⛔️ СТОП: Поле SKU (Артикул) обов'язкове!\n\nЯкщо вам ліньки вигадувати код, натисніть на кнопку 'Чарівна паличка' 🪄 біля поля, щоб згенерувати його автоматично.")
+        alert("⛔️ СТОП: Поле SKU (Артикул) обов'язкове!\n\nЯкщо вам ліньки вигадувати код, натисніть на кнопку 'Чарівна паличка' 🪄 біля поля.")
         return
     }
     await saveVariant()
 }
 
+// Обгортка для збереження головного товару
 const handleSave = async () => {
     if (!newProduct.value.process_group_ids) {
         newProduct.value.process_group_ids = []
     }
     if (newProduct.value.has_variants && newProduct.value.variants.length === 0) {
-        alert("⚠️ Ви увімкнули режим варіантів, але не додали жодного варіанту.\nЗаповніть форму варіанту і натисніть 'Додати варіант'.")
+        alert("⚠️ Ви увімкнули режим варіантів, але не додали жодного варіанту.")
         return
     }
 
@@ -2791,17 +2684,18 @@ const handleCancel = () => {
                                     </select>
                                 </div>
 
-                                <div class="mb-3 p-2 bg-purple-50 rounded border border-purple-100 text-xs shadow-sm">
-                                    <div class="flex justify-between items-center mb-1">
+                                <div v-if="editingVariantIndex === null" class="mb-3 p-2 bg-gray-50 rounded border border-gray-100 text-xs text-center text-gray-400 italic">
+                                    <i class="fas fa-calculator mr-1"></i> Собівартість буде розрахована сервером після збереження
+                                </div>
+                                <div v-else class="mb-3 p-2 bg-purple-50 rounded border border-purple-100 text-xs shadow-sm">
+                                     <div class="flex justify-between items-center mb-1">
                                         <span class="text-gray-500">Собівартість:</span>
-                                        <span class="font-bold text-gray-700 font-mono">
-                                            {{ calculateVariantCost(variantBuilder) }} ₴
-                                        </span>
+                                        <span class="font-bold text-gray-700 font-mono">{{ variantBuilder.cost_price }} ₴</span>
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-gray-400">Маржа:</span>
-                                        <span class="font-bold font-mono" :class="calculateProfit(variantBuilder) > 0 ? 'text-green-600' : 'text-red-500'">
-                                            {{ calculateProfit(variantBuilder) }} ₴
+                                        <span class="font-bold font-mono" :class="variantBuilder.margin > 0 ? 'text-green-600' : 'text-red-500'">
+                                            {{ variantBuilder.margin }} ₴
                                         </span>
                                     </div>
                                 </div>
@@ -2857,8 +2751,8 @@ const handleCancel = () => {
                                             <div class="font-bold text-sm">{{ v.name }} - {{ v.price }}₴</div>
                                             <div class="text-xs text-gray-400 flex gap-2">
                                                 <span class="bg-yellow-50 px-1 border border-yellow-100 rounded text-yellow-700 font-mono">{{ v.sku }}</span>
-                                                <span :class="calculateProfit(v) > 0 ? 'text-green-500' : 'text-red-500'">
-                                                    (Приб: {{ calculateProfit(v) }}₴)
+                                                <span v-if="v.margin !== undefined" :class="v.margin > 0 ? 'text-green-500' : 'text-red-500'">
+                                                    (Приб: {{ v.margin }}₴)
                                                 </span>
                                             </div>
                                             
@@ -2926,6 +2820,13 @@ const handleCancel = () => {
                             <td class="p-4">
                                 <div class="font-bold text-gray-800 text-base">{{ p.name }}</div>
                                 <div class="text-gray-500 font-mono">{{ p.price }} ₴</div>
+                                
+                                <div v-if="!p.has_variants && p.margin !== undefined" class="text-xs mt-1">
+                                     <span :class="p.margin > 0 ? 'text-green-600' : 'text-red-500'">
+                                        Прибуток: {{ p.margin }} ₴
+                                     </span>
+                                </div>
+                                
                                 <div v-if="p.description" class="text-xs text-gray-400 mt-1 line-clamp-1">{{ p.description }}</div>
                             </td>
                             <td class="p-4">
@@ -2958,7 +2859,7 @@ const handleCancel = () => {
                                                     <i class="fas fa-flask text-orange-400 text-[10px] mt-0.5"></i> 
                                                     <div class="flex flex-wrap gap-1">
                                                         <span v-for="vi in v.ingredients" :key="vi.id" class="bg-white border px-1 rounded">
-                                                            {{ ingredients.find(i => i.id === vi.ingredient_id)?.name }}: {{ vi.quantity }}
+                                                            {{ vi.ingredient_name || '?' }}: {{ vi.quantity }}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -3447,7 +3348,6 @@ const handleCreate = async () => {
 <file path="frontend\src\composables\useCart.js">
 import { ref, computed } from 'vue'
 
-// Глобальний стан (зберігається, навіть якщо закрити компоненти)
 const cartItems = ref([])
 const isProcessing = ref(false)
 const paymentMethod = ref('cash')
@@ -3455,7 +3355,7 @@ const selectedCustomer = ref(null)
 
 export function useCart() {
   
-  // --- GETTERS ---
+  // Ця сума тепер ТІЛЬКИ для відображення користувачу
   const totalSum = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   })
@@ -3464,8 +3364,6 @@ export function useCart() {
     return cartItems.value.reduce((sum, item) => sum + item.quantity, 0)
   })
 
-  // --- ACTIONS ---
-  
   const fetchCart = async () => {
     try {
       const res = await fetch('/api/cart/')
@@ -3473,73 +3371,56 @@ export function useCart() {
         const items = await res.json()
         cartItems.value = items.sort((a, b) => a.name.localeCompare(b.name))
       }
-    } catch (err) {
-      console.error("Cart fetch error:", err)
-    }
+    } catch (err) { console.error("Cart fetch error:", err) }
   }
 
   const addToCart = async (payload) => {
-    // payload: { product_id, variant_id, modifiers, quantity, ... }
     try {
-      // --- ВИПРАВЛЕННЯ ТУТ: додано "/add" в кінці URL ---
-      const res = await fetch('/api/cart/add', {
+      const res = await fetch('/api/cart/add', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-
-      // --- ДОДАТКОВО: Перевірка на помилку сервера ---
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`)
-      }
-
-      await fetchCart() // Оновлюємо список
-    } catch (err) {
-      console.error("Add to cart error:", err)
-      alert("Не вдалося додати товар! Перевірте консоль.")
-    }
+      if (res.ok) await fetchCart()
+    } catch (err) { console.error(err) }
   }
-
-  const updateQty = async (cartItemId, change) => {
-    try {
-      await fetch(`/api/cart/${cartItemId}/update?change=${change}`, { method: 'POST' })
+  
+  const removeFromCart = async (itemId) => {
+     try {
+      await fetch(`/api/cart/${itemId}`, { method: 'DELETE' })
       await fetchCart()
     } catch (err) { console.error(err) }
   }
-
-  const removeItem = async (cartItemId) => {
-    if (!confirm('Видалити цей товар?')) return
+  
+  const clearCart = async () => {
     try {
-      await fetch(`/api/cart/${cartItemId}`, { method: 'DELETE' })
-      await fetchCart()
-    } catch (err) { console.error(err) }
+        await fetch('/api/cart/', { method: 'DELETE' })
+        cartItems.value = []
+    } catch(e) { console.error(e) }
   }
 
-  const clearCart = async (skipConfirm = false) => {
-    if (!skipConfirm && !confirm('Очистити весь кошик?')) return
-    try {
-      await fetch('/api/cart/', { method: 'DELETE' })
-      cartItems.value = []
-      selectedCustomer.value = null
-    } catch (err) { console.error(err) }
-  }
-
+  // 🔥 ОСНОВНА ЗМІНА ТУТ
   const processCheckout = async () => {
     if (cartItems.value.length === 0) return
     isProcessing.value = true
-
+    
     try {
       const payload = {
         items: cartItems.value.map(item => ({
           product_id: item.product_id,
-          variant_id: item.variant_id,
-          modifiers: item.modifiers,
-          quantity: item.quantity
+          variant_id: item.variant_id || null,
+          quantity: item.quantity,
+          // Безпечна обробка модифікаторів
+          modifiers: Array.isArray(item.modifiers) 
+            ? item.modifiers.map(m => (typeof m === 'number' ? { modifier_id: m } : m))
+            : []
         })),
         payment_method: paymentMethod.value,
-        total_price: totalSum.value,
+        // ❌ total_price БІЛЬШЕ НЕ ВІДПРАВЛЯЄМО!
         customer_id: selectedCustomer.value ? selectedCustomer.value.id : null
       }
+
+      console.log("📤 Checkout Request:", payload)
 
       const res = await fetch('/api/orders/checkout/', { 
         method: 'POST',
@@ -3547,47 +3428,39 @@ export function useCart() {
         body: JSON.stringify(payload)
       })
 
-      if (!res.ok) throw new Error("Помилка списання")
-
-      await fetch('/api/cart/', { method: 'DELETE' })
-      
-      const resultMsg = {
-        success: true,
-        text: `✅ Оплата успішна!\nСума: ${totalSum.value} ₴` + (selectedCustomer.value ? `\nКлієнт: ${selectedCustomer.value.name}` : '')
+      if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.detail || "Помилка при оплаті")
       }
+
+      const responseData = await res.json()
       
+      // Очищення
+      await fetch('/api/cart/', { method: 'DELETE' })
       cartItems.value = []
       selectedCustomer.value = null
       
-      return resultMsg
+      // Повертаємо результат із СЕРВЕРНОЮ сумою
+      return {
+        success: true,
+        text: `✅ Оплата успішна!\nСписано: ${responseData.total_price} ₴`
+      }
 
     } catch (err) {
       console.error(err)
-      return { success: false, text: "❌ Помилка при оплаті!" }
+      return { success: false, text: `❌ Помилка: ${err.message}` }
     } finally {
       isProcessing.value = false
     }
   }
 
-  // Робота з клієнтом
-  const setCustomer = (customer) => { selectedCustomer.value = customer }
+  const setCustomer = (c) => { selectedCustomer.value = c }
   const removeCustomer = () => { selectedCustomer.value = null }
 
   return {
-    cartItems,
-    isProcessing,
-    paymentMethod,
-    selectedCustomer,
-    totalSum,
-    cartCount,
-    fetchCart,
-    addToCart,
-    updateQty,
-    removeItem,
-    clearCart,
-    processCheckout,
-    setCustomer,
-    removeCustomer
+    cartItems, cartCount, totalSum, isProcessing, paymentMethod, selectedCustomer,
+    fetchCart, addToCart, removeFromCart, clearCart, processCheckout,
+    setCustomer, removeCustomer
   }
 }
 </file>
@@ -3746,15 +3619,17 @@ const newProduct = ref({
     name: '', category_id: null, price: 0, has_variants: false,
     master_recipe_id: null, output_weight: 0,
     track_stock: false, stock_quantity: 0,
-    consumables: [], variants: [], process_group_ids: []
+    consumables: [], variants: [], process_group_ids: [],
+    // 👇 Додані поля для відображення (приходять з беку)
+    cost_price: 0, margin: 0 
 })
 
 const editingId = ref(null)
 const isEditing = ref(false)
 const productSearch = ref('')
 
-// --- НОВЕ: Стан редагування варіанту ---
-const editingVariantIndex = ref(null) // null = режим створення, число = індекс варіанту
+// Стан редагування варіанту
+const editingVariantIndex = ref(null) 
 
 // Тимчасові змінні
 const tempProductConsumable = ref({ consumable_id: "", quantity: 1 })
@@ -3762,136 +3637,142 @@ const tempVariantConsumable = ref({ consumable_id: "", quantity: 1 })
 const tempVariantIngredient = ref({ ingredient_id: "", quantity: 0 })
 
 const variantBuilder = ref({
-    name: '', price: 0, master_recipe_id: null, 
+    name: '', price: 0, sku: '', // 👈 SKU тепер тут
+    master_recipe_id: null, 
     output_weight: 0, stock_quantity: 0, 
-    consumables: [], ingredients: []
+    consumables: [], ingredients: [],
+    // 👇 Додані поля для відображення
+    cost_price: 0, margin: 0 
 })
 
 export function useProducts() {
     const warehouse = useWarehouse()
     const products = warehouse?.products || ref([])
     const consumables = warehouse?.consumables || ref([])
-    const ingredients = warehouse?.ingredients || ref([])
-    const fetchWarehouseData = warehouse?.fetchWarehouseData || (async ()=>{})
+    const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
 
-    const filteredProducts = computed(() => {
-        if (!products.value) return []
-        if (!productSearch.value) return products.value
-        return products.value.filter(p => p.name.toLowerCase().includes(productSearch.value.toLowerCase()))
-    })
+    // --- CRUD Товарів ---
+    const fetchProducts = async () => {
+        if (warehouse && warehouse.fetchProducts) {
+            await warehouse.fetchProducts()
+        }
+    }
 
-    const fetchProducts = async () => { await fetchWarehouseData() }
+    const resetForm = () => {
+        newProduct.value = {
+            name: '', category_id: null, price: 0, has_variants: false,
+            master_recipe_id: null, output_weight: 0,
+            track_stock: false, stock_quantity: 0,
+            consumables: [], variants: [], process_group_ids: [],
+            cost_price: 0, margin: 0
+        }
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [],
+            cost_price: 0, margin: 0
+        }
+        isEditing.value = false
+        editingId.value = null
+        editingVariantIndex.value = null
+    }
+
+    const prepareEdit = (product) => {
+        // Копіюємо об'єкт, щоб не змінювати його в списку до збереження
+        newProduct.value = JSON.parse(JSON.stringify(product))
+        editingId.value = product.id
+        isEditing.value = true
+        // Якщо process_group_ids не прийшли (старий формат), ініціалізуємо
+        if (!newProduct.value.process_group_ids) newProduct.value.process_group_ids = []
+    }
 
     const saveProduct = async () => {
-        if (!newProduct.value.name) return alert("Вкажіть назву товару!")
-        
-        const cleanPrice = newProduct.value.has_variants ? 0 : (parseFloat(newProduct.value.price) || 0)
-        const cleanWeight = parseFloat(newProduct.value.output_weight) || 0
-        const cleanStock = parseFloat(newProduct.value.stock_quantity) || 0
-        
-        const payload = {
-            ...newProduct.value,
-            category_id: newProduct.value.category_id || null,
-            master_recipe_id: newProduct.value.master_recipe_id || null,
-            price: cleanPrice,
-            output_weight: cleanWeight,
-            stock_quantity: cleanStock,
-            variants: newProduct.value.has_variants ? newProduct.value.variants : [] 
-        }
-
         try {
-            const url = isEditing.value 
-                ? `http://localhost:8001/products/${editingId.value}`
-                : 'http://localhost:8001/products/'
-            const method = isEditing.value ? 'put' : 'post'
+            // Формуємо payload
+            const payload = {
+                ...newProduct.value,
+                // Переконуємось, що числа є числами
+                price: parseFloat(newProduct.value.price),
+                stock_quantity: parseFloat(newProduct.value.stock_quantity),
+                output_weight: parseFloat(newProduct.value.output_weight),
+            }
 
-            await axios[method](url, payload)
+            if (isEditing.value) {
+                await axios.put(`/api/products/${editingId.value}`, payload)
+            } else {
+                await axios.post('/api/products/', payload)
+            }
+            
             await fetchProducts()
             resetForm()
             return true
-        } catch (err) {
-            console.error("Save error:", err)
-            alert("Помилка збереження")
+        } catch (e) {
+            console.error("Помилка збереження товару:", e)
+            alert("Помилка збереження: " + (e.response?.data?.detail || e.message))
             return false
         }
     }
 
     const deleteProduct = async (id) => {
-        if(!confirm("Видалити?")) return
+        if (!confirm('Видалити цей товар?')) return
         try {
-            await axios.delete(`http://localhost:8001/products/${id}`)
+            await axios.delete(`/api/products/${id}`)
             await fetchProducts()
-        } catch(e) { alert("Помилка видалення") }
-    }
-
-    const resetForm = () => {
-        isEditing.value = false
-        editingId.value = null
-        editingVariantIndex.value = null // Скидаємо редагування варіанту
-        newProduct.value = {
-            name: '', category_id: null, price: 0, has_variants: false,
-            master_recipe_id: null, output_weight: 0,
-            track_stock: false, stock_quantity: 0,
-            consumables: [], variants: [], process_group_ids: []
+        } catch (e) {
+            console.error(e)
+            alert("Не вдалося видалити товар")
         }
-        resetVariantBuilder()
     }
 
-    const resetVariantBuilder = () => {
-        variantBuilder.value = { name: '', price: 0, master_recipe_id: null, output_weight: 0, stock_quantity: 0, consumables: [], ingredients: [] }
-        editingVariantIndex.value = null
-    }
-
-    const prepareEdit = (p) => {
-        isEditing.value = true
-        editingId.value = p.id
-        const copy = JSON.parse(JSON.stringify(p))
-        if (copy.variants) {
-            copy.variants.forEach(v => {
-                if(v.consumables) v.consumables.forEach(c => c.name = c.consumable_name || c.name)
-                if(v.ingredients) v.ingredients.forEach(i => i.name = i.ingredient_name || i.name)
-            })
-        }
-        if (copy.consumables) copy.consumables.forEach(c => c.name = c.consumable_name || c.name)
-        newProduct.value = copy
-    }
-
-    // --- ЛОГІКА ВАРІАНТІВ (Оновлена) ---
-    
-    // 1. Функція збереження (Додавання АБО Оновлення)
+    // --- Варіанти ---
     const saveVariant = () => {
-        if(!variantBuilder.value.name) return alert("Вкажіть назву варіанту")
+        const v = JSON.parse(JSON.stringify(variantBuilder.value))
         
-        const variantData = JSON.parse(JSON.stringify(variantBuilder.value))
-
+        // Валідація вже на рівні UI, тут просто додаємо
         if (editingVariantIndex.value !== null) {
-            // ОНОВЛЕННЯ існуючого
-            newProduct.value.variants[editingVariantIndex.value] = variantData
+            newProduct.value.variants[editingVariantIndex.value] = v
+            editingVariantIndex.value = null
         } else {
-            // ДОДАВАННЯ нового
-            newProduct.value.variants.push(variantData)
+            newProduct.value.variants.push(v)
         }
-        resetVariantBuilder()
+        
+        // Очищення білдера (але SKU очищаємо, щоб не дублювати)
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [],
+            cost_price: 0, margin: 0
+        }
     }
 
-    // 2. Функція підготовки до редагування
     const editVariant = (index) => {
-        editingVariantIndex.value = index
-        // Копіюємо дані варіанту назад у форму
         variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]))
+        editingVariantIndex.value = index
     }
 
-    // 3. Скасування редагування
+    const removeVariant = (index) => {
+        newProduct.value.variants.splice(index, 1)
+        if (editingVariantIndex.value === index) {
+            editingVariantIndex.value = null
+            // Очистити форму
+            variantBuilder.value = {
+                name: '', price: 0, sku: '',
+                master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+                consumables: [], ingredients: [], cost_price: 0, margin: 0
+            }
+        }
+    }
+
     const cancelVariantEdit = () => {
-        resetVariantBuilder()
+        editingVariantIndex.value = null
+        variantBuilder.value = {
+            name: '', price: 0, sku: '',
+            master_recipe_id: null, output_weight: 0, stock_quantity: 0, 
+            consumables: [], ingredients: [], cost_price: 0, margin: 0
+        }
     }
 
-    const removeVariant = (i) => {
-        newProduct.value.variants.splice(i, 1)
-        if (editingVariantIndex.value === i) resetVariantBuilder()
-    }
-
-    // Інші методи (матеріали/інгредієнти)
+    // --- Допоміжні (Consumables / Ingredients) ---
     const addProductConsumable = () => {
         if(!tempProductConsumable.value.consumable_id) return
         const c = consumables.value.find(x => x.id === tempProductConsumable.value.consumable_id)
@@ -3916,12 +3797,17 @@ export function useProducts() {
     }
     const removeIngredientFromVariant = (i) => variantBuilder.value.ingredients.splice(i, 1)
 
+    // --- Фільтрація ---
+    const filteredProducts = computed(() => {
+        if (!productSearch.value) return products.value
+        const s = productSearch.value.toLowerCase()
+        return products.value.filter(p => p.name.toLowerCase().includes(s))
+    })
+
     return {
         newProduct, isEditing, editingId, productSearch, filteredProducts,
         variantBuilder, tempProductConsumable, tempVariantConsumable, tempVariantIngredient,
-        // Експортуємо нові змінні та методи
         editingVariantIndex, saveVariant, editVariant, cancelVariantEdit,
-        
         fetchProducts, saveProduct, deleteProduct, resetForm, prepareEdit,
         removeVariant,
         addProductConsumable, removeProductConsumable,
@@ -4473,6 +4359,36 @@ class Product(Base):
     # НОВЕ: Зв'язок з групами процесів
     process_groups = relationship("ProcessGroup", secondary=product_process_groups, back_populates="products")
 
+    @property
+    def cost_price(self):
+        """Розрахунок собівартості базового товару"""
+        total = 0.0
+
+        # 1. Вартість рецепту (з масштабуванням)
+        if self.master_recipe:
+            recipe_cost = 0.0
+            recipe_weight = 0.0
+            
+            for item in self.master_recipe.items:
+                if item.ingredient:
+                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
+                    # Припускаємо, що кількість в рецепті = вага/об'єм
+                    recipe_weight += item.quantity 
+            
+            # Масштабування (Scaling)
+            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
+                scale_ratio = self.output_weight / recipe_weight
+                total += recipe_cost * scale_ratio
+            else:
+                total += recipe_cost
+
+        # 2. Загальні витратні матеріали товару
+        for pc in self.consumables:
+            if pc.consumable:
+                total += pc.consumable.cost_per_unit * pc.quantity
+
+        return round(total, 2)
+
 # --- Зв'язок Товар -> Витратні матеріали ---
 class ProductConsumable(Base):
     __tablename__ = "product_consumables"
@@ -4503,6 +4419,42 @@ class ProductVariant(Base):
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
     # !!! НОВЕ: Зв'язок з інгредієнтами !!!
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
+
+    @property
+    def cost_price(self):
+        """Розрахунок собівартості варіанту"""
+        total = 0.0
+
+        # 1. Рецепт (Масштабування)
+        if self.master_recipe:
+            recipe_cost = 0.0
+            recipe_weight = 0.0
+            for item in self.master_recipe.items:
+                if item.ingredient:
+                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
+                    recipe_weight += item.quantity
+            
+            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
+                scale_ratio = self.output_weight / recipe_weight
+                total += recipe_cost * scale_ratio
+            else:
+                total += recipe_cost
+        
+        # 2. Додаткові інгредієнти варіанту
+        for vi in self.ingredients:
+            if vi.ingredient:
+                total += vi.ingredient.cost_per_unit * vi.quantity
+
+        # 3. Витратні матеріали варіанту
+        for vc in self.consumables:
+            if vc.consumable:
+                total += vc.consumable.cost_per_unit * vc.quantity
+
+        return round(total, 2)
+
+    @property
+    def margin(self):
+        return round(self.price - self.cost_price, 2)
 
 class ProductVariantConsumable(Base):
     __tablename__ = "product_variant_consumables"
@@ -4657,19 +4609,18 @@ class Ingredient(BaseModel):
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
     
-    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ (Вже є у тебе, але перевір тип category)
+    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ
     category_id: Optional[int] = None
     category: Optional[Category] = None # Щоб фронтенд міг показати назву категорії
     
     class Config:
-        from_attributes = True   
+        from_attributes = True    
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
     stock_quantity: int
-    # category_id тут не додаємо, щоб не ламати логіку Base
 
 class ConsumableCreate(ConsumableBase):
     # 👇 ДОДАНО: Дозволяємо приймати ID категорії при створенні
@@ -4713,7 +4664,7 @@ class ProductConsumableRead(BaseModel):
     consumable_name: Optional[str] = None
     class Config: from_attributes = True
 
-# --- PROCESSES (НОВЕ) ---
+# --- PROCESSES ---
 class ProcessOptionCreate(BaseModel):
     name: str # "Дрібний", "Зерно"
 class ProcessOption(ProcessOptionCreate):
@@ -4785,9 +4736,14 @@ class VariantCreate(BaseModel):
 
 class Variant(VariantCreate):
     id: int
-    # При читанні використовуємо Read (з назвою), тепер це працюватиме коректно
+    # При читанні використовуємо Read (з назвою)
     consumables: List[ProductConsumableRead] = []
-    ingredients: List[ProductIngredientRead] = [] 
+    ingredients: List[ProductIngredientRead] = []
+
+    # Додано для аналітики
+    cost_price: float = 0.0
+    margin: float = 0.0
+
     class Config: from_attributes = True
 
 # --- PRODUCTS ---
@@ -4811,6 +4767,10 @@ class ProductCreate(ProductBase):
     # НОВЕ: Список ID груп процесів, які треба прив'язати
     process_group_ids: List[int] = [] 
 
+# 🔥 Відновлено ProductUpdate (може знадобитися для PATCH запитів)
+class ProductUpdate(ProductBase):
+    pass
+
 class Product(ProductBase):
     id: int
     category: Optional[Category] = None
@@ -4819,14 +4779,19 @@ class Product(ProductBase):
     master_recipe: Optional[MasterRecipe] = None
     consumables: List[ProductConsumableRead] = [] 
     
-    # НОВЕ: Повертаємо повні об'єкти груп процесів
+    # Додано для аналітики
+    cost_price: float = 0.0
+    margin: float = 0.0
+
+    # Повертаємо повні об'єкти груп процесів
     process_groups: List[ProcessGroup] = []
 
     class Config: from_attributes = True
 
+# 🔥 Відновлено StockDeductionItem (критично для роботи роутера products.py)
 class StockDeductionItem(BaseModel):
-    id: int
-    type: str  # 'product' або 'product_variant'
+    product_id: int
+    variant_id: Optional[int] = None
     quantity: float
     order_id: int
 
@@ -4844,7 +4809,7 @@ class InventoryTransactionRead(BaseModel):
     class Config:
         from_attributes = True
 
-# --- ORDERS ---
+# --- ORDERS (ZERO TRUST) ---
 class SoldItemModifier(BaseModel):
     modifier_id: int
 class SoldItem(BaseModel):
@@ -4852,13 +4817,11 @@ class SoldItem(BaseModel):
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-    # Тут ми не додаємо окреме поле для процесів, 
-    # бо вони приходять вже як частина назви або details, сформовані на фронті
-    # або ми додамо їх в майбутньому, якщо треба буде.
+
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
-    total_price: float
+    # ❌ total_price ВИДАЛЕНО! Це головна мета наших змін.
     customer_id: Optional[int] = None
 
 class CustomerCreate(BaseModel):
@@ -4876,6 +4839,7 @@ class OrderItemRead(BaseModel):
     price_at_moment: float
     details: Optional[str] = None
     class Config: from_attributes = True
+
 class OrderRead(BaseModel):
     id: int
     created_at: datetime
@@ -5153,8 +5117,6 @@ def get_inventory_history(
 </file>
 
 <file path="product_service\routers\orders.py">
-# FILE: product_service/routers/orders.py
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -5165,13 +5127,17 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 
 @router.post("/checkout/")
 def checkout(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
-    # Передаємо дані професіоналу - сервісу
+    # Вся логіка тепер тут 👇
     new_order = OrderService.process_checkout(db, order_data)
-    return {"status": "ok", "order_id": new_order.id}
+    # Повертаємо ID та пораховану ціну
+    return {
+        "status": "ok", 
+        "order_id": new_order.id, 
+        "total_price": new_order.total_price
+    }
 
 @router.get("/", response_model=List[schemas.OrderRead])
 def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
-    # Сортуємо від нових до старих
     return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
 </file>
 
@@ -5442,111 +5408,138 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
 
 <file path="product_service\services\inventory_logger.py">
 from sqlalchemy.orm import Session
-import models
 from datetime import datetime
+import models
 
 class InventoryLogger:
     @staticmethod
-    def log(db: Session, entity_type: str, entity_id: int, entity_name: str, old_balance: float, new_balance: float, reason: str = "manual"):
-        change = new_balance - old_balance
-        if change == 0: return
+    def log(db: Session, entity_type: str, entity_id: int, entity_name: str, 
+            balance_before: float, balance_after: float, reason: str):
+        """
+        entity_type: 'product', 'variant', 'ingredient', 'consumable'
+        """
+        try:
+            change_amount = balance_after - balance_before
+            
+            # Якщо змін немає, нічого не пишемо
+            if change_amount == 0:
+                return
 
-        transaction = models.InventoryTransaction(
-            entity_type=entity_type,
-            entity_id=entity_id,
-            entity_name=entity_name,
-            change_amount=change,
-            balance_after=new_balance,
-            reason=reason,
-            created_at=datetime.utcnow()
-        )
-        db.add(transaction)
+            transaction = models.InventoryTransaction(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                entity_name=entity_name,
+                change_amount=change_amount,
+                balance_after=balance_after,
+                reason=reason,
+                created_at=datetime.utcnow()
+            )
+            db.add(transaction)
+            # Commit не робимо, бо це частина великої транзакції в OrderService
+        except Exception as e:
+            print(f"⚠️ Помилка логування складу: {e}")
 </file>
 
 <file path="product_service\services\order_service.py">
+import sys
+import os
+import traceback
+
+# Шлях для імпортів
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from datetime import datetime
 import models, schemas
 from services.inventory_logger import InventoryLogger
-import traceback # Для виводу помилки в консоль
 
 class OrderService:
     """
-    Цей клас відповідає виключно за обробку замовлень.
-    Реалізовано принцип Atomic Transaction (все або нічого).
+    Гібридний OrderService:
+    1. ZERO TRUST: Сам рахує ціну.
+    2. LOCKING: Блокує товари при покупці.
+    3. DEEP INVENTORY: Списує по рецептах (як у старій версії).
     """
     @staticmethod
     def process_checkout(db: Session, order_data: schemas.OrderCreate):
         try:
-            # 1. Створюємо замовлення
+            total_order_price = 0.0
+            
+            # 1. Створюємо замовлення (ціна поки 0)
             new_order = models.Order(
-                total_price=order_data.total_price,
+                created_at=datetime.utcnow(),
                 payment_method=order_data.payment_method,
+                total_price=0, 
                 customer_id=order_data.customer_id
             )
             db.add(new_order)
+            db.flush() # Отримуємо ID
             
-            # ВАЖЛИВО: Використовуємо flush(), а не commit().
-            # Це дає нам ID замовлення, але дозволяє відкотити зміни, якщо стається помилка далі.
-            db.flush() 
-            db.refresh(new_order)
-
             transaction_reason = f"sale_order_{new_order.id}"
 
-            # 2. Проходимось по товарах
+            # 2. Обробляємо товари
             for item in order_data.items:
-                product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
-                if not product: continue
+                # --- БЛОКУВАННЯ (Locking) ---
+                product = db.query(models.Product).filter(
+                    models.Product.id == item.product_id
+                ).with_for_update().first()
+
+                if not product:
+                    continue
 
                 item_name = product.name
-                price = product.price
+                # Ціну беремо з БАЗИ, а не з запиту
+                price = product.price 
                 details_list = []
                 
                 target_recipe_id = None
                 base_weight = 0.0
 
-                # --- А. ВАРІАНТИ ---
+                # === А. ВАРІАНТ (якщо є) ===
                 if item.variant_id:
-                    variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == item.variant_id).first()
-                    if variant:
-                        item_name = f"{product.name} ({variant.name})"
-                        price = variant.price
-                        details_list.append(f"Варіант: {variant.name}")
-                        
-                        target_recipe_id = variant.master_recipe_id or product.master_recipe_id
-                        base_weight = variant.output_weight
+                    variant = db.query(models.ProductVariant).filter(
+                        models.ProductVariant.id == item.variant_id
+                    ).with_for_update().first()
 
-                        # Списання залишку варіанту
-                        old_qty = variant.stock_quantity
-                        variant.stock_quantity -= item.quantity
-                        db.add(variant)
-                        
-                        InventoryLogger.log(
-                            db, "product_variant", variant.id, item_name, 
-                            old_qty, variant.stock_quantity, transaction_reason
-                        )
+                    if not variant:
+                        raise HTTPException(status_code=404, detail=f"Варіант {item.variant_id} не знайдено")
+                    
+                    item_name = f"{product.name} ({variant.name})"
+                    price = variant.price # Ціна варіанту
+                    details_list.append(f"Варіант: {variant.name}")
+                    
+                    # Визначаємо, яку техкарту списувати
+                    target_recipe_id = variant.master_recipe_id or product.master_recipe_id
+                    base_weight = variant.output_weight
 
-                        # Списання матеріалів варіанту
-                        for vc in variant.consumables:
-                            if vc.consumable:
-                                c_old = vc.consumable.stock_quantity
-                                deduction = vc.quantity * item.quantity
-                                vc.consumable.stock_quantity -= deduction
-                                db.add(vc.consumable)
-                                InventoryLogger.log(db, "consumable", vc.consumable.id, vc.consumable.name, c_old, vc.consumable.stock_quantity, transaction_reason)
+                    # 1. Списання залишку самого варіанту (якщо ведеться облік штук)
+                    if variant.stock_quantity > 0 or product.track_stock: # Логіка перевірки залишку
+                         old_qty = variant.stock_quantity
+                         variant.stock_quantity -= item.quantity
+                         InventoryLogger.log(db, "variant", variant.id, item_name, old_qty, variant.stock_quantity, transaction_reason)
 
-                        # !!! НОВЕ: Списання інгредієнтів варіанту !!!
-                        # Якщо models.py не оновлено, тут буде помилка AttributeError.
-                        # Завдяки try/except ми побачимо це в логах, а замовлення не створиться.
-                        if hasattr(variant, 'ingredients'):
-                            for vi in variant.ingredients:
-                                if vi.ingredient:
-                                    i_old = vi.ingredient.stock_quantity
-                                    deduction = vi.quantity * item.quantity
-                                    vi.ingredient.stock_quantity -= deduction
-                                    db.add(vi.ingredient)
-                                    InventoryLogger.log(db, "ingredient", vi.ingredient.id, vi.ingredient.name, i_old, vi.ingredient.stock_quantity, transaction_reason)
+                    # 2. Списання матеріалів варіанту (стаканчики і т.д.)
+                    for vc in variant.consumables:
+                        if vc.consumable:
+                            c_old = vc.consumable.stock_quantity
+                            deduction = vc.quantity * item.quantity
+                            vc.consumable.stock_quantity -= deduction
+                            db.add(vc.consumable)
+                            InventoryLogger.log(db, "consumable", vc.consumable.id, vc.consumable.name, c_old, vc.consumable.stock_quantity, transaction_reason)
 
-                # --- Б. ПРОСТІ ТОВАРИ ---
+                    # 3. Списання унікальних інгредієнтів варіанту
+                    # (Цей блок був у старій версії, повертаємо його)
+                    if hasattr(variant, 'ingredients'):
+                        for vi in variant.ingredients:
+                            if vi.ingredient:
+                                i_old = vi.ingredient.stock_quantity
+                                deduction = vi.quantity * item.quantity
+                                vi.ingredient.stock_quantity -= deduction
+                                db.add(vi.ingredient)
+                                InventoryLogger.log(db, "ingredient", vi.ingredient.id, vi.ingredient.name, i_old, vi.ingredient.stock_quantity, transaction_reason)
+
+                # === Б. ПРОСТИЙ ТОВАР ===
                 else:
                     target_recipe_id = product.master_recipe_id
                     base_weight = product.output_weight
@@ -5554,10 +5547,9 @@ class OrderService:
                     if product.track_stock:
                         old_qty = product.stock_quantity
                         product.stock_quantity -= item.quantity
-                        db.add(product)
                         InventoryLogger.log(db, "product", product.id, product.name, old_qty, product.stock_quantity, transaction_reason)
 
-                # --- В. ЗАГАЛЬНІ МАТЕРІАЛИ ---
+                # === В. ЗАГАЛЬНІ МАТЕРІАЛИ ТОВАРУ ===
                 for pc in product.consumables:
                     if pc.consumable:
                         c_old = pc.consumable.stock_quantity
@@ -5566,50 +5558,63 @@ class OrderService:
                         db.add(pc.consumable)
                         InventoryLogger.log(db, "consumable", pc.consumable.id, pc.consumable.name, c_old, pc.consumable.stock_quantity, transaction_reason)
 
-                # --- Г. РЕЦЕПТ ---
+                # === Г. СПИСАННЯ ПО ТЕХКАРТІ (MASTER RECIPE) ===
+                # Це те, чого не вистачало в "безпечній" версії!
                 if target_recipe_id:
                     recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == target_recipe_id).first()
                     if recipe:
                         for r_item in recipe.items:
                             if r_item.ingredient:
+                                # Логіка: Якщо відсоток - беремо від ваги, якщо ні - фіксована кількість
                                 deduction_per_item = (r_item.quantity / 100.0 * base_weight) if r_item.is_percentage else r_item.quantity
                                 total_deduction = deduction_per_item * item.quantity
+                                
                                 i_old = r_item.ingredient.stock_quantity
                                 r_item.ingredient.stock_quantity -= total_deduction
                                 db.add(r_item.ingredient)
+                                
                                 InventoryLogger.log(db, "ingredient", r_item.ingredient.id, r_item.ingredient.name, i_old, r_item.ingredient.stock_quantity, transaction_reason)
 
-                # --- Д. МОДИФІКАТОРИ ---
-                for mod_item in item.modifiers:
-                    mod = db.query(models.Modifier).filter(models.Modifier.id == mod_item.modifier_id).first()
-                    if mod:
-                        details_list.append(mod.name)
-                        if mod.ingredient:
-                            i_old = mod.ingredient.stock_quantity
-                            deduction = mod.quantity * item.quantity
-                            mod.ingredient.stock_quantity -= deduction
-                            db.add(mod.ingredient)
-                            InventoryLogger.log(db, "ingredient", mod.ingredient.id, mod.ingredient.name, i_old, mod.ingredient.stock_quantity, transaction_reason)
+                # === Д. МОДИФІКАТОРИ (Сиропи, молоко) ===
+                for mod_ref in item.modifiers:
+                    # Безпечно шукаємо модифікатор
+                    modifier = db.query(models.Modifier).filter(models.Modifier.id == mod_ref.modifier_id).first()
+                    
+                    if modifier:
+                        # 1. Додаємо до ціни
+                        price += modifier.price_change
+                        details_list.append(modifier.name)
+                        
+                        # 2. Списуємо інгредієнт модифікатора
+                        if modifier.ingredient:
+                            i_old = modifier.ingredient.stock_quantity
+                            deduction = modifier.quantity * item.quantity
+                            modifier.ingredient.stock_quantity -= deduction
+                            db.add(modifier.ingredient)
+                            InventoryLogger.log(db, "ingredient", modifier.ingredient.id, modifier.ingredient.name, i_old, modifier.ingredient.stock_quantity, transaction_reason)
 
-                # Фіксуємо рядок в чеку
+                # === ЗАПИС У ЧЕК ===
                 db.add(models.OrderItem(
                     order_id=new_order.id,
                     product_name=item_name,
                     quantity=item.quantity,
-                    price_at_moment=price,
-                    details=", ".join(details_list)
+                    price_at_moment=price, # Серверна ціна
+                    details=", ".join(details_list) if details_list else None
                 ))
+                
+                total_order_price += price * item.quantity
 
-            # 3. Тільки якщо все пройшло без помилок - фіксуємо транзакцію
+            # 3. Фіксуємо загальну суму і зберігаємо
+            new_order.total_price = round(total_order_price, 2)
             db.commit()
+            db.refresh(new_order)
             return new_order
 
         except Exception as e:
-            # Якщо сталась БУДЬ-ЯКА помилка - відкочуємо все (і створення замовлення теж)
             db.rollback()
-            print("❌ ПОМИЛКА ПРИ ОПЛАТІ (Transaction Rollback):")
-            print(traceback.format_exc()) # Виведе точну причину в консоль Docker
-            raise e # Прокидуємо помилку далі, щоб API повернув 500
+            print("❌ ПОМИЛКА ПРИ ОПЛАТІ:")
+            print(traceback.format_exc())
+            raise HTTPException(status_code=500, detail="Помилка обробки замовлення")
 </file>
 
 <file path="product_service\services\product_service.py">
