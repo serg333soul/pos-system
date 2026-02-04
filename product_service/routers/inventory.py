@@ -57,8 +57,8 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
             entity_type="ingredient", 
             entity_id=db_ingredient.id, 
             entity_name=db_ingredient.name, 
-            old_balance=old_balance, 
-            new_balance=db_ingredient.stock_quantity, 
+            balance_before=old_balance, 
+            balance_after=db_ingredient.stock_quantity, 
             reason="manual_correction"
         )
     
@@ -104,10 +104,11 @@ def update_consumable(id: int, item: schemas.ConsumableCreate, db: Session = Dep
         entity_type="consumable",
         entity_id=db_c.id,
         entity_name=db_c.name,
-        old_balance=old_balance,
-        new_balance=db_c.stock_quantity,
+        balance_before=old_balance,
+        balance_after=db_c.stock_quantity,
         reason="manual_correction"
     )
+    
 
     db.commit(); db.refresh(db_c)
     return db_c
