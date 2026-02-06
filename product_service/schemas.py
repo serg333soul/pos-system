@@ -31,7 +31,6 @@ class IngredientCreate(BaseModel):
     cost_per_unit: float
     stock_quantity: float
     unit_id: int
-    # Без нього API не прийме категорію при створенні
     category_id: Optional[int] = None 
 
 class Ingredient(BaseModel):
@@ -41,13 +40,9 @@ class Ingredient(BaseModel):
     stock_quantity: float
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
-    
-    # 👇 ЦІ РЯДКИ ТРЕБА ДЛЯ ЧИТАННЯ
     category_id: Optional[int] = None
-    category: Optional[Category] = None # Щоб фронтенд міг показати назву категорії
-    
-    class Config:
-        from_attributes = True    
+    category: Optional[Category] = None
+    class Config: from_attributes = True
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
@@ -56,57 +51,55 @@ class ConsumableBase(BaseModel):
     stock_quantity: int
 
 class ConsumableCreate(ConsumableBase):
-    # 👇 ДОДАНО: Дозволяємо приймати ID категорії при створенні
     category_id: Optional[int] = None 
     unit_id: Optional[int] = None
 
 class Consumable(ConsumableBase):
     id: int
-    
-    # 👇 ДОДАНО: Щоб фронтенд бачив категорію
     category_id: Optional[int] = None
     category: Optional[Category] = None
-
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
-    
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# Схема для запису (Link)
+# --- LINKS (Зв'язки) ---
 class ProductIngredientLink(BaseModel):
     ingredient_id: int
     quantity: float
 
-# Схема для читання (Read)
 class ProductIngredientRead(BaseModel):
     ingredient_id: int
     quantity: float
     ingredient_name: Optional[str] = None
     class Config: from_attributes = True
 
-# Схема для прив'язки витратних матеріалів до товару (для запису)
 class ProductConsumableLink(BaseModel):
     consumable_id: int
     quantity: float = 1.0
 
-# --- ВАЖЛИВО: Переміщено СЮДИ (перед Variants), щоб Pydantic його бачив ---
 class ProductConsumableRead(BaseModel):
     consumable_id: int
     quantity: float
     consumable_name: Optional[str] = None
     class Config: from_attributes = True
 
+# 🔥 НОВЕ: Схема для калькулятора собівартості
+class ProductCostCheck(BaseModel):
+    master_recipe_id: Optional[int] = None
+    output_weight: float = 0.0
+    ingredients: List[ProductIngredientLink] = []
+    consumables: List[ProductConsumableLink] = []
+
 # --- PROCESSES ---
 class ProcessOptionCreate(BaseModel):
-    name: str # "Дрібний", "Зерно"
+    name: str 
 class ProcessOption(ProcessOptionCreate):
     id: int
     group_id: int
     class Config: from_attributes = True
 
 class ProcessGroupCreate(BaseModel):
-    name: str # "Помол"
+    name: str 
     options: List[ProcessOptionCreate] = []
 
 class ProcessGroup(BaseModel):
@@ -162,21 +155,15 @@ class VariantCreate(BaseModel):
     output_weight: float = 0.0
     master_recipe_id: Optional[int] = None
     stock_quantity: float = 0.0
-    # При створенні використовуємо Link (тільки ID та кількість)
     consumables: List[ProductConsumableLink] = []
-
     ingredients: List[ProductIngredientLink] = []
 
 class Variant(VariantCreate):
     id: int
-    # При читанні використовуємо Read (з назвою)
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
-
-    # Додано для аналітики
     cost_price: float = 0.0
     margin: float = 0.0
-
     class Config: from_attributes = True
 
 # --- PRODUCTS ---
@@ -188,19 +175,19 @@ class ProductBase(BaseModel):
     price: float = 0.0 
     output_weight: float = 0.0 
     master_recipe_id: Optional[int] = None
-
     track_stock: bool = False
     stock_quantity: float = 0.0
 
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
     modifier_groups: List[ModifierGroupCreate] = []
-    consumables: List[ProductConsumableLink] = []
     
-    # НОВЕ: Список ID груп процесів, які треба прив'язати
+    # Списки для ПРОСТОГО товару
+    consumables: List[ProductConsumableLink] = []
+    ingredients: List[ProductIngredientLink] = [] # 🔥 Тепер можна додавати інгредієнти до простого товару
+    
     process_group_ids: List[int] = [] 
 
-# 🔥 Відновлено ProductUpdate (може знадобитися для PATCH запитів)
 class ProductUpdate(ProductBase):
     pass
 
@@ -210,25 +197,26 @@ class Product(ProductBase):
     variants: List[Variant] = [] 
     modifier_groups: List[ModifierGroup] = []
     master_recipe: Optional[MasterRecipe] = None
-    consumables: List[ProductConsumableRead] = [] 
     
-    # Додано для аналітики
+    consumables: List[ProductConsumableRead] = [] 
+    ingredients: List[ProductIngredientRead] = [] # 🔥
+    
     cost_price: float = 0.0
     margin: float = 0.0
-
-    # Повертаємо повні об'єкти груп процесів
     process_groups: List[ProcessGroup] = []
 
     class Config: from_attributes = True
 
-# 🔥 Відновлено StockDeductionItem (критично для роботи роутера products.py)
+# --- DEDUCTION & INVENTORY ---
 class StockDeductionItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     quantity: float
     order_id: int
 
-# --- INVENTORY TRANSACTIONS ---
+    product_id: Optional[int] = None 
+    variant_id: Optional[int] = None
+
 class InventoryTransactionRead(BaseModel):
     id: int
     entity_type: str
@@ -238,11 +226,9 @@ class InventoryTransactionRead(BaseModel):
     balance_after: float
     reason: str
     created_at: datetime
+    class Config: from_attributes = True
 
-    class Config:
-        from_attributes = True
-
-# --- ORDERS (ZERO TRUST) ---
+# --- ORDERS ---
 class SoldItemModifier(BaseModel):
     modifier_id: int
 class SoldItem(BaseModel):
@@ -254,7 +240,7 @@ class SoldItem(BaseModel):
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
-    # ❌ total_price ВИДАЛЕНО! Це головна мета наших змін.
+    # Total price відсутня (Zero Trust)
     customer_id: Optional[int] = None
 
 class CustomerCreate(BaseModel):
