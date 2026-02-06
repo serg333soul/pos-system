@@ -4,7 +4,6 @@ from database import Base
 from datetime import datetime
 
 # --- АСОЦІАТИВНА ТАБЛИЦЯ: ТОВАР <-> ГРУПИ ПРОЦЕСІВ ---
-# Це дозволяє прив'язати "Помол" до "Ефіопії", "Колумбії" і "Бразилії" одночасно
 product_process_groups = Table(
     'product_process_groups_link', Base.metadata,
     Column('product_id', Integer, ForeignKey('products.id')),
@@ -26,51 +25,40 @@ class Unit(Base):
     __tablename__ = "units"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True)
-    symbol = Column(String, unique=True)
+    symbol = Column(String)
 
-# --- ІНГРЕДІЄНТИ ---
+# --- СКЛАД (ІНГРЕДІЄНТИ) ---
 class Ingredient(Base):
     __tablename__ = "ingredients"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    
-    # Зв'язок з Unit
-    unit_id = Column(Integer, ForeignKey("units.id"))
-    unit = relationship("Unit")
-    
     cost_per_unit = Column(Float)
     stock_quantity = Column(Float, default=0.0)
-    
-    # 👇 ДОДАНО: Зв'язок з категорією
+    unit_id = Column(Integer, ForeignKey("units.id"))
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    
+    unit = relationship("Unit")
     category = relationship("Category")
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# --- ВИТРАТНІ МАТЕРІАЛИ ---
+    
+# --- СКЛАД (ВИТРАТНІ МАТЕРІАЛИ) ---
 class Consumable(Base):
     __tablename__ = "consumables"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     cost_per_unit = Column(Float)
     stock_quantity = Column(Integer, default=0)
     
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
+    
+    category = relationship("Category")
     unit = relationship("Unit")
 
-    # 👇 ДОДАНО: Зв'язок з категорією (на майбутнє, якщо знадобиться для витратних)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    category = relationship("Category")
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# --- МАЙСТЕР-РЕЦЕПТИ ---
+# --- ТЕХНОЛОГІЧНІ КАРТИ (РЕЦЕПТИ) ---
 class MasterRecipe(Base):
     __tablename__ = "master_recipes"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+    name = Column(String)
     description = Column(String, nullable=True)
     items = relationship("MasterRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
 
@@ -79,208 +67,145 @@ class MasterRecipeItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     recipe_id = Column(Integer, ForeignKey("master_recipes.id"))
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
-    quantity = Column(Float)
-    is_percentage = Column(Boolean, default=False) 
+    quantity = Column(Float) # Кількість (г або %)
+    is_percentage = Column(Boolean, default=False) # True = % від ваги виходу, False = грами
+    
     recipe = relationship("MasterRecipe", back_populates="items")
     ingredient = relationship("Ingredient")
 
-# --- ПРОЦЕСИ (НОВЕ) ---
+# --- ПРОЦЕСИ ---
 class ProcessGroup(Base):
     __tablename__ = "process_groups"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True) # Напр: "Помол", "Просмаження"
-    
-    # Зв'язок один-до-багатьох з опціями
+    name = Column(String) # "Помол", "Молоко"
     options = relationship("ProcessOption", back_populates="group", cascade="all, delete-orphan")
-    
-    # Зв'язок багато-до-багатьох з товарами (зворотній бік)
-    products = relationship("Product", secondary=product_process_groups, back_populates="process_groups")
 
 class ProcessOption(Base):
     __tablename__ = "process_options"
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("process_groups.id"))
-    name = Column(String) # Напр: "Під турку", "Під фільтр"
-    
+    name = Column(String) # "Дрібний", "Зерно"
     group = relationship("ProcessGroup", back_populates="options")
 
-# --- ТОВАРИ ---
-class Product(Base):
-    __tablename__ = "products"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    description = Column(String, nullable=True)
-    category_id = Column(Integer, ForeignKey("categories.id"))
-    category = relationship("Category")
-    has_variants = Column(Boolean, default=False)
-    price = Column(Float, default=0.0)
-    output_weight = Column(Float, default=0.0) 
-    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
-    master_recipe = relationship("MasterRecipe")
+# --- ПРОДУКТИ ТА ВАРІАНТИ ---
 
-    # --- НОВІ ПОЛЯ ---
-    track_stock = Column(Boolean, default=False) # Чи вести складський облік цього товару
-    stock_quantity = Column(Float, default=0.0)  # Залишок (для простих товарів)
-
-    variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
-    modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
-    consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
-    # НОВЕ: Зв'язок з групами процесів
-    process_groups = relationship("ProcessGroup", secondary=product_process_groups, back_populates="products")
-
-    @property
-    def cost_price(self):
-        """Розрахунок собівартості базового товару"""
-        total = 0.0
-
-        # 1. Вартість рецепту (з масштабуванням)
-        if self.master_recipe:
-            recipe_cost = 0.0
-            recipe_weight = 0.0
-            
-            for item in self.master_recipe.items:
-                if item.ingredient:
-                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
-                    # Припускаємо, що кількість в рецепті = вага/об'єм
-                    recipe_weight += item.quantity 
-            
-            # Масштабування (Scaling)
-            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
-                scale_ratio = self.output_weight / recipe_weight
-                total += recipe_cost * scale_ratio
-            else:
-                total += recipe_cost
-
-        # 2. Загальні витратні матеріали товару
-        for pc in self.consumables:
-            if pc.consumable:
-                total += pc.consumable.cost_per_unit * pc.quantity
-
-        return round(total, 2)
-
-# --- Зв'язок Товар -> Витратні матеріали ---
+# Зв'язок Товар -> Витратний матеріал (Стаканчик)
 class ProductConsumable(Base):
     __tablename__ = "product_consumables"
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"))
-    consumable_id = Column(Integer, ForeignKey("consumables.id"))
+    product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
+    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
     quantity = Column(Float, default=1.0)
     
     product = relationship("Product", back_populates="consumables")
     consumable = relationship("Consumable")
 
-# --- ВАРІАНТИ ---
+# 🔥 НОВЕ: Зв'язок Товар -> Інгредієнт (для простих товарів)
+class ProductIngredient(Base):
+    __tablename__ = "product_ingredients"
+    product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    quantity = Column(Float) # Скільки грам йде на цей товар
+    
+    product = relationship("Product", back_populates="ingredients")
+    ingredient = relationship("Ingredient")
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String, nullable=True)
+    price = Column(Float)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    
+    # Прапорець: чи є варіанти (S/M/L) чи це простий товар
+    has_variants = Column(Boolean, default=False)
+    
+    # Для простих товарів:
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    output_weight = Column(Float, default=0.0) # Вага готового виробу (для розрахунку %)
+    
+    # Складський облік готового виробу (наприклад, десерти в холодильнику)
+    track_stock = Column(Boolean, default=False)
+    stock_quantity = Column(Float, default=0.0)
+
+    category = relationship("Category")
+    master_recipe = relationship("MasterRecipe")
+    
+    variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
+    modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
+    
+    consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
+    # 🔥 НОВЕ: Зв'язок з інгредієнтами
+    ingredients = relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
+    
+    process_groups = relationship("ProcessGroup", secondary=product_process_groups)
+
 class ProductVariant(Base):
     __tablename__ = "product_variants"
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    name = Column(String)
+    name = Column(String) # "S", "M", "L" або "На мигдальному"
     price = Column(Float)
     sku = Column(String, nullable=True)
-    output_weight = Column(Float, default=0.0) 
+    
     master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
-    master_recipe = relationship("MasterRecipe")
-
-    # --- НОВЕ ПОЛЕ ---
-    stock_quantity = Column(Float, default=0.0) # Залишок конкретного варіанту
+    output_weight = Column(Float, default=0.0)
+    
+    stock_quantity = Column(Float, default=0.0) # Якщо ведемо облік по варіантах
 
     product = relationship("Product", back_populates="variants")
-    consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
-    # !!! НОВЕ: Зв'язок з інгредієнтами !!!
-    ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
-
-    @property
-    def cost_price(self):
-        """Розрахунок собівартості варіанту"""
-        total = 0.0
-
-        # 1. Рецепт (Масштабування)
-        if self.master_recipe:
-            recipe_cost = 0.0
-            recipe_weight = 0.0
-            for item in self.master_recipe.items:
-                if item.ingredient:
-                    recipe_cost += item.ingredient.cost_per_unit * item.quantity
-                    recipe_weight += item.quantity
-            
-            if self.output_weight and self.output_weight > 0 and recipe_weight > 0:
-                scale_ratio = self.output_weight / recipe_weight
-                total += recipe_cost * scale_ratio
-            else:
-                total += recipe_cost
-        
-        # 2. Додаткові інгредієнти варіанту
-        for vi in self.ingredients:
-            if vi.ingredient:
-                total += vi.ingredient.cost_per_unit * vi.quantity
-
-        # 3. Витратні матеріали варіанту
-        for vc in self.consumables:
-            if vc.consumable:
-                total += vc.consumable.cost_per_unit * vc.quantity
-
-        return round(total, 2)
-
-    @property
-    def margin(self):
-        return round(self.price - self.cost_price, 2)
-
-class ProductVariantConsumable(Base):
-    __tablename__ = "product_variant_consumables"
-    id = Column(Integer, primary_key=True, index=True)
-    variant_id = Column(Integer, ForeignKey("product_variants.id"))
-    consumable_id = Column(Integer, ForeignKey("consumables.id"))
-    quantity = Column(Float, default=1.0)
     
-    variant = relationship("ProductVariant", back_populates="consumables")
-    consumable = relationship("Consumable")
+    ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
+    consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
 
-# !!! НОВИЙ КЛАС: Інгредієнти варіанту !!!
 class ProductVariantIngredient(Base):
     __tablename__ = "product_variant_ingredients"
-    id = Column(Integer, primary_key=True, index=True)
-    variant_id = Column(Integer, ForeignKey("product_variants.id"))
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
-    quantity = Column(Float, default=0.0) # Скільки грам/мл
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    quantity = Column(Float)
     
     variant = relationship("ProductVariant", back_populates="ingredients")
     ingredient = relationship("Ingredient")
 
-# --- МОДИФІКАТОРИ ---
+class ProductVariantConsumable(Base):
+    __tablename__ = "product_variant_consumables"
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
+    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
+    quantity = Column(Integer, default=1)
+    
+    variant = relationship("ProductVariant", back_populates="consumables")
+    consumable = relationship("Consumable")
+
+# --- МОДИФІКАТОРИ (СИРОПИ, МОЛОКО) ---
 class ProductModifierGroup(Base):
     __tablename__ = "product_modifier_groups"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    name = Column(String)
+    name = Column(String) # "Вибір молока", "Сироп"
     is_required = Column(Boolean, default=False)
+    
     product = relationship("Product", back_populates="modifier_groups")
     modifiers = relationship("Modifier", back_populates="group", cascade="all, delete-orphan")
 
 class Modifier(Base):
     __tablename__ = "modifiers"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("product_modifier_groups.id"))
-    name = Column(String) 
+    name = Column(String) # "Кокосове", "Карамельний"
     price_change = Column(Float, default=0.0)
+    
+    # Що списувати при виборі цього модифікатора
     ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=True)
-    quantity = Column(Float, default=0.0)
+    quantity = Column(Float, default=0.0) # Скільки списувати
+    
     group = relationship("ProductModifierGroup", back_populates="modifiers")
     ingredient = relationship("Ingredient")
 
-# --- CRM/ORDERS ---
-class Customer(Base):
-    __tablename__ = "customers"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    phone = Column(String, unique=True)
-    email = Column(String, nullable=True)
-    notes = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
-
+# --- ЗАМОВЛЕННЯ ---
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
     total_price = Column(Float)
     payment_method = Column(String)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
@@ -302,23 +227,20 @@ class InventoryTransaction(Base):
     __tablename__ = "inventory_transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    
-    # Тип сутності: 'ingredient', 'consumable', 'product'
     entity_type = Column(String, index=True) 
-    
-    # ID сутності (ingredient_id, consumable_id або product_id)
     entity_id = Column(Integer, index=True)
-    
-    # Назва на момент транзакції (щоб якщо видалили товар, історія лишилась)
     entity_name = Column(String)
-    
-    # Зміна кількості: +5.0 (прихід), -0.5 (списання)
     change_amount = Column(Float)
-    
-    # Залишок ПІСЛЯ транзакції (для контролю)
     balance_after = Column(Float)
-    
-    # Причина: 'manual_update', 'sale_order_#105', 'waste', 'restock'
     reason = Column(String)
-    
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- КЛІЄНТИ (CRM) ---
+class Customer(Base):
+    __tablename__ = "customers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    phone = Column(String, unique=True, index=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

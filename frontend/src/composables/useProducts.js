@@ -7,7 +7,7 @@ const newProduct = ref({
     name: '', category_id: null, price: 0, has_variants: false,
     master_recipe_id: null, output_weight: 0,
     track_stock: false, stock_quantity: 0,
-    consumables: [], variants: [], process_group_ids: [],
+    consumables: [], ingredients: [], variants: [], process_group_ids: [],
     // 👇 Додані поля для відображення (приходять з беку)
     cost_price: 0, margin: 0 
 })

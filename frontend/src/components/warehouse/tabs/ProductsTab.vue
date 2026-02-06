@@ -1,480 +1,507 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 import { useProducts } from '@/composables/useProducts'
 
-// Отримуємо довідники
+// --- ДОВІДНИКИ ---
 const { categories, recipes, ingredients, consumables } = useWarehouse()
 
-// Отримуємо функціонал товарів
+// --- ФУНКЦІОНАЛ ТОВАРІВ ---
 const { 
     newProduct, isEditing, 
-    variantBuilder, tempProductConsumable, tempVariantConsumable, tempVariantIngredient,
-    resetForm, prepareEdit, saveProduct, deleteProduct, fetchProducts, filteredProducts, productSearch,
-    
-    // Імпортуємо методи варіантів
-    saveVariant, editVariant, cancelVariantEdit, editingVariantIndex, removeVariant, 
-    
-    addProductConsumable, removeProductConsumable,
-    addVariantConsumable, removeVariantConsumable,
-    addIngredientToVariant, removeIngredientFromVariant
+    prepareEdit: originalHandleEdit, 
+    saveProduct, deleteProduct, fetchProducts, filteredProducts, productSearch, resetForm,
+    removeProductConsumable
 } = useProducts()
 
+// --- UI STATES ---
+const showTypeModal = ref(false)
 const showForm = ref(false)
-const processGroups = ref([]) 
+const productType = ref(null)
 
-// 👇 Функція завантаження груп процесів
-const fetchProcessGroups = async () => {
+// --- КАЛЬКУЛЯТОР СОБІВАРТОСТІ (БЕКЕНД - ЗАГАЛЬНА) ---
+const serverCalculatedCost = ref(0)
+let debounceTimer = null
+
+const calculateCost = async () => {
+    const payload = {
+        master_recipe_id: newProduct.value.master_recipe_id,
+        output_weight: newProduct.value.output_weight || 0,
+        ingredients: newProduct.value.ingredients || [],
+        consumables: newProduct.value.consumables || []
+    }
+
     try {
-        const response = await fetch('/api/processes/groups/')
-        if (response.ok) {
-            processGroups.value = await response.json()
+        const res = await fetch('/api/products/calculate-cost', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        if (res.ok) {
+            const data = await res.json()
+            serverCalculatedCost.value = data.total_cost
         }
     } catch (e) {
-        console.error("Помилка завантаження процесів:", e)
+        console.error("Помилка розрахунку:", e)
     }
 }
 
-const getCategoryName = (id) => {
-    if (!categories.value) return '-'
-    const c = categories.value.find(x => x.id === id)
-    return c ? c.name : '-'
-}
-
-const getIngredientUnit = (id) => {
-    if (!id || !ingredients.value) return ''
-    const ing = ingredients.value.find(i => i.id === id)
-    return ing?.unit?.symbol || ''
-}
-
-const currentIngredientPlaceholder = computed(() => {
-    const unit = getIngredientUnit(tempVariantIngredient.value.ingredient_id)
-    return unit ? `Кількість (${unit})` : 'Кількість'
-})
-
-// === 🔥 ТУТ БУЛА МАТЕМАТИКА (ВИДАЛЕНО) ===
-// Тепер ми довіряємо бекенду. Frontend просто відображає дані.
-
-onMounted(() => {
-    fetchProducts()
-    fetchProcessGroups()
-})
-
-// 👇 ЖОРСТКА ВАЛІДАЦІЯ ВАРІАНТУ ПЕРЕД ЗБЕРЕЖЕННЯМ
-const handleVariantSave = async () => {
-    if (!variantBuilder.value.name) {
-        alert("⚠️ Помилка: Вкажіть назву варіанту!")
-        return
-    }
-    if (!variantBuilder.value.price || variantBuilder.value.price <= 0) {
-        alert("⚠️ Помилка: Вкажіть ціну продажу!")
-        return
-    }
-    if (!variantBuilder.value.sku) {
-        alert("⛔️ СТОП: Поле SKU (Артикул) обов'язкове!\n\nЯкщо вам ліньки вигадувати код, натисніть на кнопку 'Чарівна паличка' 🪄 біля поля.")
-        return
-    }
-    await saveVariant()
-}
-
-// Обгортка для збереження головного товару
-const handleSave = async () => {
-    if (!newProduct.value.process_group_ids) {
-        newProduct.value.process_group_ids = []
-    }
-    if (newProduct.value.has_variants && newProduct.value.variants.length === 0) {
-        alert("⚠️ Ви увімкнули режим варіантів, але не додали жодного варіанту.")
-        return
-    }
-
-    const success = await saveProduct()
-    if (success) {
-        showForm.value = false
-    }
-}
-
-const handleEdit = (product) => {
-    prepareEdit(product)
+// --- 🔥 ВІЗУАЛІЗАЦІЯ РЕЦЕПТУ З ЦІНАМИ ---
+const selectedRecipeBreakdown = computed(() => {
+    if (!newProduct.value.master_recipe_id) return { items: [], totalCost: 0 }
     
-    if (product.process_groups) {
-        newProduct.value.process_group_ids = product.process_groups.map(pg => pg.id)
+    const recipe = recipes.value.find(r => r.id === newProduct.value.master_recipe_id)
+    if (!recipe || !recipe.items) return { items: [], totalCost: 0 }
+
+    const totalWeight = newProduct.value.output_weight || 0
+    let currentRecipeCost = 0
+
+    const items = recipe.items.map(item => {
+        // Знаходимо інгредієнт в довіднику, щоб взяти ціну
+        const ingData = ingredients.value.find(i => i.id === item.ingredient_id)
+        const ingName = ingData?.name || 'Невідомий інгредієнт'
+        const unitSymbol = ingData?.unit?.symbol || ''
+        const costPerUnit = ingData?.cost_per_unit || 0
+        
+        let calculatedQty = 0
+        let metaInfo = ''
+
+        if (item.is_percentage) {
+            calculatedQty = (item.quantity / 100) * totalWeight
+            metaInfo = `${item.quantity}%`
+        } else {
+            calculatedQty = item.quantity
+            metaInfo = 'фікс.'
+        }
+        
+        // Рахуємо вартість цієї позиції
+        const itemCost = calculatedQty * costPerUnit
+        currentRecipeCost += itemCost
+
+        return {
+            name: ingName,
+            meta: metaInfo,
+            qty: calculatedQty.toFixed(1),
+            unit: unitSymbol,
+            cost: itemCost.toFixed(2) // Ціна за цю кількість
+        }
+    })
+
+    return {
+        items,
+        totalCost: currentRecipeCost.toFixed(2)
+    }
+})
+
+// --- ЛОГІКА РЕДАГУВАННЯ ---
+const handleEditWrapper = async (product) => {
+    console.log("✏️ Починаємо редагування:", product.name)
+    
+    if (typeof originalHandleEdit === 'function') {
+        originalHandleEdit(product)
     } else {
-        newProduct.value.process_group_ids = []
+        console.error("❌ Помилка: prepareEdit не знайдена!")
+        return
     }
-    
+
+    productType.value = product.has_variants ? 'variant' : 'simple'
+
+    if (!newProduct.value.ingredients) newProduct.value.ingredients = []
+    if (!newProduct.value.consumables) newProduct.value.consumables = []
+
+    showForm.value = true
+    await calculateCost()
+}
+
+// --- HELPER ДЛЯ ВІДОБРАЖЕННЯ ЦІНИ В СПИСКАХ ---
+const getLinkCost = (id, qty, sourceList) => {
+    if (!id || !sourceList) return '0.00'
+    const list = sourceList.value || sourceList
+    if (!Array.isArray(list)) return '0.00'
+    const item = list.find(x => x.id === id)
+    if (!item) return '0.00'
+    return (item.cost_per_unit * qty).toFixed(2)
+}
+
+// --- ЛОГІКА ПРОСТИХ ІНГРЕДІЄНТІВ ---
+const tempSimpleIngredient = ref({ id: null, qty: 0 })
+
+const addSimpleIngredient = () => {
+    if (tempSimpleIngredient.value.id && tempSimpleIngredient.value.qty > 0) {
+        if (!newProduct.value.ingredients) newProduct.value.ingredients = []
+        
+        const existing = newProduct.value.ingredients.find(i => i.ingredient_id === tempSimpleIngredient.value.id)
+        if (existing) {
+            existing.quantity += tempSimpleIngredient.value.qty
+        } else {
+            newProduct.value.ingredients.push({
+                ingredient_id: tempSimpleIngredient.value.id,
+                quantity: tempSimpleIngredient.value.qty
+            })
+        }
+        tempSimpleIngredient.value = { id: null, qty: 0 }
+    }
+}
+
+const removeSimpleIngredient = (index) => {
+    newProduct.value.ingredients.splice(index, 1)
+}
+
+// --- ЛОГІКА ВИТРАТНИХ МАТЕРІАЛІВ ---
+const tempSimpleConsumable = ref({ id: null, qty: 1 })
+
+const addSimpleConsumable = () => {
+    if (tempSimpleConsumable.value.id && tempSimpleConsumable.value.qty > 0) {
+        if (!newProduct.value.consumables) newProduct.value.consumables = []
+        
+        const existing = newProduct.value.consumables.find(c => c.consumable_id === tempSimpleConsumable.value.id)
+        if (existing) {
+            existing.quantity += tempSimpleConsumable.value.qty
+        } else {
+            newProduct.value.consumables.push({
+                consumable_id: tempSimpleConsumable.value.id,
+                quantity: tempSimpleConsumable.value.qty
+            })
+        }
+        tempSimpleConsumable.value = { id: null, qty: 1 }
+    }
+}
+
+const removeSimpleConsumable = (index) => {
+    newProduct.value.consumables.splice(index, 1)
+}
+
+// --- СЛІДКУВАННЯ ЗА ЗМІНАМИ ---
+watch(
+    () => [
+        newProduct.value.master_recipe_id, 
+        newProduct.value.output_weight, 
+        newProduct.value.ingredients, 
+        newProduct.value.consumables
+    ], 
+    () => {
+        clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(calculateCost, 500)
+    },
+    { deep: true }
+)
+
+// --- УПРАВЛІННЯ ФОРМАМИ ---
+const startCreate = () => {
+    resetForm()
+    productType.value = null
+    showTypeModal.value = true
+}
+
+const selectType = (type) => {
+    productType.value = type
+    if (type === 'simple') {
+        newProduct.value.has_variants = false
+        newProduct.value.ingredients = [] 
+        newProduct.value.consumables = []
+    } else {
+        newProduct.value.has_variants = true
+    }
+    showTypeModal.value = false
     showForm.value = true
 }
 
-const handleCancel = () => {
-    resetForm()
+const handleSave = async () => {
+    await saveProduct()
     showForm.value = false
 }
+
+const closeForm = () => {
+    showForm.value = false
+    resetForm()
+}
+
+const getCategoryName = (id) => categories.value.find(c => c.id === id)?.name || '-'
+
+onMounted(() => {
+    fetchProducts()
+})
 </script>
 
 <template>
     <div class="h-full flex flex-col">
         <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-800">📦 Товари та Меню</h2>
-            <button @click="showForm = true; resetForm()" v-if="!showForm" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-purple-200 transition flex items-center gap-2">
-                <i class="fas fa-plus"></i> Додати товар
-            </button>
+            <h2 class="text-2xl font-bold text-gray-800">📦 Товари</h2>
+            <div class="flex gap-4">
+                <input v-model="productSearch" placeholder="Пошук..." class="border rounded-lg px-4 py-2 w-64 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                <button @click="startCreate" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md transition font-medium flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Додати товар
+                </button>
+            </div>
         </div>
 
-        <div v-if="showForm" class="bg-white p-6 rounded-2xl shadow-lg border border-purple-100 mb-8 animate-fade-in-down">
-            <div class="flex justify-between items-center mb-6 border-b pb-4">
-                <h3 class="font-bold text-xl text-gray-700">
-                    {{ isEditing ? '✏️ Редагування товару' : '✨ Новий товар' }}
-                </h3>
-                <button @click="handleCancel" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+        <div v-if="showTypeModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-lg text-center animate-fade-in">
+                <h3 class="text-2xl font-bold mb-6 text-gray-800">Який товар створюємо?</h3>
+                <div class="grid grid-cols-2 gap-6">
+                    <button @click="selectType('simple')" class="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition group">
+                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">☕</div>
+                        <div class="font-bold text-lg text-gray-800">Простий товар</div>
+                        <div class="text-sm text-gray-500 mt-2">Одна ціна, один рецепт</div>
+                    </button>
+
+                    <button @click="selectType('variant')" class="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition group">
+                        <div class="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">🎨</div>
+                        <div class="font-bold text-lg text-gray-800">З варіантами</div>
+                        <div class="text-sm text-gray-500 mt-2">Різні об'єми або види</div>
+                    </button>
+                </div>
+                <button @click="showTypeModal = false" class="mt-8 text-gray-400 hover:text-gray-600">Скасувати</button>
             </div>
+        </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Назва товару</label>
-                        <input v-model="newProduct.name" class="w-full border p-3 rounded-lg focus:ring-2 focus:ring-purple-200 outline-none" placeholder="Напр. Ефіопія (Фільтр)">
-                    </div>
+        <div v-if="showForm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+                
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h3 class="text-2xl font-bold text-gray-800">
+                        {{ isEditing ? 'Редагувати' : 'Створити' }} 
+                        <span :class="productType === 'simple' ? 'text-blue-600' : 'text-purple-600'">
+                            {{ productType === 'simple' ? 'Простий товар' : 'Товар з варіантами' }}
+                        </span>
+                    </h3>
+                    <button @click="closeForm" class="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                <div v-if="productType === 'simple'" class="space-y-6">
+                    
+                    <div class="grid grid-cols-2 gap-6">
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ціна (₴)</label>
-                            <input type="number" v-model="newProduct.price" class="w-full border p-3 rounded-lg focus:ring-2 focus:ring-purple-200 outline-none">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Назва товару <span class="text-red-500">*</span></label>
+                            <input v-model="newProduct.name" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500" placeholder="Напр. Американо">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Категорія</label>
-                            <select v-model="newProduct.category_id" class="w-full border p-3 rounded-lg bg-white h-[50px]">
-                                <option :value="null">Без категорії</option>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Категорія <span class="text-red-500">*</span></label>
+                            <select v-model="newProduct.category_id" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500">
+                                <option :value="null">Оберіть категорію</option>
                                 <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                             </select>
                         </div>
                     </div>
 
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Опис</label>
-                        <textarea v-model="newProduct.description" rows="3" class="w-full border p-3 rounded-lg focus:ring-2 focus:ring-purple-200 outline-none"></textarea>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ціна продажу (грн) <span class="text-red-500">*</span></label>
+                            <input v-model.number="newProduct.price" type="number" step="0.01" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 font-bold text-lg">
+                        </div>
+                        <div>
+                             <label class="block text-sm font-medium text-gray-700 mb-1">Розрахункова собівартість (Auto)</label>
+                             <div class="w-full p-2 bg-gray-50 border rounded text-gray-500 font-mono font-bold flex items-center justify-between">
+                                 <span>≈ {{ serverCalculatedCost.toFixed(2) }} грн</span>
+                                 <span class="text-xs font-normal text-gray-400">оновлено сервером</span>
+                             </div>
+                        </div>
                     </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Опис</label>
+                        <textarea v-model="newProduct.description" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500" rows="2"></textarea>
+                    </div>
+
+                    <div class="border-t my-4"></div>
 
                     <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                        <label class="block text-xs font-bold text-orange-600 uppercase mb-2">📜 Базовий рецепт (Техкарта)</label>
-                        <select v-model="newProduct.master_recipe_id" class="w-full border p-2 rounded-lg bg-white mb-2">
-                            <option :value="null">-- Без рецепту --</option>
-                            <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
-                        </select>
-                        <div class="flex items-center gap-2">
-                            <input type="checkbox" v-model="newProduct.track_stock" class="w-4 h-4 text-orange-600">
-                            <span class="text-sm text-gray-700">Вести складський облік цього товару</span>
-                        </div>
-                    </div>
-                </div>
+                        <h4 class="font-bold text-orange-800 mb-3 flex items-center gap-2">
+                            <i class="fas fa-book-open"></i> Технологічна карта (Рецепт)
+                        </h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-orange-700 mb-1">Оберіть рецепт</label>
+                                <select v-model="newProduct.master_recipe_id" class="w-full border p-2 rounded focus:ring-2 focus:ring-orange-500 bg-white">
+                                    <option :value="null">Без рецепту</option>
+                                    <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
+                                </select>
+                            </div>
 
-                <div class="space-y-6">
-                    
-                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                        <label class="block text-xs font-bold text-indigo-600 uppercase mb-2">
-                            <i class="fas fa-cogs mr-1"></i> Додаткові процеси (опції для бариста)
-                        </label>
-                        <div v-if="processGroups.length === 0" class="text-sm text-gray-400 italic">
-                            Процеси не створені. Перейдіть на вкладку "Процеси".
-                        </div>
-                        <div v-else class="grid grid-cols-2 gap-2">
-                            <div v-for="pg in processGroups" :key="pg.id" class="flex items-center gap-2 bg-white p-2 rounded border border-indigo-100">
-                                <input 
-                                    type="checkbox" 
-                                    :value="pg.id" 
-                                    v-model="newProduct.process_group_ids"
-                                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                                >
-                                <span class="text-sm text-gray-700">{{ pg.name }}</span>
+                            <div v-if="newProduct.master_recipe_id">
+                                <label class="block text-xs font-bold text-orange-700 mb-1">Вага виходу (грам)</label>
+                                <input v-model.number="newProduct.output_weight" type="number" step="0.1" 
+                                       placeholder="Напр. 18"
+                                       class="w-full border p-2 rounded focus:ring-2 focus:ring-orange-500 bg-white font-bold">
+                                <p class="text-[10px] text-orange-600 mt-1">Загальна вага продукту для розрахунку пропорцій</p>
                             </div>
                         </div>
+
+                        <div v-if="newProduct.master_recipe_id && selectedRecipeBreakdown.items.length" class="mt-4 bg-white rounded-lg border border-orange-200 overflow-hidden">
+                             <table class="w-full text-sm text-left">
+                                 <thead class="bg-orange-100 text-orange-800 text-xs uppercase">
+                                     <tr>
+                                         <th class="p-2">Інгредієнт</th>
+                                         <th class="p-2 text-center">Пропорція</th>
+                                         <th class="p-2 text-right">Витрата</th>
+                                         <th class="p-2 text-right">Вартість</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody class="divide-y divide-orange-50">
+                                     <tr v-for="(item, idx) in selectedRecipeBreakdown.items" :key="idx">
+                                         <td class="p-2 font-medium text-gray-700">{{ item.name }}</td>
+                                         <td class="p-2 text-center text-gray-500 text-xs">{{ item.meta }}</td>
+                                         <td class="p-2 text-right font-bold text-orange-700">
+                                             {{ item.qty }} {{ item.unit }}
+                                         </td>
+                                         <td class="p-2 text-right text-xs font-mono text-gray-500">
+                                             {{ item.cost }} грн
+                                         </td>
+                                     </tr>
+                                     <tr class="bg-orange-50 font-bold border-t border-orange-200">
+                                         <td colspan="3" class="p-2 text-right text-orange-800">Разом по рецепту:</td>
+                                         <td class="p-2 text-right text-orange-800">{{ selectedRecipeBreakdown.totalCost }} грн</td>
+                                     </tr>
+                                 </tbody>
+                             </table>
+                        </div>
                     </div>
 
-                    <div class="bg-teal-50 p-4 rounded-xl border border-teal-100">
-                        <label class="block text-xs font-bold text-teal-600 uppercase mb-2">🥡 Витратні матеріали (на 1 порцію)</label>
+                    <div class="bg-green-50 p-4 rounded-xl border border-green-100">
+                        <h4 class="font-bold text-green-800 mb-3 flex items-center gap-2">
+                            <i class="fas fa-carrot"></i> Додаткові інгредієнти
+                        </h4>
                         <div class="flex gap-2 mb-2">
-                            <select v-model="tempProductConsumable.consumable_id" class="flex-1 border p-2 rounded-lg text-sm bg-white">
-                                <option :value="null">Оберіть матеріал...</option>
-                                <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                             <select v-model="tempSimpleIngredient.id" class="flex-1 border p-2 rounded text-sm bg-white">
+                                <option :value="null">Додати інгредієнт...</option>
+                                <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">
+                                    {{ ing.name }} ({{ ing.cost_per_unit }} грн/{{ ing.unit?.symbol }})
+                                </option>
                             </select>
-                            <input v-model="tempProductConsumable.quantity" type="number" placeholder="Кіл-ть" class="w-20 border p-2 rounded-lg text-sm bg-white">
-                            <button @click="addProductConsumable" class="bg-teal-600 text-white px-3 rounded-lg"><i class="fas fa-plus"></i></button>
+                            <input v-model.number="tempSimpleIngredient.qty" type="number" placeholder="К-сть" class="w-24 border p-2 rounded text-sm">
+                            <button @click="addSimpleIngredient" class="bg-green-600 text-white px-3 rounded hover:bg-green-700 font-bold">+</button>
                         </div>
                         
-                        <div class="space-y-1">
-                            <div v-for="(pc, idx) in newProduct.consumables" :key="idx" class="flex justify-between items-center bg-white p-2 rounded border border-teal-100 text-sm">
-                                <span>{{ consumables.find(c => c.id === pc.consumable_id)?.name }} — {{ pc.quantity }} шт</span>
-                                <button @click="removeProductConsumable(idx)" class="text-red-400 hover:text-red-600"><i class="fas fa-times"></i></button>
-                            </div>
+                        <div v-if="newProduct.ingredients && newProduct.ingredients.length" class="space-y-1 mt-2">
+                             <div v-for="(link, idx) in newProduct.ingredients" :key="idx" class="flex justify-between items-center bg-white p-2 rounded border border-green-200 text-sm">
+                                 <span>
+                                     {{ ingredients.find(i => i.id === link.ingredient_id)?.name }} — 
+                                     <b>{{ link.quantity }} {{ ingredients.find(i => i.id === link.ingredient_id)?.unit?.symbol }}</b>
+                                     <span class="text-xs text-green-600 font-bold ml-2">
+                                        ({{ getLinkCost(link.ingredient_id, link.quantity, ingredients) }} грн)
+                                     </span>
+                                 </span>
+                                 <button @click="removeSimpleIngredient(idx)" class="text-red-500 hover:text-red-700">×</button>
+                             </div>
                         </div>
                     </div>
 
-                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                        <div class="flex justify-between items-center mb-2">
-                            <label class="block text-xs font-bold text-gray-600 uppercase">🧬 Варіанти (Об'єм / Вид)</label>
-                            <div class="flex items-center gap-2">
-                                <input type="checkbox" v-model="newProduct.has_variants" class="w-4 h-4 text-purple-600">
-                                <span class="text-xs text-gray-500">Є варіанти?</span>
-                            </div>
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                         <h4 class="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                            <i class="fas fa-box-open"></i> Витратні матеріали
+                        </h4>
+                         <div class="flex gap-2 mb-2">
+                             <select v-model="tempSimpleConsumable.id" class="flex-1 border p-2 rounded text-sm bg-white">
+                                <option :value="null">Додати матеріал...</option>
+                                <option v-for="c in consumables" :key="c.id" :value="c.id">
+                                    {{ c.name }} ({{ c.cost_per_unit }} грн)
+                                </option>
+                            </select>
+                            <input v-model.number="tempSimpleConsumable.qty" type="number" placeholder="К-сть" class="w-24 border p-2 rounded text-sm">
+                            <button @click="addSimpleConsumable" class="bg-blue-600 text-white px-3 rounded hover:bg-blue-700 font-bold">+</button>
                         </div>
 
-                        <div v-if="newProduct.has_variants" class="space-y-4">
-                            <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm" :class="editingVariantIndex !== -1 ? 'ring-2 ring-purple-200' : ''">
-                                
-                                <div class="grid grid-cols-2 gap-3 mb-3">
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Назва варіанту</label>
-                                        <input v-model="variantBuilder.name" placeholder="напр. Пачка 250г" class="border p-2 rounded text-sm w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-purple-100 outline-none">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ціна продажу (₴)</label>
-                                        <input v-model="variantBuilder.price" type="number" placeholder="0.00" class="border p-2 rounded text-sm w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-purple-100 outline-none">
-                                    </div>
-                                </div>
-                                
-                                <div class="bg-yellow-50 p-3 rounded border border-yellow-100 mb-3">
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-gray-800 uppercase mb-1">
-                                                Артикул / SKU <span class="text-red-500">*</span>
-                                            </label>
-                                            <div class="flex gap-1">
-                                                <input 
-                                                    v-model="variantBuilder.sku" 
-                                                    placeholder="CODE-123" 
-                                                    class="border p-2 rounded text-sm w-full bg-white border-yellow-300 focus:ring-2 focus:ring-yellow-200 outline-none"
-                                                >
-                                                <button 
-                                                    @click="variantBuilder.sku = 'SKU-' + Math.floor(10000 + Math.random() * 90000)" 
-                                                    class="bg-white px-2 rounded border border-yellow-300 hover:bg-yellow-100 text-yellow-600 transition"
-                                                    title="Згенерувати код автоматично 🪄"
-                                                >
-                                                    <i class="fas fa-magic"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-gray-800 uppercase mb-1">⚖️ Вага вмісту (г/мл)</label>
-                                            <input v-model.number="variantBuilder.output_weight" type="number" placeholder="напр. 250" class="border p-2 rounded text-sm w-full border-yellow-300 bg-white">
-                                            <p class="text-[9px] text-gray-500 mt-0.5 leading-tight">Скільки грам списувати з рецепту</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">📦 Початковий залишок (шт)</label>
-                                    <input v-model.number="variantBuilder.stock_quantity" type="number" class="border p-2 rounded text-sm w-full bg-white" placeholder="0">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <select v-model="variantBuilder.master_recipe_id" class="w-full border p-2 rounded text-sm bg-gray-50">
-                                        <option :value="null">-- Майстер-рецепт (для масштабування) --</option>
-                                        <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
-                                    </select>
-                                </div>
-
-                                <div v-if="editingVariantIndex === null" class="mb-3 p-2 bg-gray-50 rounded border border-gray-100 text-xs text-center text-gray-400 italic">
-                                    <i class="fas fa-calculator mr-1"></i> Собівартість буде розрахована сервером після збереження
-                                </div>
-                                <div v-else class="mb-3 p-2 bg-purple-50 rounded border border-purple-100 text-xs shadow-sm">
-                                     <div class="flex justify-between items-center mb-1">
-                                        <span class="text-gray-500">Собівартість:</span>
-                                        <span class="font-bold text-gray-700 font-mono">{{ variantBuilder.cost_price }} ₴</span>
-                                    </div>
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-gray-400">Маржа:</span>
-                                        <span class="font-bold font-mono" :class="variantBuilder.margin > 0 ? 'text-green-600' : 'text-red-500'">
-                                            {{ variantBuilder.margin }} ₴
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <div class="mb-2 border-t pt-2">
-                                    <div class="text-xs font-bold text-orange-400 mb-1 uppercase">Інгредієнти варіанту</div>
-                                    <div class="flex gap-1 mb-1">
-                                        <select v-model="tempVariantIngredient.ingredient_id" class="flex-1 border p-1 rounded text-xs h-8 bg-white">
-                                            <option :value="null">Інгредієнт...</option>
-                                            <option v-for="i in ingredients" :key="i.id" :value="i.id">{{ i.name }}</option>
-                                        </select>
-                                        <input v-model="tempVariantIngredient.quantity" type="number" :placeholder="currentIngredientPlaceholder" class="w-20 border p-1 rounded text-xs h-8">
-                                        <button @click="addIngredientToVariant" class="bg-orange-200 px-3 rounded hover:bg-orange-300"><i class="fas fa-plus text-xs"></i></button>
-                                    </div>
-                                    <div class="flex flex-wrap gap-1">
-                                        <span v-for="(vi, idx) in variantBuilder.ingredients" :key="idx" class="text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded border border-orange-100 flex items-center gap-1">
-                                            {{ ingredients.find(i => i.id === vi.ingredient_id)?.name }}: {{ vi.quantity }}
-                                            <button @click="removeIngredientFromVariant(idx)" class="ml-1 text-red-500 font-bold">×</button>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-2 border-t pt-2">
-                                    <div class="text-xs font-bold text-teal-400 mb-1 uppercase">Матеріали варіанту</div>
-                                    <div class="flex gap-1 mb-1">
-                                        <select v-model="tempVariantConsumable.consumable_id" class="flex-1 border p-1 rounded text-xs h-8 bg-white">
-                                            <option :value="null">Матеріал...</option>
-                                            <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
-                                        </select>
-                                        <input v-model="tempVariantConsumable.quantity" type="number" placeholder="Кіл-ть" class="w-20 border p-1 rounded text-xs h-8">
-                                        <button @click="addVariantConsumable" class="bg-teal-200 px-3 rounded hover:bg-teal-300"><i class="fas fa-plus text-xs"></i></button>
-                                    </div>
-                                    <div class="flex flex-wrap gap-1">
-                                        <span v-for="(vc, idx) in variantBuilder.consumables" :key="idx" class="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded border border-teal-100 flex items-center gap-1">
-                                            {{ consumables.find(c => c.id === vc.consumable_id)?.name }}: {{ vc.quantity }}
-                                            <button @click="removeVariantConsumable(idx)" class="ml-1 text-red-500 font-bold">×</button>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="flex gap-2 mt-4">
-                                    <button @click="handleVariantSave" class="flex-1 bg-gray-800 text-white py-2 rounded-lg text-sm hover:bg-gray-900 font-bold">
-                                        {{ editingVariantIndex === -1 ? 'Додати варіант' : 'Оновити варіант' }}
-                                    </button>
-                                    <button v-if="editingVariantIndex !== -1" @click="cancelVariantEdit" class="px-3 bg-gray-200 rounded-lg text-gray-600">Скасувати</button>
-                                </div>
-                            </div>
-
-                            <div class="space-y-2">
-                                <div v-for="(v, idx) in newProduct.variants" :key="idx" class="bg-white p-2 rounded border border-gray-100 shadow-sm hover:border-purple-300 transition group">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <div class="font-bold text-sm">{{ v.name }} - {{ v.price }}₴</div>
-                                            <div class="text-xs text-gray-400 flex gap-2">
-                                                <span class="bg-yellow-50 px-1 border border-yellow-100 rounded text-yellow-700 font-mono">{{ v.sku }}</span>
-                                                <span v-if="v.margin !== undefined" :class="v.margin > 0 ? 'text-green-500' : 'text-red-500'">
-                                                    (Приб: {{ v.margin }}₴)
-                                                </span>
-                                            </div>
-                                            
-                                        </div>
-                                        <div class="flex gap-1 opacity-50 group-hover:opacity-100">
-                                            <button @click="editVariant(idx)" class="p-1 text-blue-500"><i class="fas fa-pen"></i></button>
-                                            <button @click="removeVariant(idx)" class="p-1 text-red-500"><i class="fas fa-trash"></i></button>
-                                        </div>
-                                    </div>
-                                    
-                                    <div v-if="v.ingredients.length || v.consumables.length" class="mt-2 pt-1 border-t border-gray-100 flex flex-col gap-1">
-                                        <div v-if="v.ingredients.length" class="flex items-start gap-1">
-                                            <i class="fas fa-flask text-orange-400 text-[10px] mt-0.5"></i> 
-                                            <div class="flex flex-wrap gap-1">
-                                                <span v-for="vi in v.ingredients" :key="vi.id" class="text-[10px] bg-gray-50 px-1 rounded text-gray-600">
-                                                    {{ ingredients.find(i => i.id === vi.ingredient_id)?.name }}: {{ vi.quantity }}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div v-if="v.consumables.length" class="flex items-start gap-1">
-                                            <i class="fas fa-box-open text-teal-500 text-[10px] mt-0.5"></i> 
-                                            <div class="flex flex-wrap gap-1">
-                                                <span v-for="vc in v.consumables" :key="vc.id" class="text-[10px] bg-gray-50 px-1 rounded text-gray-600">
-                                                    {{ consumables.find(c => c.id === vc.consumable_id)?.name }}: {{ vc.quantity }}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div v-if="newProduct.consumables && newProduct.consumables.length" class="space-y-1 mt-2">
+                             <div v-for="(link, idx) in newProduct.consumables" :key="idx" class="flex justify-between items-center bg-white p-2 rounded border border-blue-200 text-sm">
+                                 <span>
+                                     {{ consumables.find(c => c.id === link.consumable_id)?.name }} — 
+                                     <b>{{ link.quantity }} шт.</b>
+                                     <span class="text-xs text-blue-600 font-bold ml-2">
+                                        ({{ getLinkCost(link.consumable_id, link.quantity, consumables) }} грн)
+                                     </span>
+                                 </span>
+                                 <button @click="removeSimpleConsumable(idx)" class="text-red-500 hover:text-red-700">×</button>
+                             </div>
                         </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 mt-4 pt-4 border-t">
+                        <input type="checkbox" v-model="newProduct.track_stock" id="trackStock" class="w-5 h-5 text-blue-600 rounded">
+                        <label for="trackStock" class="text-gray-700 font-medium">Вести облік залишків цього товару</label>
+                    </div>
+                    <div v-if="newProduct.track_stock" class="ml-7 mt-2">
+                         <label class="text-sm text-gray-600">Початковий залишок:</label>
+                         <input v-model.number="newProduct.stock_quantity" type="number" class="border p-1 rounded w-32 ml-2">
                     </div>
                 </div>
-            </div>
 
-            <div class="mt-8 border-t pt-6 flex justify-end gap-4">
-                <button @click="handleCancel" class="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition">Скасувати</button>
-                <button @click="handleSave" class="px-8 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg shadow-purple-200 transition transform hover:-translate-y-0.5">
-                    {{ isEditing ? 'Зберегти зміни' : 'Створити товар' }}
-                </button>
+                <div v-else-if="productType === 'variant'">
+                    <div class="p-10 text-center text-gray-500 bg-gray-50 rounded-xl border-2 border-dashed">
+                        <h3 class="text-xl font-bold mb-2">🚧 Форма для варіантів</h3>
+                        <p>Натисніть "Зберегти" на простому товарі, щоб протестувати. Варіанти додамо наступним кроком.</p>
+                        <button @click="productType = 'simple'" class="mt-4 text-blue-500 underline">Повернутись до простого</button>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-8 pt-4 border-t">
+                    <button @click="closeForm" class="px-6 py-2 rounded-lg border hover:bg-gray-50 text-gray-700">Скасувати</button>
+                    <button @click="handleSave" class="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 shadow-lg font-bold">
+                        {{ isEditing ? 'Зберегти зміни' : 'Створити товар' }}
+                    </button>
+                </div>
+
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col min-h-0">
-            <div class="p-4 border-b flex gap-4 bg-gray-50 rounded-t-2xl">
-                <div class="relative flex-1">
-                    <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-                    <input v-model="productSearch" placeholder="Пошук товару..." class="w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-purple-200 outline-none">
-                </div>
-            </div>
-
-            <div class="overflow-auto flex-1">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50 text-gray-500 uppercase text-xs sticky top-0">
+        <div class="flex-1 bg-white rounded-xl shadow overflow-hidden flex flex-col">
+             <div class="overflow-y-auto flex-1">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100 sticky top-0 z-10 text-xs uppercase text-gray-500 font-bold">
                         <tr>
-                            <th class="p-4">Назва</th>
-                            <th class="p-4">Категорія</th>
-                            <th class="p-4">Рецепт / Процеси</th>
-                            <th class="p-4">Варіанти / Комплект</th>
-                            <th class="p-4 text-center">Дії</th>
+                            <th class="p-4 border-b">Назва</th>
+                            <th class="p-4 border-b">Категорія</th>
+                            <th class="p-4 border-b">Ціна</th>
+                            <th class="p-4 border-b">Склад</th>
+                            <th class="p-4 border-b text-center">Дії</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
-                        <tr v-for="p in filteredProducts" :key="p.id" class="hover:bg-gray-50 transition">
+                        <tr v-for="p in filteredProducts" :key="p.id" class="hover:bg-blue-50 transition group">
                             <td class="p-4">
-                                <div class="font-bold text-gray-800 text-base">{{ p.name }}</div>
-                                <div class="text-gray-500 font-mono">{{ p.price }} ₴</div>
-                                
-                                <div v-if="!p.has_variants && p.margin !== undefined" class="text-xs mt-1">
-                                     <span :class="p.margin > 0 ? 'text-green-600' : 'text-red-500'">
-                                        Прибуток: {{ p.margin }} ₴
-                                     </span>
+                                <div class="font-bold text-gray-800 text-lg">{{ p.name }}</div>
+                                <div class="text-xs text-gray-400 mt-1">{{ p.description }}</div>
+                                <div v-if="p.has_variants" class="mt-1">
+                                    <span class="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full font-bold">Варіанти: {{ p.variants.length }}</span>
                                 </div>
-                                
-                                <div v-if="p.description" class="text-xs text-gray-400 mt-1 line-clamp-1">{{ p.description }}</div>
+                                <div v-if="!p.has_variants && p.ingredients?.length" class="mt-1 flex flex-wrap gap-1">
+                                    <span v-for="ing in p.ingredients" :key="ing.ingredient_id" class="bg-green-50 text-green-700 text-[10px] px-1 rounded border border-green-100">
+                                        {{ ing.ingredient_name }}: {{ ing.quantity }}
+                                    </span>
+                                </div>
                             </td>
                             <td class="p-4">
-                                <span class="bg-purple-50 text-purple-700 px-2 py-1 rounded-lg text-xs font-bold">
+                                <span class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border">
                                     {{ getCategoryName(p.category_id) }}
                                 </span>
                             </td>
                             <td class="p-4">
-                                <div class="space-y-1">
-                                    <div v-if="p.master_recipe" class="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded w-fit">
-                                        <i class="fas fa-scroll"></i> {{ p.master_recipe.name }}
-                                    </div>
-                                    <div v-if="p.process_groups && p.process_groups.length" class="flex flex-wrap gap-1">
-                                        <span v-for="pg in p.process_groups" :key="pg.id" class="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded uppercase font-bold">
-                                            {{ pg.name }}
-                                        </span>
-                                    </div>
-                                </div>
+                                <div v-if="!p.has_variants" class="font-mono font-bold text-green-700">{{ p.price }} ₴</div>
+                                <div v-else class="text-xs text-gray-500 italic">Див. варіанти</div>
                             </td>
                             <td class="p-4">
-                                <div class="space-y-2">
-                                    <div v-if="p.has_variants && p.variants.length">
-                                        <div v-for="v in p.variants" :key="v.id" class="text-xs bg-gray-100 p-1.5 rounded mb-1 border border-gray-200">
-                                            <div class="font-bold flex justify-between">
-                                                <span>{{ v.name }}</span>
-                                                <span>{{ v.price }}₴</span>
-                                            </div>
-                                            <div v-if="v.ingredients.length || v.consumables.length" class="mt-1 pt-1 border-t border-gray-200 flex flex-col gap-1">
-                                                <div v-if="v.ingredients.length" class="flex items-start gap-1">
-                                                    <i class="fas fa-flask text-orange-400 text-[10px] mt-0.5"></i> 
-                                                    <div class="flex flex-wrap gap-1">
-                                                        <span v-for="vi in v.ingredients" :key="vi.id" class="bg-white border px-1 rounded">
-                                                            {{ vi.ingredient_name || '?' }}: {{ vi.quantity }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div v-if="v.consumables.length" class="flex items-start gap-1">
-                                                    <i class="fas fa-box-open text-teal-500 text-[10px] mt-0.5"></i> 
-                                                    <div class="flex flex-wrap gap-1">
-                                                        <span v-for="vc in v.consumables" :key="vc.id" class="bg-teal-50 border border-teal-100 px-1 rounded">
-                                                            {{ vc.consumable_name || '?' }}: {{ vc.quantity }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                        </div>
+                                <div v-if="!p.has_variants">
+                                    <div v-if="p.track_stock" class="font-mono font-bold" :class="p.stock_quantity > 0 ? 'text-blue-600' : 'text-red-500'">
+                                        {{ p.stock_quantity }} шт
                                     </div>
+                                    <div v-else class="text-gray-400 text-xs">Не обліковується</div>
                                 </div>
                             </td>
                             <td class="p-4 text-center">
-                                <div class="flex justify-center gap-2">
-                                    <button @click="handleEdit(p)" class="text-blue-500 hover:text-blue-700 p-1.5 hover:bg-blue-50 rounded"><i class="fas fa-pen"></i></button>
-                                    <button @click="deleteProduct(p.id)" class="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded"><i class="fas fa-trash"></i></button>
+                                <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                                    <button @click="handleEditWrapper(p)" class="text-blue-500 hover:bg-blue-100 p-2 rounded"><i class="fas fa-pen"></i></button>
+                                    <button @click="deleteProduct(p.id)" class="text-red-500 hover:bg-red-100 p-2 rounded"><i class="fas fa-trash"></i></button>
                                 </div>
                             </td>
                         </tr>
                     </tbody>
                 </table>
-            </div>
+             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+</style>
