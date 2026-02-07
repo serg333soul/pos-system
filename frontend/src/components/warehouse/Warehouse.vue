@@ -5,7 +5,7 @@ import { useWarehouse } from '@/composables/useWarehouse'
 // --- НОВИЙ ІМПОРТ ---
 const StockTab = defineAsyncComponent(() => import('./tabs/StockTab.vue'))
 
-const ProductsTab = defineAsyncComponent(() => import('./tabs/ProductsTab.vue'))
+const ProductsTab = defineAsyncComponent(() => import('./tabs/products/ProductsTab.vue'))
 const IngredientsTab = defineAsyncComponent(() => import('./tabs/IngredientsTab.vue'))
 const RecipesTab = defineAsyncComponent(() => import('./tabs/RecipesTab.vue'))
 const ProcessesTab = defineAsyncComponent(() => import('./tabs/ProcessesTab.vue'))
