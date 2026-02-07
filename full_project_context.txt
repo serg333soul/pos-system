@@ -1,30 +1,378 @@
+# SYSTEM CONTEXT FILE
+# This file contains the full source code of the project.
+# USE THIS CONTEXT to understand architecture, debugging, and adding features.
 
-
-
-
-
-==================================================
 📊 PROJECT STATISTICS
-==================================================
-Total Files: 65
-Total Lines: 6137
-Approx Tokens: ~59967
-Extensions:
-  - .py       : 23
-  - .vue      : 20
-  - .js       : 9
-  - .yml      : 3
-  - No Ext    : 3
-  - .txt      : 2
-  - .html     : 1
-  - .conf     : 1
-  - .json     : 1
-  - .md       : 1
-  - .css      : 1
-==================================================
-🌳 PROJECT STRUCTURE
-==================================================
-📂 ./
+=====================
+Files: 68
+Lines: 7102
+Tokens: ~73370
+
+🛠 KEY DEPENDENCIES
+====================
+
+--- docker-compose.yml ---
+#version: '3.8'
+
+services:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    build: ./product_service
+    container_name: pos_product_service
+    restart: always
+    ports:
+      - "8001:8000"
+    environment:
+      # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
+      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+    depends_on:
+      postgres_db: 
+        condition: service_healthy  # <--- Чекати, поки база скаже "Я здорова"
+        
+
+  # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
+  postgres_db:
+    image: postgres:13
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d products_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    container_name: pos_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: products_db
+    volumes:
+      # Зберігаємо дані на диску, щоб не зникали при перезапуску
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    build: ./order_service
+    container_name: pos_order_service
+    restart: always
+    environment:
+      # Зв'язок з Redis
+      - REDIS_HOST=redis_db
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
+  redis_db:
+    image: redis:alpine
+    container_name: pos_redis
+    restart: always
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  frontend:  # <-- НОВА НАЗВА (було nginx або gateway)
+    build: ./frontend
+    container_name: pos_frontend # <-- НОВЕ ІМ'Я КОНТЕЙНЕРА
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - product_service
+      - order_service
+
+# Оголошуємо томи для зберігання даних
+volumes:
+  postgres_data:
+
+
+--- package.json ---
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "vue": "^3.5.24"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.17",
+    "vite": "^7.2.4"
+  }
+}
+
+
+--- requirements.txt ---
+fastapi
+uvicorn
+redis
+pydantic
+
+
+--- requirements.txt ---
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest==8.0.0
+httpx==0.26.0
+
+
+🗺 ARCHITECTURE MAP (Key Symbols)
+================================
+frontend\src\App.vue
+  └── 💾 State: currentPage
+  └── 💾 State: isCartOpen
+  └── 💾 State: isModalOpen
+  └── 💾 State: selectedProduct
+frontend\src\components\common\IngredientSelect.vue
+  └── 💾 State: isOpen
+  └── 💾 State: searchQuery
+  └── 💾 State: containerRef
+frontend\src\components\crm\Customers.vue
+  └── 💾 State: customers
+  └── 💾 State: showModal
+  └── 💾 State: searchQuery
+  └── 💾 State: isEditing
+  └── 💾 State: editingId
+  └── 💾 State: formData
+frontend\src\components\pos\CartDrawer.vue
+  └── 💾 State: customerSearch
+  └── 💾 State: customerResults
+frontend\src\components\pos\ProductModal.vue
+  └── 💾 State: selectedVariant
+  └── 💾 State: selectedModifiers
+  └── 💾 State: selectedProcesses
+frontend\src\components\warehouse\Warehouse.vue
+  └── 💾 State: activeTab
+frontend\src\components\warehouse\modals\HistoryModal.vue
+  └── 💾 State: history
+  └── 💾 State: loading
+  └── 💾 State: error
+frontend\src\components\warehouse\tabs\CategoriesTab.vue
+  └── 💾 State: newCategory
+  └── 💾 State: isEditing
+  └── 💾 State: editingId
+frontend\src\components\warehouse\tabs\ConsumablesTab.vue
+  └── 💾 State: categories
+  └── 💾 State: newConsumable
+frontend\src\components\warehouse\tabs\IngredientsTab.vue
+  └── 💾 State: categories
+  └── 💾 State: newIngredient
+frontend\src\components\warehouse\tabs\ProcessesTab.vue
+  └── 💾 State: newProcessGroup
+frontend\src\components\warehouse\tabs\ProductsTab.vue
+  └── 💾 State: showTypeModal
+  └── 💾 State: showForm
+  └── 💾 State: productType
+  └── 💾 State: serverCalculatedCost
+  └── 💾 State: tempSimpleIngredient
+  └── 💾 State: tempSimpleConsumable
+frontend\src\components\warehouse\tabs\RecipesTab.vue
+  └── 💾 State: editingRecipeId
+  └── 💾 State: newRecipe
+  └── 💾 State: tempRecipeItem
+frontend\src\components\warehouse\tabs\StockTab.vue
+  └── 💾 State: activeTab
+  └── 💾 State: search
+  └── 💾 State: loading
+  └── 💾 State: editingItemKey
+  └── 💾 State: editValue
+  └── 💾 State: isHistoryOpen
+  └── 💾 State: historyItem
+frontend\src\components\warehouse\tabs\UnitsTab.vue
+  └── 💾 State: newUnit
+frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue
+  └── 💾 State: tempSimpleIngredient
+  └── 💾 State: tempProductConsumable
+  └── 💾 State: serverCalculatedCost
+frontend\src\components\warehouse\tabs\products\ProductFormVariant.vue
+  └── 💾 State: activeTab
+  └── 💾 State: showVariantForm
+  └── 💾 State: tempCommonConsumable
+frontend\src\components\warehouse\tabs\products\ProductsTab.vue
+  └── 💾 State: showTypeModal
+  └── 💾 State: showSimpleForm
+  └── 💾 State: showVariantForm
+  └── 💾 State: isEditing
+frontend\src\composables\useCart.js
+  └── 💾 State: cartItems
+  └── 💾 State: isProcessing
+  └── 💾 State: paymentMethod
+  └── 💾 State: selectedCustomer
+frontend\src\composables\useCustomers.js
+  └── 💾 State: customers
+  └── 💾 State: loading
+  └── 💾 State: searchQuery
+  └── 💾 State: showModal
+  └── 💾 State: isEditing
+  └── 💾 State: editingId
+  └── 💾 State: formData
+  └── 💾 State: showHistoryModal
+  └── 💾 State: historyLoading
+  └── 💾 State: currentCustomerHistory
+frontend\src\composables\useProducts.js
+  └── 💾 State: newProduct
+  └── 💾 State: editingId
+  └── 💾 State: isEditing
+  └── 💾 State: productSearch
+  └── 💾 State: editingVariantIndex
+  └── 💾 State: tempProductConsumable
+  └── 💾 State: tempVariantConsumable
+  └── 💾 State: tempVariantIngredient
+  └── 💾 State: variantBuilder
+  └── 💾 State: products
+frontend\src\composables\useStatistics.js
+  └── 💾 State: orders
+  └── 💾 State: loading
+  └── 💾 State: showDetailModal
+  └── 💾 State: selectedOrder
+frontend\src\composables\useWarehouse.js
+  └── 💾 State: products
+  └── 💾 State: categories
+  └── 💾 State: units
+  └── 💾 State: ingredients
+  └── 💾 State: consumables
+  └── 💾 State: processGroups
+  └── 💾 State: recipes
+  └── 💾 State: loading
+order_service\main.py
+  └── ƒ  def read_root
+  └── ƒ  def get_cart
+  └── ƒ  def add_item
+  └── ƒ  def update_quantity
+  └── ƒ  def remove_item
+  └── ƒ  def clear_cart
+order_service\schemas.py
+  └── 📦 class ModifierItem
+  └── 📦 class CartItemCreate
+  └── 📦 class CartItem
+product_service\database.py
+  └── ƒ  def get_db
+product_service\main.py
+  └── ƒ  def read_root
+product_service\models.py
+  └── 📦 class Category
+  └── 📦 class Unit
+  └── 📦 class Ingredient
+  └── 📦 class Consumable
+  └── 📦 class MasterRecipe
+  └── 📦 class MasterRecipeItem
+  └── 📦 class ProcessGroup
+  └── 📦 class ProcessOption
+  └── 📦 class ProductConsumable
+  └── 📦 class ProductIngredient
+product_service\schemas.py
+  └── 📦 class Category
+  └── 📦 class Config from_attributes = True
+  └── 📦 class CategoryCreate
+  └── 📦 class Unit
+  └── 📦 class Config from_attributes = True
+  └── 📦 class UnitCreate
+  └── 📦 class IngredientCreate
+  └── 📦 class Ingredient
+  └── 📦 class Config from_attributes = True
+  └── 📦 class ConsumableBase
+product_service\routers\categories.py
+  └── 🌐 Router: router
+  └── ƒ  def create_category
+  └── ƒ  def read_categories
+  └── ƒ  def update_category
+  └── ƒ  def delete_category
+product_service\routers\customers.py
+  └── 🌐 Router: router
+  └── ƒ  def create_customer
+  └── ƒ  def search_customers
+  └── ƒ  def read_customers
+  └── ƒ  def update_customer
+  └── ƒ  def delete_customer
+  └── ƒ  def read_customer_orders
+product_service\routers\inventory.py
+  └── 🌐 Router: router
+  └── ƒ  def create_unit
+  └── ƒ  def read_units
+  └── ƒ  def create_ingredient
+  └── ƒ  def read_ingredients
+  └── ƒ  def update_ingredient
+  └── ƒ  def delete_ingredient
+  └── ƒ  def create_consumable
+  └── ƒ  def read_consumables
+  └── ƒ  def update_consumable
+product_service\routers\orders.py
+  └── 🌐 Router: router
+  └── ƒ  def checkout
+  └── ƒ  def get_orders
+product_service\routers\processes.py
+  └── 🌐 Router: router
+  └── ƒ  def create_process_group
+  └── ƒ  def read_process_groups
+  └── ƒ  def delete_process_group
+  └── ƒ  def add_process_option
+  └── ƒ  def delete_process_option
+product_service\routers\products.py
+  └── 🌐 Router: router
+  └── ƒ  def calculate_cost
+  └── ƒ  def create_product
+  └── ƒ  def update_product
+  └── ƒ  def read_products
+  └── ƒ  def read_product
+  └── ƒ  def delete_product
+  └── ƒ  def update_stock
+  └── ƒ  def deduct_stock_for_order
+product_service\routers\recipes.py
+  └── 🌐 Router: router
+  └── ƒ  def create_recipe
+  └── ƒ  def read_recipes
+  └── ƒ  def update_recipe
+  └── ƒ  def delete_recipe
+product_service\services\inventory_logger.py
+  └── 📦 class InventoryLogger
+  └── ƒ  def log
+product_service\services\order_service.py
+  └── 📦 class OrderService
+  └── ƒ  def process_checkout
+product_service\services\product_service.py
+  └── 📦 class ProductService
+  └── ƒ  def calculate_product_cost
+  └── ƒ  def create_product
+  └── ƒ  def update_product
+product_service\tests\conftest.py
+  └── ƒ  def db_session
+  └── ƒ  def client
+  └── ƒ  def override_get_db
+product_service\tests\test_categories.py
+  └── ƒ  def test_create_category_success
+  └── ƒ  def test_create_subcategory
+  └── ƒ  def test_create_category_duplicate_slug
+  └── ƒ  def test_update_category
+  └── ƒ  def test_delete_category
+product_service\tests\test_consumables.py
+  └── ƒ  def test_create_consumable_basic
+  └── ƒ  def test_create_consumable_with_category
+  └── ƒ  def test_update_consumable_stock
+  └── ƒ  def test_delete_consumable
+product_service\tests\test_orders.py
+  └── ƒ  def setup_menu
+  └── ƒ  def test_create_order_zero_trust
+  └── ƒ  def test_order_validation_stock
+product_service\tests\test_warehouse.py
+  └── ƒ  def test_create_unit
+  └── ƒ  def test_create_ingredient_simple
+  └── ƒ  def test_create_ingredient_with_category
+  └── ƒ  def test_ingredient_validation
+  └── ƒ  def test_list_ingredients
+
+🌳 PROJECT TREE
+===============
+📂 /
     📄 docker-compose.prod.yml
     📄 docker-compose.yml
     📂 .github/
@@ -32,11 +380,11 @@ Extensions:
             📄 deploy.yml
     📂 frontend/
         📄 Dockerfile
+        📄 README.md
         📄 index.html
         📄 nginx.conf
         📄 package.json
         📄 postcss.config.js
-        📄 README.md
         📄 tailwind.config.js
         📄 vite.config.js
         📂 public/
@@ -71,6 +419,10 @@ Extensions:
                         📄 RecipesTab.vue
                         📄 StockTab.vue
                         📄 UnitsTab.vue
+                        📂 products/
+                            📄 ProductFormSimple.vue
+                            📄 ProductFormVariant.vue
+                            📄 ProductsTab.vue
             📂 composables/
                 📄 useCart.js
                 📄 useCustomers.js
@@ -83,13 +435,14 @@ Extensions:
         📄 requirements.txt
         📄 schemas.py
     📂 product_service/
-        📄 database.py
         📄 Dockerfile
+        📄 database.py
         📄 main.py
         📄 models.py
         📄 requirements.txt
         📄 schemas.py
         📂 routers/
+            📄 __init__.py
             📄 categories.py
             📄 customers.py
             📄 inventory.py
@@ -97,12 +450,11 @@ Extensions:
             📄 processes.py
             📄 products.py
             📄 recipes.py
-            📄 __init__.py
         📂 services/
+            📄 __init__.py
             📄 inventory_logger.py
             📄 order_service.py
             📄 product_service.py
-            📄 __init__.py
         📂 tests/
             📄 conftest.py
             📄 test_categories.py
@@ -111,7 +463,7 @@ Extensions:
             📄 test_warehouse.py
 
 📦 FILE CONTENTS
-==================================================
+================
 
 <file path="docker-compose.prod.yml">
 services:
@@ -323,6 +675,15 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 </file>
 
+<file path="frontend\README.md">
+# Vue 3 + Vite
+
+This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+
+Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+
+</file>
+
 <file path="frontend\index.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -406,15 +767,6 @@ export default {
     autoprefixer: {},
   },
 }
-</file>
-
-<file path="frontend\README.md">
-# Vue 3 + Vite
-
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
-
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
-
 </file>
 
 <file path="frontend\tailwind.config.js">
@@ -1703,7 +2055,7 @@ import { useWarehouse } from '@/composables/useWarehouse'
 // --- НОВИЙ ІМПОРТ ---
 const StockTab = defineAsyncComponent(() => import('./tabs/StockTab.vue'))
 
-const ProductsTab = defineAsyncComponent(() => import('./tabs/ProductsTab.vue'))
+const ProductsTab = defineAsyncComponent(() => import('./tabs/products/ProductsTab.vue'))
 const IngredientsTab = defineAsyncComponent(() => import('./tabs/IngredientsTab.vue'))
 const RecipesTab = defineAsyncComponent(() => import('./tabs/RecipesTab.vue'))
 const ProcessesTab = defineAsyncComponent(() => import('./tabs/ProcessesTab.vue'))
@@ -3378,6 +3730,920 @@ const handleCreate = async () => {
 </template>
 </file>
 
+<file path="frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue">
+<script setup>
+import { ref, watch, computed } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'
+import { useProducts } from '@/composables/useProducts'
+import IngredientSelect from '@/components/common/IngredientSelect.vue'
+
+const props = defineProps({
+    isOpen: Boolean,
+    isEdit: Boolean
+})
+
+const emit = defineEmits(['close', 'saved'])
+
+// Підключаємо логіку
+const { categories, recipes, ingredients, consumables } = useWarehouse()
+const { 
+    newProduct, 
+    saveProduct, 
+    removeProductConsumable
+} = useProducts()
+
+// Локальні змінні
+const tempSimpleIngredient = ref({ id: null, qty: 0 })
+const tempProductConsumable = ref({ consumable_id: "", quantity: 1 })
+const serverCalculatedCost = ref(0)
+
+// --- ОБЧИСЛЮВАНІ ВЛАСТИВОСТІ ---
+const selectedRecipe = computed(() => {
+    if (!newProduct.value.master_recipe_id) return null
+    return recipes.value.find(r => r.id === newProduct.value.master_recipe_id)
+})
+
+const getIngredientPrice = (id) => {
+    const ing = ingredients.value.find(i => i.id === id)
+    return ing ? ing.cost_per_unit : 0
+}
+
+const getConsumablePrice = (id) => {
+    const cons = consumables.value.find(c => c.id === id)
+    return cons ? cons.cost_per_unit : 0
+}
+
+// --- КАЛЬКУЛЯТОР ---
+const calculateCost = async () => {
+    const payload = {
+        master_recipe_id: newProduct.value.master_recipe_id,
+        output_weight: newProduct.value.output_weight || 0,
+        ingredients: newProduct.value.ingredients || [],
+        consumables: newProduct.value.consumables || []
+    }
+    try {
+        const res = await fetch('/api/products/calculate-cost', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        if(res.ok) {
+            const data = await res.json()
+            serverCalculatedCost.value = data.total_cost
+        }
+    } catch (e) { console.error("Cost calc error:", e) }
+}
+
+watch(() => [
+    newProduct.value.master_recipe_id, 
+    newProduct.value.output_weight,
+    newProduct.value.ingredients, 
+    newProduct.value.consumables
+], () => {
+    if (props.isOpen) calculateCost()
+}, { deep: true })
+
+// --- МЕТОДИ ---
+const addSimpleIngredient = () => {
+    if (tempSimpleIngredient.value.id && tempSimpleIngredient.value.qty > 0) {
+        if (!newProduct.value.ingredients) newProduct.value.ingredients = []
+        
+        const existing = newProduct.value.ingredients.find(i => i.ingredient_id === tempSimpleIngredient.value.id)
+        const ingObj = ingredients.value.find(i => i.id === tempSimpleIngredient.value.id)
+
+        if (existing) {
+            existing.quantity += parseFloat(tempSimpleIngredient.value.qty)
+        } else {
+            newProduct.value.ingredients.push({
+                ingredient_id: tempSimpleIngredient.value.id,
+                quantity: parseFloat(tempSimpleIngredient.value.qty),
+                ingredient_name: ingObj?.name || '???'
+            })
+        }
+        tempSimpleIngredient.value = { id: null, qty: 0 }
+    }
+}
+
+const removeSimpleIngredient = (index) => {
+    newProduct.value.ingredients.splice(index, 1)
+}
+
+const handleAddConsumable = () => {
+    if (tempProductConsumable.value.consumable_id) {
+        const c = consumables.value.find(x => x.id === tempProductConsumable.value.consumable_id)
+        if (!newProduct.value.consumables) newProduct.value.consumables = []
+        
+        newProduct.value.consumables.push({
+            consumable_id: tempProductConsumable.value.consumable_id,
+            quantity: tempProductConsumable.value.quantity,
+            name: c?.name || '???'
+        })
+        tempProductConsumable.value.quantity = 1
+    }
+}
+
+const handleSave = async () => {
+    newProduct.value.has_variants = false
+    const success = await saveProduct()
+    if (success) {
+        emit('saved')
+        emit('close')
+    }
+}
+</script>
+
+<template>
+    <div v-if="isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden animate-fade-in">
+            
+            <div class="p-5 border-b flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-600 p-2 rounded-lg text-lg">☕</span>
+                    {{ isEdit ? 'Редагування товару' : 'Новий товар' }}
+                </h3>
+                <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex-1 space-y-6 bg-white">
+                
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                    <h4 class="font-bold text-gray-700 mb-3 uppercase text-xs tracking-wider">Основна інформація</h4>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Назва товару <span class="text-red-500">*</span></label>
+                                <input v-model="newProduct.name" type="text" class="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="Назва товару">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-600 mb-1">Категорія</label>
+                                <select v-model="newProduct.category_id" class="w-full border rounded-lg p-2.5 bg-white">
+                                    <option :value="null">-- Без категорії --</option>
+                                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">Опис</label>
+                            <input v-model="newProduct.description" type="text" class="w-full border rounded-lg p-2.5" placeholder="Додаткова інформація...">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 class="font-bold text-blue-800 mb-3 uppercase text-xs tracking-wider">Фінанси</h4>
+                    
+                    <div class="flex flex-col md:flex-row gap-6 items-start md:items-center">
+                        <div class="flex-1 w-full">
+                            <label class="block text-sm font-bold text-blue-900 mb-1">Ціна продажу (₴)</label>
+                            <input v-model.number="newProduct.price" type="number" step="0.1" class="w-full text-2xl font-bold text-gray-800 bg-white border border-blue-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 shadow-sm">
+                        </div>
+                        
+                        <div class="flex gap-6 w-full md:w-auto bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                            <div>
+                                <div class="text-xs text-gray-500">Собівартість</div>
+                                <div class="font-medium text-lg">{{ serverCalculatedCost.toFixed(2) }} ₴</div>
+                            </div>
+                            <div class="border-l border-gray-200 pl-6">
+                                <div class="text-xs text-gray-500">Маржа</div>
+                                <div class="font-bold text-lg" :class="newProduct.price > serverCalculatedCost ? 'text-green-600' : 'text-red-500'">
+                                    {{ newProduct.price > 0 ? (newProduct.price - serverCalculatedCost).toFixed(2) : 0 }} ₴ 
+                                    <span class="text-sm font-normal text-gray-500">
+                                        ({{ newProduct.price > 0 ? Math.round(((newProduct.price - serverCalculatedCost) / newProduct.price) * 100) : 0 }}%)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <h4 class="font-bold text-gray-700 mb-3 uppercase text-xs tracking-wider">Складський облік</h4>
+                    
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded-lg transition border border-transparent hover:border-gray-200">
+                            <input v-model="newProduct.track_stock" type="checkbox" class="w-5 h-5 rounded text-blue-600 focus:ring-blue-500">
+                            <span class="font-medium text-gray-700">Вести облік залишків готового продукту</span>
+                        </label>
+                        
+                        <div v-if="newProduct.track_stock" class="flex-1 w-full sm:w-auto animate-fade-in">
+                            <label class="text-xs uppercase font-bold text-gray-500 block mb-1">Поточний залишок</label>
+                            <div class="flex items-center">
+                                <input v-model.number="newProduct.stock_quantity" type="number" class="w-full max-w-xs border rounded-l-lg p-2 focus:ring-2 focus:ring-blue-500">
+                                <span class="bg-gray-100 px-4 py-2 border border-l-0 rounded-r-lg text-gray-600 font-medium">шт</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-orange-50 p-4 rounded-lg border border-orange-100 shadow-sm">
+                    <h4 class="font-bold text-orange-800 mb-4 flex items-center gap-2 uppercase text-xs tracking-wider">
+                        <i class="fas fa-book-open"></i> Технічна карта (Рецепт)
+                    </h4>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
+                        <div class="md:col-span-8">
+                            <label class="block text-sm text-orange-900 mb-1 font-medium">Оберіть рецепт</label>
+                            <select v-model="newProduct.master_recipe_id" class="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-400">
+                                <option :value="null">-- Без рецепту --</option>
+                                <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-sm text-orange-900 mb-1 font-medium">Вага виходу</label>
+                            <div class="flex items-center">
+                                <input v-model.number="newProduct.output_weight" type="number" class="w-full border border-orange-200 rounded-l-lg p-2.5 text-sm" placeholder="250">
+                                <span class="bg-orange-100 px-3 py-2.5 border border-orange-200 border-l-0 rounded-r-lg text-orange-700 text-xs font-bold">мл/г</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="selectedRecipe" class="bg-white rounded-lg border border-orange-200 overflow-hidden">
+                        <div class="bg-orange-100 px-4 py-2 border-b border-orange-200 flex justify-between items-center">
+                            <h5 class="font-bold text-orange-900 text-sm">Склад техкарти: {{ selectedRecipe.name }}</h5>
+                        </div>
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-orange-50 text-orange-800 font-medium border-b border-orange-100">
+                                <tr>
+                                    <th class="p-3 pl-4">Інгредієнт</th>
+                                    <th class="p-3">В рецепті</th>
+                                    <th class="p-3">Витрата</th>
+                                    <th class="p-3 text-right pr-4">Вартість</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-orange-50">
+                                <tr v-for="item in selectedRecipe.items" :key="item.id">
+                                    <td class="p-3 pl-4 text-gray-700">{{ item.ingredient_name }}</td>
+                                    <td class="p-3 text-gray-500 text-xs">
+                                        {{ item.quantity }} {{ item.is_percentage ? '%' : (item.unit_name || 'од') }}
+                                    </td>
+                                    <td class="p-3 font-medium text-gray-800">
+                                        {{ item.is_percentage 
+                                            ? ((item.quantity / 100) * (newProduct.output_weight || 0)).toFixed(1) 
+                                            : item.quantity 
+                                        }} {{ item.is_percentage ? 'мл/г' : (item.unit_name || 'од') }}
+                                    </td>
+                                    <td class="p-3 text-right pr-4 text-gray-600 font-mono">
+                                        {{ ((item.is_percentage 
+                                                ? ((item.quantity / 100) * (newProduct.output_weight || 0)) 
+                                                : item.quantity
+                                            ) * getIngredientPrice(item.ingredient_id)).toFixed(2) 
+                                        }} ₴
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <h4 class="font-bold text-gray-800 mb-3 border-b pb-2 flex items-center gap-2">
+                        <i class="fas fa-lemon text-yellow-500"></i> Додаткові інгредієнти
+                    </h4>
+                    
+                    <div class="flex gap-2 mb-4 bg-gray-50 p-2 rounded-lg">
+                        <IngredientSelect 
+                            v-model="tempSimpleIngredient.id" 
+                            :ingredients="ingredients" 
+                            class="flex-1" 
+                        />
+                        <input v-model.number="tempSimpleIngredient.qty" type="number" step="0.001" placeholder="К-сть" class="w-24 border rounded p-2 text-sm focus:ring-2 focus:ring-yellow-400">
+                        <button @click="addSimpleIngredient" class="bg-yellow-500 text-white px-4 rounded hover:bg-yellow-600 font-medium shadow-sm transition">
+                            <i class="fas fa-plus"></i> Додати
+                        </button>
+                    </div>
+
+                    <div v-if="newProduct.ingredients?.length" class="border rounded-lg overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100 text-gray-600 text-left text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-3 pl-4">Назва</th>
+                                    <th class="p-3">К-сть</th>
+                                    <th class="p-3 text-right">Вартість</th>
+                                    <th class="p-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(ing, idx) in newProduct.ingredients" :key="idx" class="hover:bg-gray-50">
+                                    <td class="p-3 pl-4 font-medium">{{ ing.ingredient_name }}</td>
+                                    <td class="p-3 text-gray-600">{{ ing.quantity }}</td>
+                                    <td class="p-3 text-right font-mono text-gray-700">
+                                        {{ (ing.quantity * getIngredientPrice(ing.ingredient_id)).toFixed(2) }} ₴
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <button @click="removeSimpleIngredient(idx)" class="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div v-else class="text-sm text-gray-400 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        Немає додаткових інгредієнтів
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <h4 class="font-bold text-gray-800 mb-3 border-b pb-2 flex items-center gap-2">
+                        <i class="fas fa-box-open text-blue-500"></i> Витратні матеріали
+                    </h4>
+
+                    <div class="flex gap-2 mb-4 bg-gray-50 p-2 rounded-lg">
+                        <select v-model="tempProductConsumable.consumable_id" class="flex-1 border rounded p-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
+                            <option value="">Оберіть матеріал...</option>
+                            <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                        </select>
+                        <input v-model.number="tempProductConsumable.quantity" type="number" placeholder="Шт" class="w-24 border rounded p-2 text-sm focus:ring-2 focus:ring-blue-400">
+                        <button @click="handleAddConsumable" class="bg-blue-500 text-white px-4 rounded hover:bg-blue-600 font-medium shadow-sm transition">
+                            <i class="fas fa-plus"></i> Додати
+                        </button>
+                    </div>
+
+                    <div v-if="newProduct.consumables?.length" class="border rounded-lg overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100 text-gray-600 text-left text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-3 pl-4">Назва</th>
+                                    <th class="p-3">К-сть</th>
+                                    <th class="p-3 text-right">Вартість</th>
+                                    <th class="p-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(c, idx) in newProduct.consumables" :key="idx" class="hover:bg-gray-50">
+                                    <td class="p-3 pl-4 font-medium">{{ c.name || c.consumable_name }}</td>
+                                    <td class="p-3 text-gray-600">{{ c.quantity }} шт</td>
+                                    <td class="p-3 text-right font-mono text-gray-700">
+                                        {{ (c.quantity * getConsumablePrice(c.consumable_id)).toFixed(2) }} ₴
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <button @click="removeProductConsumable(idx)" class="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div v-else class="text-sm text-gray-400 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        Немає витратних матеріалів
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="p-5 border-t bg-gray-50 flex justify-end gap-3">
+                <button @click="$emit('close')" class="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-white transition font-medium">
+                    Скасувати
+                </button>
+                <button @click="handleSave" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md transition font-medium flex items-center gap-2">
+                    <i class="fas fa-check"></i> {{ isEdit ? 'Зберегти' : 'Створити' }}
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+</style>
+</file>
+
+<file path="frontend\src\components\warehouse\tabs\products\ProductFormVariant.vue">
+<script setup>
+import { ref, watch, computed, nextTick } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'
+import { useProducts } from '@/composables/useProducts'
+import IngredientSelect from '@/components/common/IngredientSelect.vue'
+
+const props = defineProps({
+    isOpen: Boolean,
+    isEdit: Boolean
+})
+
+const emit = defineEmits(['close', 'saved'])
+
+const { categories, recipes, ingredients, consumables } = useWarehouse()
+const { 
+    newProduct, 
+    saveProduct,
+    removeProductConsumable, // Для спільних матеріалів
+    // Методи для роботи з варіантами з useProducts
+    saveVariant, editVariant, cancelVariantEdit, removeVariant,
+    variantBuilder, editingVariantIndex,
+    // Методи для інгредієнтів варіанту
+    addIngredientToVariant, removeIngredientFromVariant,
+    // Методи для матеріалів варіанту
+    addVariantConsumable, removeVariantConsumable,
+    tempVariantConsumable, tempVariantIngredient
+} = useProducts()
+
+const activeTab = ref('general')
+const showVariantForm = ref(false) // Чи відкрита форма редагування конкретного варіанту
+
+// Відкриття форми додавання нового варіанту
+const openAddVariant = () => {
+    cancelVariantEdit() // Скидаємо білдер
+    showVariantForm.value = true
+}
+
+// Відкриття форми редагування існуючого варіанту
+const openEditVariant = (index) => {
+    editVariant(index) // Заповнюємо білдер даними варіанту
+    showVariantForm.value = true
+}
+
+// Збереження варіанту (з локальної форми в список newProduct.variants)
+const handleSaveVariant = () => {
+    if (!variantBuilder.value.name || variantBuilder.value.price <= 0) {
+        alert("Вкажіть назву та ціну варіанту")
+        return
+    }
+    saveVariant()
+    showVariantForm.value = false
+}
+
+// Закриття форми варіанту
+const closeVariantForm = () => {
+    cancelVariantEdit()
+    showVariantForm.value = false
+}
+
+// Додавання спільних витратних матеріалів
+const tempCommonConsumable = ref({ consumable_id: "", quantity: 1 })
+const addCommonConsumable = () => {
+     if (tempCommonConsumable.value.consumable_id) {
+        const c = consumables.value.find(x => x.id === tempCommonConsumable.value.consumable_id)
+        if (!newProduct.value.consumables) newProduct.value.consumables = []
+        newProduct.value.consumables.push({
+            consumable_id: tempCommonConsumable.value.consumable_id,
+            quantity: tempCommonConsumable.value.quantity,
+            name: c?.name || '???'
+        })
+        tempCommonConsumable.value.quantity = 1
+    }
+}
+
+// Головне збереження товару
+const handleSave = async () => {
+    if (newProduct.value.variants.length === 0) {
+        alert("Додайте хоча б один варіант товару")
+        return
+    }
+    newProduct.value.has_variants = true // Гарантуємо тип
+    const success = await saveProduct()
+    if (success) {
+        emit('saved')
+        emit('close')
+    }
+}
+
+// Скидання табів при відкритті
+watch(() => props.isOpen, (val) => {
+    if (val) {
+        activeTab.value = 'general'
+        showVariantForm.value = false
+    }
+})
+</script>
+
+<template>
+    <div v-if="isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden animate-fade-in relative">
+            
+            <div class="p-6 border-b flex justify-between items-center bg-purple-50">
+                <h3 class="text-xl font-bold text-purple-800">
+                    <i class="fas fa-layer-group mr-2"></i>
+                    {{ isEdit ? 'Редагування товару з варіантами' : 'Новий товар з варіантами' }}
+                </h3>
+                <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="flex border-b bg-white px-6">
+                <button @click="activeTab = 'general'" :class="['py-3 px-4 font-medium border-b-2 transition', activeTab === 'general' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700']">
+                    Основне
+                </button>
+                <button @click="activeTab = 'variants'" :class="['py-3 px-4 font-medium border-b-2 transition', activeTab === 'variants' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700']">
+                    Варіанти <span class="ml-1 bg-purple-100 text-purple-600 px-2 rounded-full text-xs">{{ newProduct.variants.length }}</span>
+                </button>
+                 <button @click="activeTab = 'common'" :class="['py-3 px-4 font-medium border-b-2 transition', activeTab === 'common' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700']">
+                    Спільні матеріали
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex-1 space-y-6 bg-gray-50">
+                
+                <div v-if="activeTab === 'general'" class="bg-white p-6 rounded-lg shadow-sm space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Загальна назва</label>
+                            <input v-model="newProduct.name" type="text" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500" placeholder="Напр: Піца Маргарита">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Категорія</label>
+                            <select v-model="newProduct.category_id" class="w-full border rounded-lg p-2">
+                                <option :value="null">Без категорії</option>
+                                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Опис (необов'язково)</label>
+                        <textarea v-model="newProduct.description" rows="3" class="w-full border rounded-lg p-2"></textarea>
+                    </div>
+                </div>
+
+                <div v-if="activeTab === 'variants'" class="space-y-4">
+                    <button @click="openAddVariant" class="w-full py-3 bg-white border-2 border-dashed border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50 transition font-medium flex items-center justify-center gap-2">
+                        <i class="fas fa-plus-circle"></i> Додати варіант (напр. "Маленька", "Велика")
+                    </button>
+
+                    <div v-if="newProduct.variants.length > 0" class="bg-white rounded-lg shadow-sm border divide-y overflow-hidden">
+                        <div v-for="(v, idx) in newProduct.variants" :key="idx" class="p-4 flex justify-between items-center hover:bg-gray-50">
+                            <div>
+                                <h4 class="font-bold text-gray-800">{{ v.name }}</h4>
+                                <div class="text-sm text-gray-500 flex gap-4 mt-1">
+                                    <span><i class="fas fa-tag mr-1"></i> {{ v.price }} ₴</span>
+                                    <span v-if="v.sku"><i class="fas fa-barcode mr-1"></i> {{ v.sku }}</span>
+                                </div>
+                            </div>
+                             <div class="flex gap-2">
+                                <button @click="openEditVariant(idx)" class="px-3 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition text-sm">
+                                    <i class="fas fa-pen mr-1"></i> Ред.
+                                </button>
+                                <button @click="removeVariant(idx)" class="px-3 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition text-sm">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="text-center text-gray-400 py-8">
+                        Список варіантів порожній
+                    </div>
+                </div>
+
+                <div v-if="activeTab === 'common'" class="bg-white p-6 rounded-lg shadow-sm space-y-6">
+                     <div class="border p-4 rounded-lg bg-blue-50">
+                        <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                            <i class="fas fa-box-open text-blue-600"></i> Спільні витратні матеріали
+                        </h4>
+                        <p class="text-xs text-gray-500 mb-3">Додаються до замовлення незалежно від обраного варіанту (напр. пакет, серветка).</p>
+                        
+                        <div class="flex gap-2 items-end mb-3">
+                            <div class="flex-1">
+                                <select v-model="tempCommonConsumable.consumable_id" class="w-full border rounded p-2">
+                                    <option value="">Оберіть матеріал...</option>
+                                    <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                                </select>
+                            </div>
+                            <div class="w-20">
+                                <input v-model.number="tempCommonConsumable.quantity" type="number" class="w-full border rounded p-2">
+                            </div>
+                            <button @click="addCommonConsumable" class="bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div v-if="newProduct.consumables?.length" class="bg-white rounded border divide-y">
+                            <div v-for="(c, idx) in newProduct.consumables" :key="idx" class="p-2 flex justify-between items-center text-sm">
+                                <span>{{ c.name || c.consumable_name }}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold">{{ c.quantity }} шт</span>
+                                    <button @click="removeProductConsumable(idx)" class="text-red-500 hover:text-red-700">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                     </div>
+                 </div>
+            </div>
+
+            <div class="p-6 border-t bg-white flex justify-end gap-3">
+                <button @click="$emit('close')" class="px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-100">
+                    Скасувати
+                </button>
+                <button @click="handleSave" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-lg transition" :disabled="newProduct.variants.length === 0">
+                    {{ isEdit ? 'Зберегти товар' : 'Створити товар' }}
+                </button>
+            </div>
+
+            <div v-if="showVariantForm" class="absolute inset-0 bg-white z-50 flex flex-col animate-slide-up">
+                <div class="p-4 border-b bg-purple-50 flex justify-between items-center">
+                     <h4 class="font-bold text-purple-800">
+                        {{ editingVariantIndex !== null ? 'Редагування варіанту' : 'Новий варіант' }}
+                    </h4>
+                    <button @click="closeVariantForm" class="text-gray-500 hover:text-gray-700">
+                         <i class="fas fa-chevron-down"></i> Згорнути
+                    </button>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50">
+                    <div class="bg-white p-4 rounded-lg shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium mb-1">Назва варіанту <span class="text-red-500">*</span></label>
+                            <input v-model="variantBuilder.name" type="text" class="w-full border rounded p-2" placeholder="Напр: Велика (40см)">
+                        </div>
+                         <div>
+                            <label class="block text-sm font-medium mb-1">Артикул (SKU)</label>
+                            <input v-model="variantBuilder.sku" type="text" class="w-full border rounded p-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-purple-800">Ціна (₴) <span class="text-red-500">*</span></label>
+                            <input v-model.number="variantBuilder.price" type="number" class="w-full border rounded p-2 font-bold">
+                        </div>
+                         <div>
+                             <label class="block text-sm font-medium mb-1">Поточний залишок</label>
+                             <input v-model.number="variantBuilder.stock_quantity" type="number" class="w-full border rounded p-2">
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-orange-400 grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div>
+                            <label class="block text-sm font-medium mb-1">Технічна карта</label>
+                            <select v-model="variantBuilder.master_recipe_id" class="w-full border rounded p-2">
+                                <option :value="null">-- Без рецепту --</option>
+                                <option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }}</option>
+                            </select>
+                        </div>
+                         <div>
+                            <label class="block text-sm font-medium mb-1">Вага виходу (для рецепту)</label>
+                            <input v-model.number="variantBuilder.output_weight" type="number" class="w-full border rounded p-2">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-yellow-50 p-4 rounded-lg border">
+                            <h5 class="font-bold mb-2 text-yellow-800">Унікальні інгредієнти</h5>
+                            <div class="flex gap-2 mb-2">
+                                <IngredientSelect v-model="tempVariantIngredient.ingredient_id" class="flex-1" />
+                                <input v-model.number="tempVariantIngredient.quantity" type="number" class="w-20 border rounded p-1" placeholder="К-сть">
+                                <button @click="addIngredientToVariant" class="bg-yellow-500 text-white px-2 rounded"><i class="fas fa-plus"></i></button>
+                            </div>
+                            <div class="bg-white rounded border divide-y max-h-40 overflow-y-auto">
+                                 <div v-for="(ing, idx) in variantBuilder.ingredients" :key="idx" class="p-2 text-sm flex justify-between">
+                                    <span>{{ ing.name || '???' }}</span>
+                                    <span>{{ ing.quantity }} <i @click="removeIngredientFromVariant(idx)" class="fas fa-times text-red-500 cursor-pointer ml-2"></i></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border">
+                            <h5 class="font-bold mb-2 text-blue-800">Унікальні матеріали (тара)</h5>
+                             <div class="flex gap-2 mb-2">
+                                <select v-model="tempVariantConsumable.consumable_id" class="flex-1 border rounded p-1 text-sm">
+                                    <option value="">Оберіть...</option>
+                                    <option v-for="c in consumables" :key="c.id" :value="c.id">{{ c.name }}</option>
+                                </select>
+                                <input v-model.number="tempVariantConsumable.quantity" type="number" class="w-16 border rounded p-1" placeholder="Шт">
+                                <button @click="addVariantConsumable" class="bg-blue-500 text-white px-2 rounded"><i class="fas fa-plus"></i></button>
+                            </div>
+                             <div class="bg-white rounded border divide-y max-h-40 overflow-y-auto">
+                                 <div v-for="(c, idx) in variantBuilder.consumables" :key="idx" class="p-2 text-sm flex justify-between">
+                                    <span>{{ c.name || '???' }}</span>
+                                    <span>{{ c.quantity }} шт <i @click="removeVariantConsumable(idx)" class="fas fa-times text-red-500 cursor-pointer ml-2"></i></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 border-t bg-white flex justify-end gap-3">
+                    <button @click="closeVariantForm" class="px-4 py-2 border rounded text-gray-600">Скасувати</button>
+                    <button @click="handleSaveVariant" class="px-4 py-2 bg-purple-600 text-white rounded font-medium">
+                        <i class="fas fa-check mr-1"></i> Зберегти варіант
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+.animate-slide-up { animation: slideUp 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+</style>
+</file>
+
+<file path="frontend\src\components\warehouse\tabs\products\ProductsTab.vue">
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'
+import { useProducts } from '@/composables/useProducts'
+
+// Імпортуємо наші форми
+import ProductFormSimple from './ProductFormSimple.vue'
+import ProductFormVariant from './ProductFormVariant.vue'
+
+const { fetchWarehouseData } = useWarehouse()
+
+// --- ФУНКЦІОНАЛ ---
+const { 
+    newProduct, 
+    prepareEdit: originalHandleEdit, 
+    deleteProduct, 
+    fetchProducts, 
+    filteredProducts, 
+    productSearch, 
+    resetForm
+} = useProducts()
+
+// --- UI СТАНИ ---
+const showTypeModal = ref(false)   // Маленьке вікно вибору типу
+const showSimpleForm = ref(false)  // Велика форма простого товару
+const showVariantForm = ref(false) // Велика форма варіантів
+const isEditing = ref(false)
+
+onMounted(async () => {
+    await Promise.all([fetchWarehouseData(), fetchProducts()])
+})
+
+// --- ЛОГІКА ВІДКРИТТЯ ВІКОН ---
+
+// 1. Натиснули "Додати товар" -> Відкриваємо вибір типу
+const openCreateModal = () => {
+    resetForm()
+    isEditing.value = false
+    showTypeModal.value = true
+}
+
+// 2. Обрали тип -> Відкриваємо відповідну форму
+const selectType = (type) => {
+    showTypeModal.value = false // Закриваємо вибір
+    
+    if (type === 'simple') {
+        newProduct.value.has_variants = false
+        showSimpleForm.value = true
+    } else {
+        newProduct.value.has_variants = true
+        showVariantForm.value = true
+    }
+}
+
+// 3. Натиснули "Редагувати" в таблиці
+const handleEditWrapper = (product) => {
+    originalHandleEdit(product)
+    isEditing.value = true
+    
+    if (product.has_variants) {
+         showVariantForm.value = true
+    } else {
+        showSimpleForm.value = true
+    }
+}
+
+// 4. Логіка закриття (передається в компоненти)
+const closeAllForms = () => {
+    showSimpleForm.value = false
+    showVariantForm.value = false
+    resetForm()
+}
+
+// 5. Успішне збереження
+const onSaved = async () => {
+    await fetchProducts()
+    // closeAllForms викликається автоматично через подію @close, якщо так налаштовано, 
+    // або можна викликати тут, якщо компонент сам не закривається.
+    // У нашому випадку компонент емітить 'saved', ми оновлюємо дані, 
+    // а закриттям керує сам компонент через emit('close').
+}
+</script>
+
+<template>
+    <div class="h-full flex flex-col bg-white rounded-xl shadow-sm border overflow-hidden">
+        
+        <div class="p-6 border-b flex flex-col md:flex-row gap-4 justify-between items-center bg-gray-50">
+            <h2 class="text-2xl font-bold text-gray-800">📦 Товари та Послуги</h2>
+            <div class="flex gap-3 w-full md:w-auto">
+                <div class="relative flex-1 md:w-64">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    <input v-model="productSearch" type="text" placeholder="Пошук..." class="pl-10 pr-4 py-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button @click="openCreateModal" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md transition flex items-center gap-2 font-medium">
+                    <i class="fas fa-plus"></i> <span class="hidden sm:inline">Додати</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-auto p-4 bg-gray-50">
+            <div class="overflow-hidden rounded-xl border shadow-sm bg-white">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100 text-gray-600 uppercase text-xs font-semibold tracking-wider sticky top-0 z-10">
+                        <tr>
+                            <th class="p-4 border-b">Назва</th>
+                            <th class="p-4 border-b">Категорія</th>
+                            <th class="p-4 border-b">Ціна</th>
+                            <th class="p-4 border-b">Тип</th>
+                            <th class="p-4 border-b">Склад</th>
+                            <th class="p-4 border-b text-center">Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <tr v-if="filteredProducts.length === 0">
+                            <td colspan="6" class="p-8 text-center text-gray-400">Товарів не знайдено</td>
+                        </tr>
+                        <tr v-for="p in filteredProducts" :key="p.id" class="hover:bg-blue-50 transition group">
+                            <td class="p-4 font-medium text-gray-800">
+                                {{ p.name }}
+                                <div class="text-xs text-gray-400 font-normal mt-0.5 max-w-xs truncate">{{ p.description }}</div>
+                            </td>
+                            <td class="p-4 text-sm">
+                                <span v-if="p.category" class="bg-gray-100 text-gray-600 px-2 py-1 rounded font-medium text-xs border border-gray-200">
+                                    {{ p.category.name }}
+                                </span>
+                                <span v-else class="text-gray-300">-</span>
+                            </td>
+                            <td class="p-4 font-bold text-green-600 font-mono">
+                                <span v-if="!p.has_variants">{{ p.price }} ₴</span>
+                                <span v-else class="text-xs text-gray-400 font-normal italic">від варіанту</span>
+                            </td>
+                            <td class="p-4">
+                                <span v-if="p.has_variants" class="inline-flex items-center gap-1 text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-bold border border-purple-200">
+                                    <i class="fas fa-layer-group"></i> Варіанти
+                                </span>
+                                <span v-else class="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold border border-blue-200">
+                                    <i class="fas fa-box"></i> Простий
+                                </span>
+                            </td>
+                            <td class="p-4 text-sm">
+                                <div v-if="!p.has_variants">
+                                    <div v-if="p.track_stock" class="font-mono font-bold" :class="p.stock_quantity > 0 ? 'text-blue-600' : 'text-red-500'">
+                                        {{ p.stock_quantity }} шт
+                                    </div>
+                                    <div v-else class="text-gray-400 text-xs italic">Без обліку</div>
+                                </div>
+                                <div v-else class="text-xs text-gray-400 italic">Див. деталі</div>
+                            </td>
+                            <td class="p-4 text-center">
+                                <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                                    <button @click="handleEditWrapper(p)" class="w-8 h-8 rounded flex items-center justify-center text-blue-500 hover:bg-blue-100 transition" title="Редагувати">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button @click="deleteProduct(p.id)" class="w-8 h-8 rounded flex items-center justify-center text-red-500 hover:bg-red-100 transition" title="Видалити">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div v-if="showTypeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center relative transform transition-all scale-100">
+                <button @click="showTypeModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+                
+                <h3 class="text-2xl font-bold mb-2 text-gray-800">Новий товар</h3>
+                <p class="text-gray-500 mb-8 text-sm">Оберіть тип товару, який ви хочете створити</p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <button @click="selectType('simple')" class="p-6 border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition group flex flex-col items-center">
+                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">☕</div>
+                        <div class="font-bold text-gray-800">Простий</div>
+                        <div class="text-[10px] text-gray-500 mt-1 leading-tight">Фіксована ціна,<br>один рецепт</div>
+                    </button>
+
+                    <button @click="selectType('variant')" class="p-6 border-2 border-gray-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition group flex flex-col items-center">
+                        <div class="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">👕</div>
+                        <div class="font-bold text-gray-800">З варіантами</div>
+                        <div class="text-[10px] text-gray-500 mt-1 leading-tight">Різні розміри,<br>об'єми, ціни</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <ProductFormSimple 
+            :isOpen="showSimpleForm"
+            :isEdit="isEditing"
+            @close="closeAllForms"
+            @saved="onSaved"
+        />
+
+        <ProductFormVariant
+            :isOpen="showVariantForm"
+            :isEdit="isEditing"
+            @close="closeAllForms"
+            @saved="onSaved"
+        />
+        
+    </div>
+</template>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+</style>
+</file>
+
 <file path="frontend\src\composables\useCart.js">
 import { ref, computed } from 'vue'
 
@@ -4161,6 +5427,22 @@ class CartItem(CartItemCreate):
     cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
 </file>
 
+<file path="product_service\Dockerfile">
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Спочатку копіюємо вимоги і ставимо бібліотеки (щоб кешувалось)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ТЕПЕР КОПІЮЄМО ВСЕ (включаючи models.py, schemas.py, database.py)
+COPY . .
+
+# Запускаємо
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+</file>
+
 <file path="product_service\database.py">
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -4192,22 +5474,6 @@ def get_db():
         yield db
     finally:
         db.close()
-</file>
-
-<file path="product_service\Dockerfile">
-FROM python:3.9-slim
-
-WORKDIR /app
-
-# Спочатку копіюємо вимоги і ставимо бібліотеки (щоб кешувалось)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ТЕПЕР КОПІЮЄМО ВСЕ (включаючи models.py, schemas.py, database.py)
-COPY . .
-
-# Запускаємо
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 </file>
 
 <file path="product_service\main.py">
@@ -4792,6 +6058,10 @@ class OrderRead(BaseModel):
     class Config: from_attributes = True
 </file>
 
+<file path="product_service\routers\__init__.py">
+
+</file>
+
 <file path="product_service\routers\categories.py">
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -5133,8 +6403,10 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
 </file>
 
 <file path="product_service\routers\products.py">
+# FILE: product_service/routers/products.py
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload # 🔥 ВАЖЛИВО: Імпорт joinedload
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 import database, schemas, models
 from services.product_service import ProductService
@@ -5145,10 +6417,13 @@ router = APIRouter(prefix="/products", tags=["Products"])
 # --- КАЛЬКУЛЯТОР СОБІВАРТОСТІ ---
 @router.post("/calculate-cost")
 def calculate_cost(data: schemas.ProductCostCheck, db: Session = Depends(database.get_db)):
+    """
+    Рахує собівартість товару "на льоту".
+    """
     cost = ProductService.calculate_product_cost(db, data)
     return {"total_cost": cost}
 
-# --- СТАНДАРТНІ CRUD ОПЕРАЦІЇ ---
+# --- CRUD ОПЕРАЦІЇ ---
 
 @router.post("/", response_model=schemas.Product)
 def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):
@@ -5164,7 +6439,7 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
 @router.get("/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
     products = db.query(models.Product).all()
-    # Дозаповнюємо назви
+    # Дозаповнюємо назви для UI
     for p in products:
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
@@ -5183,6 +6458,7 @@ def read_product(product_id: int, db: Session = Depends(database.get_db)):
     p = db.query(models.Product).filter(models.Product.id == product_id).first()
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found")
+    
     for c in p.consumables:
         if c.consumable: c.consumable_name = c.consumable.name
     for i in p.ingredients:
@@ -5225,20 +6501,17 @@ def update_stock(product_id: int, qty: float, db: Session = Depends(database.get
     db.commit()
     return {"status": "updated", "new_quantity": qty}
 
-# 🔥 ВИПРАВЛЕНИЙ ЕНДПОІНТ СПИСАННЯ 🔥
+# 🔥 ФІНАЛЬНИЙ ВАРІАНТ СПИСАННЯ (HARDCORE MODE) 🔥
 @router.post("/deduct_stock_for_order")
 def deduct_stock_for_order(items: List[schemas.StockDeductionItem], db: Session = Depends(database.get_db)):
     print(f"📦 [DEDUCT] Отримано запит: {len(items)} позицій")
     
     for item in items:
-        # === ЛОГІКА ВИЗНАЧЕННЯ ТИПУ (через наявність variant_id) ===
-        
-        # 1. ОБРОБКА ВАРІАНТУ
+        # === 1. ВАРІАНТИ (ТУТ ВСЕ ПРАЦЮВАЛО, ЗАЛИШАЄМО ЯК Є) ===
         if item.variant_id is not None:
             variant_id = item.variant_id
-            print(f"  🔹 Обробка ВАРІАНТУ ID: {variant_id}")
+            print(f"  🔹 Варіант ID: {variant_id}")
 
-            # Eager Loading для варіанту (зв'язки завантажуються одразу)
             variant = db.query(models.ProductVariant).options(
                 joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
                 joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
@@ -5279,23 +6552,15 @@ def deduct_stock_for_order(items: List[schemas.StockDeductionItem], db: Session 
                             old_cons, link.consumable.stock_quantity,
                             f"sale_order_{item.order_id}_var_{variant.id}"
                         )
-            else:
-                print(f"  ❌ Варіант {variant_id} не знайдено!")
 
-        # 2. ОБРОБКА ПРОСТОГО ТОВАРУ
+        # === 2. ПРОСТІ ТОВАРИ (ТУТ БУЛА ПРОБЛЕМА) ===
         else:
             product_id = item.product_id
-            print(f"  🔹 Обробка ПРОСТОГО ТОВАРУ ID: {product_id}")
+            print(f"  🔹 Простий Товар ID: {product_id}")
 
-            # 🔥 FIX: Eager Loading для товару (завантажуємо ingredients та recipe)
-            product = db.query(models.Product).options(
-                joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient),
-                joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
-                joinedload(models.Product.master_recipe).joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
-            ).filter(models.Product.id == product_id).first()
-
+            # 1. Списуємо сам товар
+            product = db.query(models.Product).filter(models.Product.id == product_id).first()
             if product:
-                # А. Товар
                 old_p = product.stock_quantity
                 product.stock_quantity -= item.quantity
                 InventoryLogger.log(
@@ -5303,58 +6568,86 @@ def deduct_stock_for_order(items: List[schemas.StockDeductionItem], db: Session 
                     old_p, product.stock_quantity, 
                     f"sale_order_{item.order_id}"
                 )
+                
+                # --- 🔥 ВИПРАВЛЕННЯ: ЯВНИЙ ЗАПИТ ДО БАЗИ ---
+                # Ми не покладаємось на product.ingredients, ми беремо дані напряму з таблиці
+                direct_ingredients = db.query(models.ProductIngredient).filter(
+                    models.ProductIngredient.product_id == product.id
+                ).all()
 
-                # Б. 🔥 ПРЯМІ ІНГРЕДІЄНТИ (Цього циклу не вистачало)
-                print(f"     🔍 Знайдено прямих інгредієнтів: {len(product.ingredients)}")
-                for link in product.ingredients:
-                    if link.ingredient:
+                print(f"     🔍 Знайдено прямих інгредієнтів (SQL): {len(direct_ingredients)}")
+                
+                for link in direct_ingredients:
+                    # Отримуємо сам об'єкт інгредієнта, щоб змінити його залишок
+                    real_ingredient = db.query(models.Ingredient).filter(
+                        models.Ingredient.id == link.ingredient_id
+                    ).first()
+
+                    if real_ingredient:
                         deduct = link.quantity * item.quantity
-                        old_ing = link.ingredient.stock_quantity
+                        old_ing = real_ingredient.stock_quantity
                         
-                        print(f"        -> Списуємо {link.ingredient.name}: -{deduct}")
+                        print(f"        -> Списуємо {real_ingredient.name}: -{deduct}")
                         
-                        link.ingredient.stock_quantity -= deduct
+                        real_ingredient.stock_quantity -= deduct
                         InventoryLogger.log(
-                            db, "ingredient", link.ingredient.id, link.ingredient.name,
-                            old_ing, link.ingredient.stock_quantity,
+                            db, "ingredient", real_ingredient.id, real_ingredient.name,
+                            old_ing, real_ingredient.stock_quantity,
                             f"sale_order_{item.order_id}_prod_{product.id}"
                         )
 
-                # В. Витратні матеріали
-                for link in product.consumables:
-                    if link.consumable:
+                # 3. Витратні матеріали (Також робимо надійно)
+                direct_consumables = db.query(models.ProductConsumable).filter(
+                    models.ProductConsumable.product_id == product.id
+                ).all()
+
+                for link in direct_consumables:
+                    real_cons = db.query(models.Consumable).filter(
+                        models.Consumable.id == link.consumable_id
+                    ).first()
+                    
+                    if real_cons:
                         deduct = link.quantity * item.quantity
-                        old_cons = link.consumable.stock_quantity
-                        link.consumable.stock_quantity -= deduct
+                        old_cons = real_cons.stock_quantity
+                        real_cons.stock_quantity -= deduct
                         InventoryLogger.log(
-                            db, "consumable", link.consumable.id, link.consumable.name,
-                            old_cons, link.consumable.stock_quantity,
+                            db, "consumable", real_cons.id, real_cons.name,
+                            old_cons, real_cons.stock_quantity,
                             f"sale_order_{item.order_id}_prod_{product.id}"
                         )
 
-                # Г. Рецепт
+                # 4. Рецепт (якщо є)
                 if product.master_recipe:
-                    print(f"     🔍 Рецепт: {product.master_recipe.name}")
-                    for r_item in product.master_recipe.items:
-                        if r_item.ingredient:
-                            single_qty = 0
-                            if r_item.is_percentage:
-                                single_qty = (r_item.quantity / 100.0) * product.output_weight
-                            else:
-                                single_qty = r_item.quantity
-                            
-                            deduct = single_qty * item.quantity
-                            old_ing = r_item.ingredient.stock_quantity
-                            r_item.ingredient.stock_quantity -= deduct
-                            InventoryLogger.log(
-                                db, "ingredient", r_item.ingredient.id, r_item.ingredient.name,
-                                old_ing, r_item.ingredient.stock_quantity,
-                                f"sale_order_{item.order_id}_recipe_{product.master_recipe.id}"
-                            )
+                    # Для рецепту можна залишити Lazy Loading, або теж завантажити явно, 
+                    # але зазвичай з рецептами проблем менше. 
+                    # Додамо joinedload тут локально для надійності.
+                    recipe = db.query(models.MasterRecipe).options(
+                        joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
+                    ).filter(models.MasterRecipe.id == product.master_recipe_id).first()
+
+                    if recipe:
+                        print(f"     🔍 Рецепт: {recipe.name}")
+                        for r_item in recipe.items:
+                            if r_item.ingredient:
+                                single_qty = 0
+                                if r_item.is_percentage:
+                                    single_qty = (r_item.quantity / 100.0) * product.output_weight
+                                else:
+                                    single_qty = r_item.quantity
+                                
+                                deduct = single_qty * item.quantity
+                                old_ing = r_item.ingredient.stock_quantity
+                                r_item.ingredient.stock_quantity -= deduct
+                                InventoryLogger.log(
+                                    db, "ingredient", r_item.ingredient.id, r_item.ingredient.name,
+                                    old_ing, r_item.ingredient.stock_quantity,
+                                    f"sale_order_{item.order_id}_recipe_{recipe.id}"
+                                )
             else:
                  print(f"  ❌ Товар {product_id} не знайдено!")
     
     db.commit()
+    print("✅ [DEDUCT] Транзакція завершена.")
     return {"status": "deducted"}
 </file>
 
@@ -5424,7 +6717,7 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 </file>
 
-<file path="product_service\routers\__init__.py">
+<file path="product_service\services\__init__.py">
 
 </file>
 
@@ -5463,32 +6756,25 @@ class InventoryLogger:
 </file>
 
 <file path="product_service\services\order_service.py">
-import sys
-import os
-import traceback
+# FILE: product_service/services/order_service.py
 
-# Шлях для імпортів
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select, text
 from fastapi import HTTPException
 from datetime import datetime
-import models, schemas
+import models
+import schemas
+import traceback
 from services.inventory_logger import InventoryLogger
 
 class OrderService:
-    """
-    Гібридний OrderService:
-    1. ZERO TRUST: Сам рахує ціну.
-    2. LOCKING: Блокує товари при покупці.
-    3. DEEP INVENTORY: Списує по рецептах (з правильними назвами для історії).
-    """
     @staticmethod
     def process_checkout(db: Session, order_data: schemas.OrderCreate):
         try:
+            print(f"🛒 [CHECKOUT] Початок обробки замовлення. Позицій: {len(order_data.items)}")
             total_order_price = 0.0
             
-            # 1. Створюємо замовлення (ціна поки 0)
+            # 1. Створюємо замовлення
             new_order = models.Order(
                 created_at=datetime.utcnow(),
                 payment_method=order_data.payment_method,
@@ -5496,31 +6782,35 @@ class OrderService:
                 customer_id=order_data.customer_id
             )
             db.add(new_order)
-            db.flush() # Отримуємо ID
+            db.flush()
             
             transaction_reason = f"sale_order_{new_order.id}"
 
             # 2. Обробляємо товари
             for item in order_data.items:
-                # --- БЛОКУВАННЯ (Locking) ---
+                print(f"   -> Обробка товару ID: {item.product_id} (Варіант: {item.variant_id})")
+                
+                # Завантажуємо товар (Base load)
                 product = db.query(models.Product).filter(
                     models.Product.id == item.product_id
                 ).with_for_update().first()
 
                 if not product:
+                    print(f"   ❌ Товар {item.product_id} не знайдено!")
                     continue
 
                 item_name = product.name
-                # Ціну беремо з БАЗИ, а не з запиту
                 price = product.price 
                 details_list = []
                 
                 target_recipe_id = None
                 base_weight = 0.0
 
-                # === А. ВАРІАНТ (якщо є) ===
+                # === А. ВАРІАНТ ===
                 if item.variant_id:
-                    variant = db.query(models.ProductVariant).filter(
+                    variant = db.query(models.ProductVariant).options(
+                        joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable)
+                    ).filter(
                         models.ProductVariant.id == item.variant_id
                     ).with_for_update().first()
 
@@ -5528,20 +6818,18 @@ class OrderService:
                         raise HTTPException(status_code=404, detail=f"Варіант {item.variant_id} не знайдено")
                     
                     item_name = f"{product.name} ({variant.name})"
-                    price = variant.price # Ціна варіанту
+                    price = variant.price
                     details_list.append(f"Варіант: {variant.name}")
                     
-                    # Визначаємо, яку техкарту списувати
                     target_recipe_id = variant.master_recipe_id or product.master_recipe_id
                     base_weight = variant.output_weight
 
-                    # 1. Списання залишку самого варіанту
-                    # 🔥 ВИПРАВЛЕНО: entity_type="product_variant" (було "variant")
+                    # Списання варіанту
                     old_qty = variant.stock_quantity
                     variant.stock_quantity -= item.quantity
                     InventoryLogger.log(db, "product_variant", variant.id, item_name, old_qty, variant.stock_quantity, transaction_reason)
 
-                    # 2. Списання матеріалів варіанту
+                    # Матеріали варіанту
                     for vc in variant.consumables:
                         if vc.consumable:
                             c_old = vc.consumable.stock_quantity
@@ -5550,7 +6838,7 @@ class OrderService:
                             db.add(vc.consumable)
                             InventoryLogger.log(db, "consumable", vc.consumable.id, vc.consumable.name, c_old, vc.consumable.stock_quantity, transaction_reason)
 
-                    # 3. Списання унікальних інгредієнтів варіанту
+                    # Інгредієнти варіанту (через relationship, тут зазвичай працює)
                     if hasattr(variant, 'ingredients'):
                         for vi in variant.ingredients:
                             if vi.ingredient:
@@ -5565,51 +6853,93 @@ class OrderService:
                     target_recipe_id = product.master_recipe_id
                     base_weight = product.output_weight
                     
+                    # 1. Списання самого товару
                     if product.track_stock:
                         old_qty = product.stock_quantity
                         product.stock_quantity -= item.quantity
-                        # 🔥 Переконайся, що тут "product" (це зазвичай ОК, але якщо в старій базі було інакше - зміни)
                         InventoryLogger.log(db, "product", product.id, product.name, old_qty, product.stock_quantity, transaction_reason)
 
-                # === В. ЗАГАЛЬНІ МАТЕРІАЛИ ТОВАРУ ===
-                for pc in product.consumables:
-                    if pc.consumable:
-                        c_old = pc.consumable.stock_quantity
-                        deduction = pc.quantity * item.quantity
-                        pc.consumable.stock_quantity -= deduction
-                        db.add(pc.consumable)
-                        InventoryLogger.log(db, "consumable", pc.consumable.id, pc.consumable.name, c_old, pc.consumable.stock_quantity, transaction_reason)
+                    # 2. 🔥 БЕЗПЕЧНЕ СПИСАННЯ ПРЯМИХ ІНГРЕДІЄНТІВ 🔥
+                    # Ми робимо окремий запит, щоб не залежати від lazy loading
+                    try:
+                        direct_ingredients = db.query(models.ProductIngredient).filter(
+                            models.ProductIngredient.product_id == product.id
+                        ).all()
+                        
+                        print(f"      🔍 Знайдено прямих інгредієнтів (SQL): {len(direct_ingredients)}")
 
-                # === Г. СПИСАННЯ ПО ТЕХКАРТІ (MASTER RECIPE) ===
+                        for link in direct_ingredients:
+                            # Завантажуємо сам інгредієнт
+                            real_ingredient = db.query(models.Ingredient).filter(
+                                models.Ingredient.id == link.ingredient_id
+                            ).with_for_update().first()
+
+                            if real_ingredient:
+                                i_old = real_ingredient.stock_quantity
+                                deduction = link.quantity * item.quantity
+                                real_ingredient.stock_quantity -= deduction
+                                db.add(real_ingredient)
+                                InventoryLogger.log(
+                                    db, "ingredient", real_ingredient.id, real_ingredient.name, 
+                                    i_old, real_ingredient.stock_quantity, 
+                                    f"{transaction_reason}_direct"
+                                )
+                            else:
+                                print(f"      ⚠️ Інгредієнт з ID {link.ingredient_id} не знайдено в таблиці ingredients!")
+                    except Exception as e:
+                        print(f"      ❌ ПОМИЛКА при списанні інгредієнтів товару {product.id}: {e}")
+                        # Ми не зупиняємо продаж, якщо впало списання цукру, але пишемо в лог
+
+                # === В. ЗАГАЛЬНІ МАТЕРІАЛИ ТОВАРУ ===
+                # Також робимо безпечно через прямий запит, якщо relationship підводить
+                prod_consumables = db.query(models.ProductConsumable).filter(
+                     models.ProductConsumable.product_id == product.id
+                ).all()
+                
+                for pc in prod_consumables:
+                    real_cons = db.query(models.Consumable).filter(
+                        models.Consumable.id == pc.consumable_id
+                    ).with_for_update().first()
+                    
+                    if real_cons:
+                        c_old = real_cons.stock_quantity
+                        deduction = pc.quantity * item.quantity
+                        real_cons.stock_quantity -= deduction
+                        db.add(real_cons)
+                        InventoryLogger.log(db, "consumable", real_cons.id, real_cons.name, c_old, real_cons.stock_quantity, transaction_reason)
+
+                # === Г. СПИСАННЯ ПО ТЕХКАРТІ ===
                 if target_recipe_id:
-                    recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == target_recipe_id).first()
+                    recipe = db.query(models.MasterRecipe).options(
+                        joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
+                    ).filter(models.MasterRecipe.id == target_recipe_id).first()
+                    
                     if recipe:
                         for r_item in recipe.items:
                             if r_item.ingredient:
-                                # Логіка: Якщо відсоток - беремо від ваги, якщо ні - фіксована кількість
                                 deduction_per_item = (r_item.quantity / 100.0 * base_weight) if r_item.is_percentage else r_item.quantity
                                 total_deduction = deduction_per_item * item.quantity
                                 
                                 i_old = r_item.ingredient.stock_quantity
                                 r_item.ingredient.stock_quantity -= total_deduction
                                 db.add(r_item.ingredient)
-                                
                                 InventoryLogger.log(db, "ingredient", r_item.ingredient.id, r_item.ingredient.name, i_old, r_item.ingredient.stock_quantity, transaction_reason)
 
-                # === Д. МОДИФІКАТОРИ (Сиропи, молоко) ===
+                # === Д. МОДИФІКАТОРИ ===
                 for mod_ref in item.modifiers:
                     modifier = db.query(models.Modifier).filter(models.Modifier.id == mod_ref.modifier_id).first()
-                    
                     if modifier:
                         price += modifier.price_change
                         details_list.append(modifier.name)
-                        
-                        if modifier.ingredient:
-                            i_old = modifier.ingredient.stock_quantity
-                            deduction = modifier.quantity * item.quantity
-                            modifier.ingredient.stock_quantity -= deduction
-                            db.add(modifier.ingredient)
-                            InventoryLogger.log(db, "ingredient", modifier.ingredient.id, modifier.ingredient.name, i_old, modifier.ingredient.stock_quantity, transaction_reason)
+                        if modifier.ingredient_id:
+                             # Отримуємо інгредієнт
+                             mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.ingredient_id).with_for_update().first()
+                             if mod_ing:
+                                i_old = mod_ing.stock_quantity
+                                deduction = modifier.quantity * item.quantity
+                                mod_ing.stock_quantity -= deduction
+                                db.add(mod_ing)
+                                InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
 
                 # === ЗАПИС У ЧЕК ===
                 db.add(models.OrderItem(
@@ -5622,15 +6952,15 @@ class OrderService:
                 
                 total_order_price += price * item.quantity
 
-            # 3. Фіксуємо транзакцію
             new_order.total_price = round(total_order_price, 2)
             db.commit()
             db.refresh(new_order)
+            print("✅ [CHECKOUT] Замовлення успішно створено!")
             return new_order
 
         except Exception as e:
             db.rollback()
-            print("❌ ПОМИЛКА ПРИ ОПЛАТІ:")
+            print("❌ ПОМИЛКА ПРИ ОПЛАТІ (CRITICAL):")
             print(traceback.format_exc())
             raise HTTPException(status_code=500, detail="Помилка обробки замовлення")
 </file>
@@ -5880,10 +7210,6 @@ class ProductService:
         db.commit()
         db.refresh(db_product)
         return db_product
-</file>
-
-<file path="product_service\services\__init__.py">
-
 </file>
 
 <file path="product_service\tests\conftest.py">
