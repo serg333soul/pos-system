@@ -31,101 +31,109 @@ class ProductService:
             if recipe:
                 for item in recipe.items:
                     if item.ingredient:
-                        # Логіка: Якщо в рецепті %, беремо від ваги виходу. Якщо ні - фіксована вага.
-                        qty = (item.quantity / 100.0 * data.output_weight) if item.is_percentage else item.quantity
+                        # Логіка: Якщо в рецепті %, беремо від ваги виходу. Якщо ні - пряма кількість.
+                        qty = 0
+                        if item.is_percentage:
+                            qty = (item.quantity / 100) * (data.output_weight or 0)
+                        else:
+                            qty = item.quantity
+                        
                         total_cost += item.ingredient.cost_per_unit * qty
-        
+
         return round(total_cost, 2)
 
     @staticmethod
     def create_product(db: Session, product: schemas.ProductCreate):
-        # 1. СТВОРЕННЯ БАЗОВОГО ТОВАРУ
+        # 1. Створення самого продукту
         db_product = models.Product(
-            name=product.name, 
-            price=product.price, 
+            name=product.name,
             description=product.description,
-            category_id=product.category_id, 
+            price=product.price,
+            category_id=product.category_id,
+            image_url=product.image_url,
             has_variants=product.has_variants,
-            master_recipe_id=product.master_recipe_id, 
-            output_weight=product.output_weight,
             track_stock=product.track_stock,
-            stock_quantity=product.stock_quantity
+            stock_quantity=product.stock_quantity,
+            master_recipe_id=product.master_recipe_id,
+            output_weight=product.output_weight
         )
         db.add(db_product)
-        db.commit()
-        db.refresh(db_product)
+        db.flush() # Отримуємо ID
 
-        # 2. ДОДАВАННЯ ВИТРАТНИХ МАТЕРІАЛІВ
-        if product.consumables:
-            for cons in product.consumables:
-                db.add(models.ProductConsumable(
-                    product_id=db_product.id, 
-                    consumable_id=cons.consumable_id, 
-                    quantity=cons.quantity
-                ))
-
-        # 3. 🔥 FIX: ДОДАВАННЯ ПРЯМИХ ІНГРЕДІЄНТІВ (Було відсутнє)
+        # 2. Додавання інгредієнтів (Many-to-Many)
         if product.ingredients:
-            for ing in product.ingredients:
+            for item in product.ingredients:
                 db.add(models.ProductIngredient(
                     product_id=db_product.id,
-                    ingredient_id=ing.ingredient_id,
-                    quantity=ing.quantity
+                    ingredient_id=item.ingredient_id,
+                    quantity=item.quantity
+                ))
+        
+        # 2.1 Додавання витратних матеріалів
+        if product.consumables:
+            for item in product.consumables:
+                db.add(models.ProductConsumable(
+                    product_id=db_product.id,
+                    consumable_id=item.consumable_id,
+                    quantity=item.quantity
                 ))
 
-        # 4. ОБРОБКА ВАРІАНТІВ
-        if product.has_variants and product.variants:
-            for variant_data in product.variants:
+        # 3. Варіанти
+        if product.variants:
+            for v in product.variants:
                 db_variant = models.ProductVariant(
                     product_id=db_product.id,
-                    name=variant_data.name,
-                    price=variant_data.price,
-                    sku=variant_data.sku,
-                    master_recipe_id=variant_data.master_recipe_id,
-                    output_weight=variant_data.output_weight,
-                    stock_quantity=variant_data.stock_quantity
+                    name=v.name,
+                    price=v.price,
+                    sku=v.sku,
+                    master_recipe_id=v.master_recipe_id,
+                    output_weight=v.output_weight,
+                    stock_quantity=v.stock_quantity
                 )
                 db.add(db_variant)
-                db.flush() 
+                db.flush()
                 
-                for vc in variant_data.consumables:
-                    db.add(models.ProductVariantConsumable(
-                        variant_id=db_variant.id,
-                        consumable_id=vc.consumable_id,
-                        quantity=vc.quantity
-                    ))
+                # Інгредієнти варіанту
+                if v.ingredients:
+                    for vi in v.ingredients:
+                        db.add(models.ProductVariantIngredient(
+                            variant_id=db_variant.id,
+                            ingredient_id=vi.ingredient_id,
+                            quantity=vi.quantity
+                        ))
                 
-                for vi in variant_data.ingredients:
-                    db.add(models.ProductVariantIngredient(
-                        variant_id=db_variant.id,
-                        ingredient_id=vi.ingredient_id,
-                        quantity=vi.quantity
+                # Матеріали варіанту
+                if v.consumables:
+                    for vc in v.consumables:
+                        db.add(models.ProductVariantConsumable(
+                            variant_id=db_variant.id,
+                            consumable_id=vc.consumable_id,
+                            quantity=vc.quantity
+                        ))
+
+        # 4. Модифікатори
+        if product.modifier_groups:
+            for group in product.modifier_groups:
+                db_group = models.ProductModifierGroup(
+                    product_id=db_product.id,
+                    name=group.name,
+                    is_required=group.is_required
+                )
+                db.add(db_group)
+                db.flush()
+                for mod in group.modifiers:
+                    db.add(models.Modifier(
+                        group_id=db_group.id,
+                        name=mod.name,
+                        price_change=mod.price_change,
+                        ingredient_id=mod.ingredient_id,
+                        quantity=mod.quantity
                     ))
-
-        # 5. МОДИФІКАТОРИ
-        for group in product.modifier_groups:
-            db_group = models.ProductModifierGroup(
-                product_id=db_product.id, 
-                name=group.name, 
-                is_required=group.is_required
-            )
-            db.add(db_group)
-            db.flush()
-            for mod in group.modifiers:
-                db.add(models.Modifier(
-                    group_id=db_group.id, 
-                    name=mod.name, 
-                    price_change=mod.price_change, 
-                    ingredient_id=mod.ingredient_id, 
-                    quantity=mod.quantity
-                ))
-
-        # 6. ПРОЦЕСИ
+        
+        # 5. Групи процесів
         if product.process_group_ids:
             for pg_id in product.process_group_ids:
-                pg = db.query(models.ProcessGroup).filter(
-                    models.ProcessGroup.id == pg_id
-                ).first()
+                pg = db.query(models.ProcessGroup).filter(models.ProcessGroup.id == pg_id).first()
                 if pg:
                     db_product.process_groups.append(pg)
 
@@ -139,97 +147,121 @@ class ProductService:
         if not db_product:
             return None
 
-        # Оновлення основних полів
+        # 1. Оновлення основних полів
         db_product.name = product_data.name
-        db_product.price = product_data.price
         db_product.description = product_data.description
+        db_product.price = product_data.price
         db_product.category_id = product_data.category_id
+        db_product.image_url = product_data.image_url
         db_product.has_variants = product_data.has_variants
+        db_product.track_stock = product_data.track_stock
+        db_product.stock_quantity = product_data.stock_quantity
         db_product.master_recipe_id = product_data.master_recipe_id
         db_product.output_weight = product_data.output_weight
-        db_product.track_stock = product_data.track_stock
+
+        # 2. Оновлення зв'язків (Інгредієнти, Матеріали) - тут видалення допустиме, бо ID лінків ніде не зберігаються
+        db.query(models.ProductIngredient).filter(models.ProductIngredient.product_id == product_id).delete()
+        if product_data.ingredients:
+            for item in product_data.ingredients:
+                db.add(models.ProductIngredient(
+                    product_id=product_id, ingredient_id=item.ingredient_id, quantity=item.quantity
+                ))
         
-        if product_data.track_stock:
-             db_product.stock_quantity = product_data.stock_quantity
+        db.query(models.ProductConsumable).filter(models.ProductConsumable.product_id == product_id).delete()
+        if product_data.consumables:
+            for item in product_data.consumables:
+                db.add(models.ProductConsumable(
+                    product_id=product_id, consumable_id=item.consumable_id, quantity=item.quantity
+                ))
 
-        # 1. Очищення старих зв'язків (Consumables + Ingredients)
-        db.query(models.ProductConsumable).filter_by(product_id=product_id).delete()
-        db.query(models.ProductIngredient).filter_by(product_id=product_id).delete() # 🔥 FIX
+        # 3. ВАРІАНТИ - РОЗУМНЕ ОНОВЛЕННЯ (Fix: зберігаємо ID)
         
-        # 2. Перезапис Consumables
-        for cons in product_data.consumables:
-            db.add(models.ProductConsumable(
-                product_id=product_id, 
-                consumable_id=cons.consumable_id, 
-                quantity=cons.quantity
-            ))
-            
-        # 3. 🔥 FIX: Перезапис Ingredients
-        for ing in product_data.ingredients:
-            db.add(models.ProductIngredient(
-                product_id=product_id,
-                ingredient_id=ing.ingredient_id,
-                quantity=ing.quantity
-            ))
+        # Отримуємо поточні варіанти з БД у вигляді словника {назва: об'єкт}
+        current_variants_map = {v.name: v for v in db_product.variants}
+        incoming_variants_names = set()
 
-        # 4. ВАРІАНТИ (Повне видалення і створення заново)
-        old_variants = db.query(models.ProductVariant).filter(models.ProductVariant.product_id == product_id).all()
-        for variant in old_variants:
-            db.query(models.ProductVariantConsumable).filter_by(variant_id=variant.id).delete()
-            db.query(models.ProductVariantIngredient).filter_by(variant_id=variant.id).delete()
-            db.delete(variant)
-            
-        if product_data.has_variants and product_data.variants:
-             for variant_data in product_data.variants:
-                db_variant = models.ProductVariant(
-                    product_id=product_id,
-                    name=variant_data.name,
-                    price=variant_data.price,
-                    sku=variant_data.sku,
-                    master_recipe_id=variant_data.master_recipe_id,
-                    output_weight=variant_data.output_weight,
-                    stock_quantity=variant_data.stock_quantity
-                )
-                db.add(db_variant)
-                db.flush() 
+        if product_data.variants:
+            for v_data in product_data.variants:
+                incoming_variants_names.add(v_data.name)
                 
-                for vc in variant_data.consumables:
-                    db.add(models.ProductVariantConsumable(
-                        variant_id=db_variant.id,
-                        consumable_id=vc.consumable_id,
-                        quantity=vc.quantity
-                    ))
-                
-                for vi in variant_data.ingredients:
-                    db.add(models.ProductVariantIngredient(
-                        variant_id=db_variant.id,
-                        ingredient_id=vi.ingredient_id,
-                        quantity=vi.quantity
-                    ))
+                if v_data.name in current_variants_map:
+                    # --- ОНОВЛЮЄМО ІСНУЮЧИЙ (ЗБЕРІГАЄМО ID) ---
+                    existing_variant = current_variants_map[v_data.name]
+                    existing_variant.price = v_data.price
+                    existing_variant.sku = v_data.sku
+                    existing_variant.master_recipe_id = v_data.master_recipe_id
+                    existing_variant.output_weight = v_data.output_weight
+                    existing_variant.stock_quantity = v_data.stock_quantity
+                    
+                    # Оновлюємо вкладені списки (інгредієнти варіанту)
+                    # Тут можна видаляти, бо ці ID не використовуються в чеках
+                    db.query(models.ProductVariantIngredient).filter(models.ProductVariantIngredient.variant_id == existing_variant.id).delete()
+                    if v_data.ingredients:
+                        for vi in v_data.ingredients:
+                            db.add(models.ProductVariantIngredient(
+                                variant_id=existing_variant.id, ingredient_id=vi.ingredient_id, quantity=vi.quantity
+                            ))
 
-        # 5. МОДИФІКАТОРИ
+                    db.query(models.ProductVariantConsumable).filter(models.ProductVariantConsumable.variant_id == existing_variant.id).delete()
+                    if v_data.consumables:
+                        for vc in v_data.consumables:
+                            db.add(models.ProductVariantConsumable(
+                                variant_id=existing_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity
+                            ))
+                else:
+                    # --- СТВОРЮЄМО НОВИЙ ---
+                    new_variant = models.ProductVariant(
+                        product_id=product_id,
+                        name=v_data.name,
+                        price=v_data.price,
+                        sku=v_data.sku,
+                        master_recipe_id=v_data.master_recipe_id,
+                        output_weight=v_data.output_weight,
+                        stock_quantity=v_data.stock_quantity
+                    )
+                    db.add(new_variant)
+                    db.flush() # щоб отримати ID для вкладених таблиць
+
+                    if v_data.ingredients:
+                        for vi in v_data.ingredients:
+                            db.add(models.ProductVariantIngredient(
+                                variant_id=new_variant.id, ingredient_id=vi.ingredient_id, quantity=vi.quantity
+                            ))
+                    if v_data.consumables:
+                        for vc in v_data.consumables:
+                            db.add(models.ProductVariantConsumable(
+                                variant_id=new_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity
+                            ))
+
+        # Видаляємо варіанти, яких немає в новому списку
+        for name, variant in current_variants_map.items():
+            if name not in incoming_variants_names:
+                db.delete(variant)
+
+        # 4. МОДИФІКАТОРИ (тут можна видаляти і створювати заново, ID не критичні для чеків поки що)
         db.query(models.ProductModifierGroup).filter(
             models.ProductModifierGroup.product_id == product_id
         ).delete()
         
-        for group in product_data.modifier_groups:
-            db_group = models.ProductModifierGroup(
-                product_id=product_id, 
-                name=group.name, 
-                is_required=group.is_required
-            )
-            db.add(db_group)
-            db.flush()
-            for mod in group.modifiers:
-                db.add(models.Modifier(
-                    group_id=db_group.id, 
-                    name=mod.name, 
-                    price_change=mod.price_change, 
-                    ingredient_id=mod.ingredient_id, 
-                    quantity=mod.quantity
-                ))
+        if product_data.modifier_groups:
+            for group in product_data.modifier_groups:
+                db_group = models.ProductModifierGroup(
+                    product_id=product_id, 
+                    name=group.name, 
+                    is_required=group.is_required
+                )
+                db.add(db_group)
+                db.flush()
+                for mod in group.modifiers:
+                    db.add(models.Modifier(
+                        group_id=db_group.id, 
+                        name=mod.name, 
+                        price_change=mod.price_change, 
+                        ingredient_id=mod.ingredient_id, 
+                        quantity=mod.quantity
+                    ))
 
-        # 6. ПРОЦЕСИ
+        # 5. ПРОЦЕСИ
         db_product.process_groups = [] 
         if product_data.process_group_ids:
             for pg_id in product_data.process_group_ids:
