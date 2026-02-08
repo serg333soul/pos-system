@@ -64,7 +64,11 @@ export function useCart() {
           quantity: item.quantity,
           // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
-            ? item.modifiers.map(m => (typeof m === 'number' ? { modifier_id: m } : m))
+            ? item.modifiers.map(m => ({
+              // Якщо m - це число, беремо його. Якщо об'єкт - беремо m.id або m.modifier_id
+              modifier_id: typeof m === 'number' ? m : (m.id || m.modifier_id),
+              quantity: m.quantity || 1 // Додаємо кількість, якщо модифікаторів > 1
+              }))
             : []
         })),
         payment_method: paymentMethod.value,

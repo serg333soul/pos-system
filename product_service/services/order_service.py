@@ -1,7 +1,6 @@
 # FILE: product_service/services/order_service.py
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime
 import models
@@ -56,14 +55,27 @@ class OrderService:
                     price = float(variant.price)
                     item_name = f"{product.name} ({variant.name})"
 
-                    # 1. Списання залишку ВАРІАНТУ
-                    if product.track_stock:
-                        current_stock = variant.stock_quantity if variant.stock_quantity is not None else 0.0
+                    # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
+                    # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
+                    if variant.stock_quantity is not None:
+                        current_stock = variant.stock_quantity
+                        
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
                         
                         variant.stock_quantity = current_stock - item.quantity
                         db.add(variant)
+
+                        # Логування списання варіанту
+                        InventoryLogger.log(
+                            db, 
+                            "variant", 
+                            variant.id, 
+                            item_name, 
+                            current_stock, 
+                            variant.stock_quantity, 
+                            transaction_reason
+                        )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -83,6 +95,7 @@ class OrderService:
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
+                                    
                                     InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
 
                     # 3. Списання МАТЕРІАЛІВ варіанту
@@ -99,7 +112,7 @@ class OrderService:
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
-                    # 1. Списання залишку ПРОСТОГО товару
+                    # 1. Списання залишку ПРОСТОГО товару (Та запис в історію!)
                     if product.track_stock:
                         current_stock = product.stock_quantity if product.stock_quantity is not None else 0.0
                         if current_stock < item.quantity:
@@ -107,6 +120,17 @@ class OrderService:
                         
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
+
+                        # Логування списання простого товару
+                        InventoryLogger.log(
+                            db, 
+                            "product", 
+                            product.id, 
+                            product.name, 
+                            current_stock, 
+                            product.stock_quantity, 
+                            transaction_reason
+                        )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if product.master_recipe_id:
@@ -130,7 +154,7 @@ class OrderService:
 
                 # === ЗАГАЛЬНІ СПИСАННЯ ===
                 
-                # A. ProductIngredient
+                # A. ProductIngredient (Додаткові інгредієнти поза рецептом)
                 for p_ing in product.ingredients:
                     ing = db.query(models.Ingredient).filter(models.Ingredient.id == p_ing.ingredient_id).with_for_update().first()
                     if ing:
@@ -142,7 +166,7 @@ class OrderService:
                         db.add(ing)
                         InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
 
-                # B. ProductConsumable
+                # B. ProductConsumable (Загальні матеріали)
                 for p_cons in product.consumables:
                     cons = db.query(models.Consumable).filter(models.Consumable.id == p_cons.consumable_id).with_for_update().first()
                     if cons:
@@ -154,7 +178,7 @@ class OrderService:
                         db.add(cons)
                         InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
 
-                # C. Modifiers
+                # C. Modifiers (Модифікатори з фронтенду)
                 if item.modifiers:
                     for modifier in item.modifiers:
                          mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.modifier_id).with_for_update().first()
@@ -170,7 +194,6 @@ class OrderService:
                             details_list.append(f"+ {mod_ing.name}")
 
                 # === ЗАПИС У ЧЕК ===
-                # 🔥 FIX: Прибрано product_id та variant_id, яких немає у моделі OrderItem
                 db.add(models.OrderItem(
                     order_id=new_order.id,
                     product_name=item_name,

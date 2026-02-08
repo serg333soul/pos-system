@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -63,27 +63,43 @@ class Consumable(ConsumableBase):
     class Config: from_attributes = True
 
 # --- LINKS (Зв'язки) ---
+
+# 🔥 FIX: Додаємо extra='ignore', щоб не падати від зайвих полів з фронтенду (name, id...)
 class ProductIngredientLink(BaseModel):
     ingredient_id: int
     quantity: float
+    class Config:
+        extra = 'ignore' 
 
 class ProductIngredientRead(BaseModel):
     ingredient_id: int
     quantity: float
     ingredient_name: Optional[str] = None
-    class Config: from_attributes = True
+    # 🔥 FIX: Додаємо поле name для сумісності з фронтендом
+    name: Optional[str] = Field(default=None, alias="ingredient_name") 
+    
+    class Config: 
+        from_attributes = True
+        populate_by_name = True # Дозволяє використовувати alias
 
 class ProductConsumableLink(BaseModel):
     consumable_id: int
     quantity: float = 1.0
+    class Config:
+        extra = 'ignore'
 
 class ProductConsumableRead(BaseModel):
     consumable_id: int
     quantity: float
     consumable_name: Optional[str] = None
-    class Config: from_attributes = True
+    # 🔥 FIX: Додаємо поле name для сумісності з фронтендом
+    name: Optional[str] = Field(default=None, alias="consumable_name")
 
-# 🔥 НОВЕ: Схема для калькулятора собівартості
+    class Config: 
+        from_attributes = True
+        populate_by_name = True
+
+# --- Калькулятор ---
 class ProductCostCheck(BaseModel):
     master_recipe_id: Optional[int] = None
     output_weight: float = 0.0
@@ -157,9 +173,12 @@ class VariantCreate(BaseModel):
     stock_quantity: float = 0.0
     consumables: List[ProductConsumableLink] = []
     ingredients: List[ProductIngredientLink] = []
+    # 🔥 FIX: Ігноруємо зайві поля при створенні/оновленні
+    class Config: extra = 'ignore'
 
 class Variant(VariantCreate):
     id: int
+    # Тут використовуємо Read схеми, які тепер мають поле 'name'
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
     cost_price: float = 0.0
@@ -181,12 +200,11 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
     modifier_groups: List[ModifierGroupCreate] = []
-    
-    # Списки для ПРОСТОГО товару
     consumables: List[ProductConsumableLink] = []
-    ingredients: List[ProductIngredientLink] = [] # 🔥 Тепер можна додавати інгредієнти до простого товару
-    
+    ingredients: List[ProductIngredientLink] = []
     process_group_ids: List[int] = [] 
+    # 🔥 FIX: Ігноруємо cost_price, margin та інші поля з фронтенду
+    class Config: extra = 'ignore'
 
 class ProductUpdate(ProductBase):
     pass
@@ -199,7 +217,7 @@ class Product(ProductBase):
     master_recipe: Optional[MasterRecipe] = None
     
     consumables: List[ProductConsumableRead] = [] 
-    ingredients: List[ProductIngredientRead] = [] # 🔥
+    ingredients: List[ProductIngredientRead] = []
     
     cost_price: float = 0.0
     margin: float = 0.0
@@ -213,9 +231,6 @@ class StockDeductionItem(BaseModel):
     variant_id: Optional[int] = None
     quantity: float
     order_id: int
-
-    product_id: Optional[int] = None 
-    variant_id: Optional[int] = None
 
 class InventoryTransactionRead(BaseModel):
     id: int
@@ -231,6 +246,8 @@ class InventoryTransactionRead(BaseModel):
 # --- ORDERS ---
 class SoldItemModifier(BaseModel):
     modifier_id: int
+    class Config: extra = 'ignore' # На всяк випадок
+
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
@@ -240,8 +257,8 @@ class SoldItem(BaseModel):
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
-    # Total price відсутня (Zero Trust)
     customer_id: Optional[int] = None
+    class Config: extra = 'ignore'
 
 class CustomerCreate(BaseModel):
     name: str

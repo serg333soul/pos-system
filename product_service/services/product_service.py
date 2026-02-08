@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+# 🔥 1. Додаємо імпорт для обробки помилок БД
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 import models
 import schemas
@@ -6,7 +8,7 @@ import schemas
 class ProductService:
     """
     Клас для управління товарами.
-    Вся логіка створення, оновлення та розрахунку вартості.
+    Вся логіка створення, оновлення, видалення та розрахунку вартості.
     """
 
     @staticmethod
@@ -50,7 +52,7 @@ class ProductService:
             description=product.description,
             price=product.price,
             category_id=product.category_id,
-            image_url=product.image_url,
+            # image_url видалено згідно з вашою БД
             has_variants=product.has_variants,
             track_stock=product.track_stock,
             stock_quantity=product.stock_quantity,
@@ -152,14 +154,15 @@ class ProductService:
         db_product.description = product_data.description
         db_product.price = product_data.price
         db_product.category_id = product_data.category_id
-        db_product.image_url = product_data.image_url
+        # db_product.image_url = product_data.image_url # Видалено
         db_product.has_variants = product_data.has_variants
         db_product.track_stock = product_data.track_stock
         db_product.stock_quantity = product_data.stock_quantity
         db_product.master_recipe_id = product_data.master_recipe_id
         db_product.output_weight = product_data.output_weight
 
-        # 2. Оновлення зв'язків (Інгредієнти, Матеріали) - тут видалення допустиме, бо ID лінків ніде не зберігаються
+        # 2. Оновлення зв'язків (Інгредієнти, Матеріали)
+        # Видаляємо старі, додаємо нові (простий і надійний спосіб)
         db.query(models.ProductIngredient).filter(models.ProductIngredient.product_id == product_id).delete()
         if product_data.ingredients:
             for item in product_data.ingredients:
@@ -174,9 +177,7 @@ class ProductService:
                     product_id=product_id, consumable_id=item.consumable_id, quantity=item.quantity
                 ))
 
-        # 3. ВАРІАНТИ - РОЗУМНЕ ОНОВЛЕННЯ (Fix: зберігаємо ID)
-        
-        # Отримуємо поточні варіанти з БД у вигляді словника {назва: об'єкт}
+        # 3. ВАРІАНТИ (Розумне оновлення)
         current_variants_map = {v.name: v for v in db_product.variants}
         incoming_variants_names = set()
 
@@ -185,7 +186,7 @@ class ProductService:
                 incoming_variants_names.add(v_data.name)
                 
                 if v_data.name in current_variants_map:
-                    # --- ОНОВЛЮЄМО ІСНУЮЧИЙ (ЗБЕРІГАЄМО ID) ---
+                    # Оновлюємо існуючий
                     existing_variant = current_variants_map[v_data.name]
                     existing_variant.price = v_data.price
                     existing_variant.sku = v_data.sku
@@ -193,8 +194,7 @@ class ProductService:
                     existing_variant.output_weight = v_data.output_weight
                     existing_variant.stock_quantity = v_data.stock_quantity
                     
-                    # Оновлюємо вкладені списки (інгредієнти варіанту)
-                    # Тут можна видаляти, бо ці ID не використовуються в чеках
+                    # Оновлюємо вкладені списки варіанту
                     db.query(models.ProductVariantIngredient).filter(models.ProductVariantIngredient.variant_id == existing_variant.id).delete()
                     if v_data.ingredients:
                         for vi in v_data.ingredients:
@@ -209,7 +209,7 @@ class ProductService:
                                 variant_id=existing_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity
                             ))
                 else:
-                    # --- СТВОРЮЄМО НОВИЙ ---
+                    # Створюємо новий
                     new_variant = models.ProductVariant(
                         product_id=product_id,
                         name=v_data.name,
@@ -220,7 +220,7 @@ class ProductService:
                         stock_quantity=v_data.stock_quantity
                     )
                     db.add(new_variant)
-                    db.flush() # щоб отримати ID для вкладених таблиць
+                    db.flush()
 
                     if v_data.ingredients:
                         for vi in v_data.ingredients:
@@ -233,12 +233,12 @@ class ProductService:
                                 variant_id=new_variant.id, consumable_id=vc.consumable_id, quantity=vc.quantity
                             ))
 
-        # Видаляємо варіанти, яких немає в новому списку
+        # Видаляємо старі варіанти (тут спрацює ORM cascade, бо ми видаляємо об'єкти з сесії)
         for name, variant in current_variants_map.items():
             if name not in incoming_variants_names:
                 db.delete(variant)
 
-        # 4. МОДИФІКАТОРИ (тут можна видаляти і створювати заново, ID не критичні для чеків поки що)
+        # 4. МОДИФІКАТОРИ
         db.query(models.ProductModifierGroup).filter(
             models.ProductModifierGroup.product_id == product_id
         ).delete()
@@ -274,3 +274,30 @@ class ProductService:
         db.commit()
         db.refresh(db_product)
         return db_product
+
+    # 🔥 2. ДОДАЄМО МЕТОД ВИДАЛЕННЯ
+    @staticmethod
+    def delete_product(db: Session, product_id: int):
+        try:
+            # Завантажуємо товар (це активує cascade в models.py)
+            product = db.query(models.Product).filter(models.Product.id == product_id).first()
+            if not product:
+                raise HTTPException(status_code=404, detail="Product not found")
+            
+            # Видаляємо
+            db.delete(product)
+            db.commit()
+            return True
+            
+        except IntegrityError as e:
+            db.rollback()
+            # Це перехопить помилку foreign key, якщо вона все ж таки виникне
+            print(f"❌ DB Integrity Error: {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Неможливо видалити товар. Перевірте, чи не використовується він у замовленнях."
+            )
+        except Exception as e:
+            db.rollback()
+            print(f"❌ General Error: {e}")
+            raise HTTPException(status_code=500, detail="Помилка сервера при видаленні")
