@@ -38,6 +38,21 @@ export function useProducts() {
     const products = warehouse?.products || ref([])
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
+    const calculatedStock = ref(null) // Змінна для збереження результату
+
+    // 🔥 НОВА ФУНКЦІЯ: Запит розрахункового залишку
+    const fetchCalculatedStock = async (productId, variantId) => {
+        calculatedStock.value = null // Скидаємо перед запитом
+        if (!productId || !variantId) return
+
+        try {
+            const res = await axios.get(`/products/${productId}/variants/${variantId}/calculated-stock`)
+            calculatedStock.value = res.data.calculated_stock
+        } catch (err) {
+            console.error("Помилка розрахунку залишку:", err)
+            calculatedStock.value = "???"
+        }
+    }
 
     // --- CRUD Товарів ---
     const fetchProducts = async () => {
@@ -200,6 +215,7 @@ export function useProducts() {
         removeVariant,
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
-        addIngredientToVariant, removeIngredientFromVariant
+        addIngredientToVariant, removeIngredientFromVariant,
+        calculatedStock, fetchCalculatedStock
     }
 }

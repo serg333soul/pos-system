@@ -18,6 +18,20 @@ def calculate_cost(data: schemas.ProductCostCheck, db: Session = Depends(databas
     cost = ProductService.calculate_product_cost(db, data)
     return {"total_cost": cost}
 
+# 🔥 НОВИЙ РОУТ: Отримати розрахунковий залишок варіанту
+@router.get("/{product_id}/variants/{variant_id}/calculated-stock")
+def get_variant_calculated_stock(
+    product_id: int, 
+    variant_id: int, 
+    db: Session = Depends(database.get_db)
+):
+    """
+    Повертає максимальну кількість одиниць, яку можна виготовити 
+    на основі залишків інгредієнтів.
+    """
+    stock = ProductService.calculate_max_possible_stock(db, variant_id)
+    return {"calculated_stock": stock}
+
 # --- CRUD ОПЕРАЦІЇ ---
 
 @router.post("/", response_model=schemas.Product)

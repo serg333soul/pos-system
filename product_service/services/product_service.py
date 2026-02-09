@@ -45,6 +45,65 @@ class ProductService:
         return round(total_cost, 2)
 
     @staticmethod
+    def calculate_max_possible_stock(db: Session, variant_id: int) -> int:
+        """
+        Розраховує, скільки одиниць варіанту можна виготовити 
+        виходячи з поточних залишків інгредієнтів на складі.
+        """
+        # 1. Отримуємо варіант
+        variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
+        if not variant or not variant.master_recipe_id:
+            # Якщо немає рецепту, повертаємо те, що вписано вручну (для штучних товарів)
+            return int(variant.stock_quantity)
+
+        # 2. Отримуємо рецепт
+        recipe = variant.master_recipe
+        if not recipe.items:
+            return 9999 # Якщо рецепт пустий, обмежень немає
+
+        max_portions = float('inf') # Починаємо з нескінченності
+
+        # 3. Перевіряємо кожен інгредієнт рецепту
+        for r_item in recipe.items:
+            ingredient = r_item.ingredient
+            if not ingredient: 
+                continue
+
+            # Скільки треба на 1 порцію?
+            needed_qty = 0
+            if r_item.is_percentage:
+                # Якщо у відсотках від виходу (наприклад, молоко у лате)
+                needed_qty = (r_item.quantity / 100) * (variant.output_weight or 0)
+            else:
+                needed_qty = r_item.quantity
+
+            if needed_qty <= 0: continue
+
+            # Скільки є на складі?
+            in_stock = ingredient.stock_quantity or 0
+
+            # Скільки порцій вийде з цього конкретного інгредієнта?
+            possible_from_this = in_stock / needed_qty
+            
+            # Шукаємо "вузьке горлечко" (мінімальне значення)
+            if possible_from_this < max_portions:
+                max_portions = possible_from_this
+
+        # 4. Перевіряємо витратні матеріали варіанту (стаканчики, кришки)
+        for v_cons in variant.consumables:
+            cons = v_cons.consumable
+            if cons and v_cons.quantity > 0:
+                in_stock = cons.stock_quantity or 0
+                possible = in_stock / v_cons.quantity
+                if possible < max_portions:
+                    max_portions = possible
+
+        if max_portions == float('inf'):
+            return 0
+            
+        return int(max_portions) # Округляємо вниз до цілого
+
+    @staticmethod
     def create_product(db: Session, product: schemas.ProductCreate):
         # 1. Створення самого продукту
         db_product = models.Product(

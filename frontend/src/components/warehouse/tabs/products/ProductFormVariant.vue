@@ -27,7 +27,8 @@ const {
     addVariantConsumable, removeVariantConsumable,
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
-    removeProductConsumable, addProductConsumable, tempProductConsumable
+    removeProductConsumable, addProductConsumable, tempProductConsumable,
+    calculatedStock, fetchCalculatedStock
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -36,6 +37,17 @@ const showVariantForm = ref(false)
 
 // Тимчасова змінна для Спільних Інгредієнтів (локально, щоб не ламати useProducts)
 const tempCommonIngredient = ref({ ingredient_id: "", quantity: 0 })
+
+// 🔥 Слідкуємо за відкриттям варіанту на редагування
+watch(() => variantBuilder.value, (newVal) => {
+    // Якщо це редагування існуючого варіанту (є ID) і у нього є рецепт
+    if (newVal.id && newVal.master_recipe_id && props.isEdit) {
+        // newProduct.value.id - це ID товару, newVal.id - це ID варіанту
+        fetchCalculatedStock(newProduct.value.id, newVal.id)
+    } else {
+        calculatedStock.value = null
+    }
+}, { deep: true })
 
 // --- МЕТОДИ ДЛЯ СПІЛЬНИХ ІНГРЕДІЄНТІВ ---
 const addCommonIngredient = () => {
@@ -384,10 +396,42 @@ const toggleProcessGroup = (id) => {
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ціна (₴) <span class="text-red-500">*</span></label>
                                 <input v-model.number="variantBuilder.price" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
                             </div>
+                            
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Поточний залишок</label>
-                                <input v-model.number="variantBuilder.stock_quantity" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-yellow-50">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    Поточний залишок
+                                    <span v-if="variantBuilder.master_recipe_id" class="text-purple-600 text-[10px] normal-case ml-1">
+                                        (Авто-розрахунок)
+                                    </span>
+                                </label>
+    
+                                <div class="relative">
+                                    <input 
+                                        v-model.number="variantBuilder.stock_quantity" 
+                                        type="number" 
+                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors"
+                                        :class="{
+                                            'bg-gray-100 text-gray-500 cursor-not-allowed': variantBuilder.master_recipe_id,
+                                            'bg-yellow-50': !variantBuilder.master_recipe_id
+                                        }"
+                                        :disabled="!!variantBuilder.master_recipe_id"
+                                        placeholder="0"
+                                    >
+        
+                                    <div v-if="variantBuilder.master_recipe_id" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <span v-if="calculatedStock !== null" class="font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded text-xs mr-2">
+                                            Макс: {{ calculatedStock }}
+                                        </span>
+                                        <i class="fas fa-calculator text-gray-400"></i>
+                                    </div>
+                                </div>
+    
+                                <p v-if="variantBuilder.master_recipe_id" class="text-xs text-gray-400 mt-1">
+                                    Система перевірила склад: інгредієнтів вистачає на 
+                                    <strong class="text-gray-700">{{ calculatedStock !== null ? calculatedStock : '...' }}</strong> порцій.
+                                </p>
                             </div>
+
                         </div>
 
                         <div class="pt-4 border-t">
