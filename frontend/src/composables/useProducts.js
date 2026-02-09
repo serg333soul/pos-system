@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { useWarehouse } from '@/composables/useWarehouse'
 
@@ -39,20 +39,31 @@ export function useProducts() {
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
     const calculatedStock = ref(null) // Змінна для збереження результату
-
-    // 🔥 НОВА ФУНКЦІЯ: Запит розрахункового залишку
+    
     const fetchCalculatedStock = async (productId, variantId) => {
-        calculatedStock.value = null // Скидаємо перед запитом
-        if (!productId || !variantId) return
-
+        calculatedStock.value = null;
+        if (!productId || !variantId) return;
+    
         try {
-            const res = await axios.get(`/products/${productId}/variants/${variantId}/calculated-stock`)
-            calculatedStock.value = res.data.calculated_stock
+            // Додай /api на початку шляху 🔥
+            const res = await axios.get(`/api/products/${productId}/variants/${variantId}/calculated-stock?t=${Date.now()}`);
+        
+            calculatedStock.value = res.data.calculated_stock;
+            console.log("✅ Отримано розрахунковий залишок:", res.data.calculated_stock);
         } catch (err) {
-            console.error("Помилка розрахунку залишку:", err)
-            calculatedStock.value = "???"
+            console.error("Помилка розрахунку залишку:", err);
+            calculatedStock.value = 0;
         }
     }
+    
+    // 🔥 Додаємо автоматичне оновлення розрахунку при зміні залишків інгредієнтів
+    watch(() => warehouse.ingredients, () => {
+        // Якщо зараз відкрита форма редагування конкретного варіанту
+        if     (editingId.value && variantBuilder.value.id) {
+            console.log("🔄 Склад змінився, перераховую залишок варіанту...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        }
+    }, { deep: true });
 
     // --- CRUD Товарів ---
     const fetchProducts = async () => {
@@ -149,8 +160,23 @@ export function useProducts() {
     }
 
     const editVariant = (index) => {
-        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]))
-        editingVariantIndex.value = index
+        console.log("🛠 [DEBUG] Клік на редагування варіанту. Індекс:", index);
+    
+        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]));
+        editingVariantIndex.value = index;
+
+        // Перевіряємо значення перед умовою
+        console.log("🔍 [DEBUG] Перевірка ID для запиту:");
+        console.log(" - Product ID (editingId):", editingId.value);
+        console.log(" - Variant ID (variantBuilder.id):", variantBuilder.value.id);
+
+        if (editingId.value && variantBuilder.value.id) {
+            console.log("🚀 [DEBUG] Умова виконана! Відправляю запит на сервер...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        } else {
+            console.warn("⚠️ [DEBUG] Запит НЕ відправлено: ID продукту або варіанту відсутній.");
+            console.log("Підказка: якщо ви тільки що створили цей варіант і не зберегли товар, у нього ще немає ID в базі.");
+        }
     }
 
     const removeVariant = (index) => {

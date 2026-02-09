@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 68
-Lines: 7409
-Tokens: ~78132
+Lines: 7609
+Tokens: ~80661
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -320,6 +320,7 @@ product_service\routers\processes.py
 product_service\routers\products.py
   └── 🌐 Router: router
   └── ƒ  def calculate_cost
+  └── ƒ  def get_variant_calculated_stock
   └── ƒ  def create_product
   └── ƒ  def update_product
   └── ƒ  def read_products
@@ -342,6 +343,7 @@ product_service\services\order_service.py
 product_service\services\product_service.py
   └── 📦 class ProductService
   └── ƒ  def calculate_product_cost
+  └── ƒ  def calculate_max_possible_stock
   └── ƒ  def create_product
   └── ƒ  def update_product
   └── ƒ  def delete_product
@@ -4221,7 +4223,8 @@ const {
     addVariantConsumable, removeVariantConsumable,
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
-    removeProductConsumable, addProductConsumable, tempProductConsumable
+    removeProductConsumable, addProductConsumable, tempProductConsumable,
+    calculatedStock, fetchCalculatedStock
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -4230,6 +4233,17 @@ const showVariantForm = ref(false)
 
 // Тимчасова змінна для Спільних Інгредієнтів (локально, щоб не ламати useProducts)
 const tempCommonIngredient = ref({ ingredient_id: "", quantity: 0 })
+
+// 🔥 Слідкуємо за відкриттям варіанту на редагування
+watch(() => variantBuilder.value, (newVal) => {
+    // Якщо це редагування існуючого варіанту (є ID) і у нього є рецепт
+    if (newVal.id && newVal.master_recipe_id && props.isEdit) {
+        // newProduct.value.id - це ID товару, newVal.id - це ID варіанту
+        fetchCalculatedStock(newProduct.value.id, newVal.id)
+    } else {
+        calculatedStock.value = null
+    }
+}, { deep: true })
 
 // --- МЕТОДИ ДЛЯ СПІЛЬНИХ ІНГРЕДІЄНТІВ ---
 const addCommonIngredient = () => {
@@ -4414,6 +4428,7 @@ const toggleProcessGroup = (id) => {
                             <div 
                                 v-for="(variant, idx) in newProduct.variants" 
                                 :key="idx"
+                                @click="editVariant(idx)"
                                 class="bg-white border rounded-xl p-4 flex justify-between items-center hover:shadow-md transition group"
                             >
                                 <div>
@@ -4428,6 +4443,7 @@ const toggleProcessGroup = (id) => {
                                     <button @click="handleEditVariant(idx)" class="w-8 h-8 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center">
                                         <i class="fas fa-pencil-alt text-sm"></i>
                                     </button>
+                                    
                                     <button @click="removeVariant(idx)" class="w-8 h-8 rounded bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center">
                                         <i class="fas fa-trash text-sm"></i>
                                     </button>
@@ -4578,10 +4594,49 @@ const toggleProcessGroup = (id) => {
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ціна (₴) <span class="text-red-500">*</span></label>
                                 <input v-model.number="variantBuilder.price" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
                             </div>
+                            
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Поточний залишок</label>
-                                <input v-model.number="variantBuilder.stock_quantity" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-yellow-50">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    Поточний залишок
+                                    <span v-if="variantBuilder.master_recipe_id" class="text-purple-600 text-[10px] normal-case ml-1">
+                                        (Авто-розрахунок)
+                                    </span>
+                                </label>
+    
+                                <div class="relative">
+                                    <input 
+                                        
+                                        :value="variantBuilder.master_recipe_id ? (calculatedStock !== null ? calculatedStock : 0) : variantBuilder.stock_quantity"
+                                        
+                                        @input="!variantBuilder.master_recipe_id && (variantBuilder.stock_quantity = $event.target.value)"
+    
+                                        type="number" 
+                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors"
+                                        :class="{
+                                            'bg-gray-100 text-gray-500 cursor-not-allowed': variantBuilder.master_recipe_id,
+                                            'bg-yellow-50': !variantBuilder.master_recipe_id
+                                        }"
+                                        :disabled="!!variantBuilder.master_recipe_id"
+                                        placeholder="0"
+                                    >   
+        
+                                    <div v-if="variantBuilder.master_recipe_id" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            Система перевірила склад: інгредієнтів вистачає на 
+                                            <span class="font-bold text-purple-600">
+                                                {{ calculatedStock !== null ? calculatedStock : '...' }}
+                                            </span> порцій.
+                                        </p>
+                                        <i class="fas fa-calculator text-gray-400"></i>
+                                    </div>
+                                </div>
+    
+                                <p v-if="variantBuilder.master_recipe_id" class="text-xs text-gray-400 mt-1">
+                                    Система перевірила склад: інгредієнтів вистачає на 
+                                    <strong class="text-gray-700">{{ calculatedStock !== null ? calculatedStock : '...' }}</strong> порцій.
+                                </p>
                             </div>
+
                         </div>
 
                         <div class="pt-4 border-t">
@@ -4611,7 +4666,7 @@ const toggleProcessGroup = (id) => {
                                 </div>
                                  <div class="bg-white rounded border divide-y max-h-40 overflow-y-auto">
                                      <div v-for="(c, idx) in variantBuilder.consumables" :key="idx" class="p-2 text-sm flex justify-between">
-                                        <span>{{ c.name || '???' }}</span>
+                                        <span>{{ consumables.find(item => item.id === c.consumable_id)?.name || 'Невідомий матеріал' }}</span>
                                         <span>{{ c.quantity }} шт <i @click="removeVariantConsumable(idx)" class="fas fa-times text-red-500 cursor-pointer ml-2"></i></span>
                                     </div>
                                 </div>
@@ -4860,6 +4915,7 @@ const onSaved = async () => {
 
 <file path="frontend\src\composables\useCart.js">
 import { ref, computed } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'; // 1. Імпортуємо склад
 
 const cartItems = ref([])
 const isProcessing = ref(false)
@@ -4868,6 +4924,7 @@ const selectedCustomer = ref(null)
 
 export function useCart() {
   
+  const { fetchWarehouseData } = useWarehouse(); // 2. Дістаємо функцію завантаження
   // Ця сума тепер ТІЛЬКИ для відображення користувачу
   const totalSum = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -4948,6 +5005,7 @@ export function useCart() {
       if (!res.ok) {
           const err = await res.json()
           throw new Error(err.detail || "Помилка при оплаті")
+          await fetchWarehouseData(); // 3. Оновлюємо дані складу після помилки (можливо, хтось інший змінив залишки)
       }
 
       const responseData = await res.json()
@@ -5127,7 +5185,7 @@ export function useCustomers() {
 </file>
 
 <file path="frontend\src\composables\useProducts.js">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { useWarehouse } from '@/composables/useWarehouse'
 
@@ -5167,6 +5225,32 @@ export function useProducts() {
     const products = warehouse?.products || ref([])
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
+    const calculatedStock = ref(null) // Змінна для збереження результату
+    
+    const fetchCalculatedStock = async (productId, variantId) => {
+        calculatedStock.value = null;
+        if (!productId || !variantId) return;
+    
+        try {
+            // Додай /api на початку шляху 🔥
+            const res = await axios.get(`/api/products/${productId}/variants/${variantId}/calculated-stock?t=${Date.now()}`);
+        
+            calculatedStock.value = res.data.calculated_stock;
+            console.log("✅ Отримано розрахунковий залишок:", res.data.calculated_stock);
+        } catch (err) {
+            console.error("Помилка розрахунку залишку:", err);
+            calculatedStock.value = 0;
+        }
+    }
+    
+    // 🔥 Додаємо автоматичне оновлення розрахунку при зміні залишків інгредієнтів
+    watch(() => warehouse.ingredients, () => {
+        // Якщо зараз відкрита форма редагування конкретного варіанту
+        if     (editingId.value && variantBuilder.value.id) {
+            console.log("🔄 Склад змінився, перераховую залишок варіанту...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        }
+    }, { deep: true });
 
     // --- CRUD Товарів ---
     const fetchProducts = async () => {
@@ -5263,8 +5347,23 @@ export function useProducts() {
     }
 
     const editVariant = (index) => {
-        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]))
-        editingVariantIndex.value = index
+        console.log("🛠 [DEBUG] Клік на редагування варіанту. Індекс:", index);
+    
+        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]));
+        editingVariantIndex.value = index;
+
+        // Перевіряємо значення перед умовою
+        console.log("🔍 [DEBUG] Перевірка ID для запиту:");
+        console.log(" - Product ID (editingId):", editingId.value);
+        console.log(" - Variant ID (variantBuilder.id):", variantBuilder.value.id);
+
+        if (editingId.value && variantBuilder.value.id) {
+            console.log("🚀 [DEBUG] Умова виконана! Відправляю запит на сервер...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        } else {
+            console.warn("⚠️ [DEBUG] Запит НЕ відправлено: ID продукту або варіанту відсутній.");
+            console.log("Підказка: якщо ви тільки що створили цей варіант і не зберегли товар, у нього ще немає ID в базі.");
+        }
     }
 
     const removeVariant = (index) => {
@@ -5329,7 +5428,8 @@ export function useProducts() {
         removeVariant,
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
-        addIngredientToVariant, removeIngredientFromVariant
+        addIngredientToVariant, removeIngredientFromVariant,
+        calculatedStock, fetchCalculatedStock
     }
 }
 </file>
@@ -5901,6 +6001,7 @@ class ProductVariant(Base):
     
     stock_quantity = Column(Float, default=0.0) # Якщо ведемо облік по варіантах
 
+    master_recipe = relationship("MasterRecipe")
     product = relationship("Product", back_populates="variants")
     
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
@@ -6658,6 +6759,20 @@ def calculate_cost(data: schemas.ProductCostCheck, db: Session = Depends(databas
     cost = ProductService.calculate_product_cost(db, data)
     return {"total_cost": cost}
 
+# 🔥 НОВИЙ РОУТ: Отримати розрахунковий залишок варіанту
+@router.get("/{product_id}/variants/{variant_id}/calculated-stock")
+def get_variant_calculated_stock(
+    product_id: int, 
+    variant_id: int, 
+    db: Session = Depends(database.get_db)
+):
+    """
+    Повертає максимальну кількість одиниць, яку можна виготовити 
+    на основі залишків інгредієнтів.
+    """
+    stock = ProductService.calculate_max_possible_stock(db, variant_id)
+    return {"calculated_stock": stock}
+
 # --- CRUD ОПЕРАЦІЇ ---
 
 @router.post("/", response_model=schemas.Product)
@@ -6673,37 +6788,65 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
 
 @router.get("/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
-    products = db.query(models.Product).all()
-    # Дозаповнюємо назви для UI
+    # Використовуємо .options(joinedload(...)) для глибокого завантаження всієї структури [4, 5]
+    products = db.query(models.Product).options(
+        joinedload(models.Product.category),
+        # Завантажуємо варіанти -> їхні матеріали -> об'єкт матеріалу (де лежить name) [6, 7]
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
+        # Завантажуємо варіанти -> їхні інгредієнти -> об'єкт інгредієнта [7, 8]
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        # Завантажуємо матеріали та інгредієнти для простого товару [9, 10]
+        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
+        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+    ).all()
+
+    # Тепер об'єкти вже в пам'яті, і ми можемо безпечно переприсвоїти імена для схем Pydantic [1, 7]
     for p in products:
+        # Для простого товару
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
         for i in p.ingredients:
             if i.ingredient: i.ingredient_name = i.ingredient.name
+            
+        # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
             for vc in v.consumables:
-                if vc.consumable: vc.consumable_name = vc.consumable.name
-            if hasattr(v, 'ingredients'):
-                 for vi in v.ingredients:
-                     if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+                if vc.consumable: 
+                    vc.consumable_name = vc.consumable.name
+            for vi in v.ingredients:
+                if vi.ingredient: 
+                    vi.ingredient_name = vi.ingredient.name
+                    
     return products
 
 @router.get("/{product_id}", response_model=schemas.Product)
 def read_product(product_id: int, db: Session = Depends(database.get_db)):
-    p = db.query(models.Product).filter(models.Product.id == product_id).first()
+    # Застосовуємо аналогічну логіку joinedload для одного товару [2, 7]
+    p = db.query(models.Product).options(
+        joinedload(models.Product.category),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
+        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+    ).filter(models.Product.id == product_id).first()
+
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found")
     
+    # Мапінг імен (тепер consumable гарантовано не буде None завдяки joinedload) [11]
     for c in p.consumables:
         if c.consumable: c.consumable_name = c.consumable.name
     for i in p.ingredients:
         if i.ingredient: i.ingredient_name = i.ingredient.name
+        
     for v in p.variants:
         for vc in v.consumables:
-            if vc.consumable: vc.consumable_name = vc.consumable.name
-        if hasattr(v, 'ingredients'):
-             for vi in v.ingredients:
-                 if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+            if vc.consumable: 
+                vc.consumable_name = vc.consumable.name
+        for vi in v.ingredients:
+            if vi.ingredient: 
+                vi.ingredient_name = vi.ingredient.name
+                
     return p
 
 @router.delete("/{product_id}")
@@ -7050,7 +7193,7 @@ class OrderService:
 
                     # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
                     # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    if variant.stock_quantity is not None:
+                    if variant.stock_quantity is not None and not variant.master_recipe_id:
                         current_stock = variant.stock_quantity
                         
                         if current_stock < item.quantity:
@@ -7260,6 +7403,65 @@ class ProductService:
                         total_cost += item.ingredient.cost_per_unit * qty
 
         return round(total_cost, 2)
+
+    @staticmethod
+    def calculate_max_possible_stock(db: Session, variant_id: int) -> int:
+        """
+        Розраховує, скільки одиниць варіанту можна виготовити 
+        виходячи з поточних залишків інгредієнтів на складі.
+        """
+        # 1. Отримуємо варіант
+        variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
+        if not variant or not variant.master_recipe_id:
+            # Якщо немає рецепту, повертаємо те, що вписано вручну (для штучних товарів)
+            return int(variant.stock_quantity)
+
+        # 2. Отримуємо рецепт
+        recipe = variant.master_recipe
+        if not recipe.items:
+            return 9999 # Якщо рецепт пустий, обмежень немає
+
+        max_portions = float('inf') # Починаємо з нескінченності
+
+        # 3. Перевіряємо кожен інгредієнт рецепту
+        for r_item in recipe.items:
+            ingredient = r_item.ingredient
+            if not ingredient: 
+                continue
+
+            # Скільки треба на 1 порцію?
+            needed_qty = 0
+            if r_item.is_percentage:
+                # Якщо у відсотках від виходу (наприклад, молоко у лате)
+                needed_qty = (r_item.quantity / 100) * (variant.output_weight or 0)
+            else:
+                needed_qty = r_item.quantity
+
+            if needed_qty <= 0: continue
+
+            # Скільки є на складі?
+            in_stock = ingredient.stock_quantity or 0
+
+            # Скільки порцій вийде з цього конкретного інгредієнта?
+            possible_from_this = in_stock / needed_qty
+            
+            # Шукаємо "вузьке горлечко" (мінімальне значення)
+            if possible_from_this < max_portions:
+                max_portions = possible_from_this
+
+        # 4. Перевіряємо витратні матеріали варіанту (стаканчики, кришки)
+        for v_cons in variant.consumables:
+            cons = v_cons.consumable
+            if cons and v_cons.quantity > 0:
+                in_stock = cons.stock_quantity or 0
+                possible = in_stock / v_cons.quantity
+                if possible < max_portions:
+                    max_portions = possible
+
+        if max_portions == float('inf'):
+            return 0
+            
+        return int(max_portions) # Округляємо вниз до цілого
 
     @staticmethod
     def create_product(db: Session, product: schemas.ProductCreate):

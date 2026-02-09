@@ -47,37 +47,65 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
 
 @router.get("/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
-    products = db.query(models.Product).all()
-    # Дозаповнюємо назви для UI
+    # Використовуємо .options(joinedload(...)) для глибокого завантаження всієї структури [4, 5]
+    products = db.query(models.Product).options(
+        joinedload(models.Product.category),
+        # Завантажуємо варіанти -> їхні матеріали -> об'єкт матеріалу (де лежить name) [6, 7]
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
+        # Завантажуємо варіанти -> їхні інгредієнти -> об'єкт інгредієнта [7, 8]
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        # Завантажуємо матеріали та інгредієнти для простого товару [9, 10]
+        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
+        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+    ).all()
+
+    # Тепер об'єкти вже в пам'яті, і ми можемо безпечно переприсвоїти імена для схем Pydantic [1, 7]
     for p in products:
+        # Для простого товару
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
         for i in p.ingredients:
             if i.ingredient: i.ingredient_name = i.ingredient.name
+            
+        # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
             for vc in v.consumables:
-                if vc.consumable: vc.consumable_name = vc.consumable.name
-            if hasattr(v, 'ingredients'):
-                 for vi in v.ingredients:
-                     if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+                if vc.consumable: 
+                    vc.consumable_name = vc.consumable.name
+            for vi in v.ingredients:
+                if vi.ingredient: 
+                    vi.ingredient_name = vi.ingredient.name
+                    
     return products
 
 @router.get("/{product_id}", response_model=schemas.Product)
 def read_product(product_id: int, db: Session = Depends(database.get_db)):
-    p = db.query(models.Product).filter(models.Product.id == product_id).first()
+    # Застосовуємо аналогічну логіку joinedload для одного товару [2, 7]
+    p = db.query(models.Product).options(
+        joinedload(models.Product.category),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
+        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+    ).filter(models.Product.id == product_id).first()
+
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found")
     
+    # Мапінг імен (тепер consumable гарантовано не буде None завдяки joinedload) [11]
     for c in p.consumables:
         if c.consumable: c.consumable_name = c.consumable.name
     for i in p.ingredients:
         if i.ingredient: i.ingredient_name = i.ingredient.name
+        
     for v in p.variants:
         for vc in v.consumables:
-            if vc.consumable: vc.consumable_name = vc.consumable.name
-        if hasattr(v, 'ingredients'):
-             for vi in v.ingredients:
-                 if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+            if vc.consumable: 
+                vc.consumable_name = vc.consumable.name
+        for vi in v.ingredients:
+            if vi.ingredient: 
+                vi.ingredient_name = vi.ingredient.name
+                
     return p
 
 @router.delete("/{product_id}")

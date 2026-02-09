@@ -153,6 +153,7 @@ class ProductVariant(Base):
     
     stock_quantity = Column(Float, default=0.0) # Якщо ведемо облік по варіантах
 
+    master_recipe = relationship("MasterRecipe")
     product = relationship("Product", back_populates="variants")
     
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")

@@ -57,7 +57,7 @@ class OrderService:
 
                     # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
                     # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    if variant.stock_quantity is not None:
+                    if variant.stock_quantity is not None and not variant.master_recipe_id:
                         current_stock = variant.stock_quantity
                         
                         if current_stock < item.quantity:

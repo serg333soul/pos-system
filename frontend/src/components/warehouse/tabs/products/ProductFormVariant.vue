@@ -232,6 +232,7 @@ const toggleProcessGroup = (id) => {
                             <div 
                                 v-for="(variant, idx) in newProduct.variants" 
                                 :key="idx"
+                                @click="editVariant(idx)"
                                 class="bg-white border rounded-xl p-4 flex justify-between items-center hover:shadow-md transition group"
                             >
                                 <div>
@@ -246,6 +247,7 @@ const toggleProcessGroup = (id) => {
                                     <button @click="handleEditVariant(idx)" class="w-8 h-8 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center">
                                         <i class="fas fa-pencil-alt text-sm"></i>
                                     </button>
+                                    
                                     <button @click="removeVariant(idx)" class="w-8 h-8 rounded bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center">
                                         <i class="fas fa-trash text-sm"></i>
                                     </button>
@@ -407,7 +409,11 @@ const toggleProcessGroup = (id) => {
     
                                 <div class="relative">
                                     <input 
-                                        v-model.number="variantBuilder.stock_quantity" 
+                                        
+                                        :value="variantBuilder.master_recipe_id ? (calculatedStock !== null ? calculatedStock : 0) : variantBuilder.stock_quantity"
+                                        
+                                        @input="!variantBuilder.master_recipe_id && (variantBuilder.stock_quantity = $event.target.value)"
+    
                                         type="number" 
                                         class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors"
                                         :class="{
@@ -416,12 +422,15 @@ const toggleProcessGroup = (id) => {
                                         }"
                                         :disabled="!!variantBuilder.master_recipe_id"
                                         placeholder="0"
-                                    >
+                                    >   
         
                                     <div v-if="variantBuilder.master_recipe_id" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                                        <span v-if="calculatedStock !== null" class="font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded text-xs mr-2">
-                                            Макс: {{ calculatedStock }}
-                                        </span>
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            Система перевірила склад: інгредієнтів вистачає на 
+                                            <span class="font-bold text-purple-600">
+                                                {{ calculatedStock !== null ? calculatedStock : '...' }}
+                                            </span> порцій.
+                                        </p>
                                         <i class="fas fa-calculator text-gray-400"></i>
                                     </div>
                                 </div>
@@ -461,7 +470,7 @@ const toggleProcessGroup = (id) => {
                                 </div>
                                  <div class="bg-white rounded border divide-y max-h-40 overflow-y-auto">
                                      <div v-for="(c, idx) in variantBuilder.consumables" :key="idx" class="p-2 text-sm flex justify-between">
-                                        <span>{{ c.name || '???' }}</span>
+                                        <span>{{ consumables.find(item => item.id === c.consumable_id)?.name || 'Невідомий матеріал' }}</span>
                                         <span>{{ c.quantity }} шт <i @click="removeVariantConsumable(idx)" class="fas fa-times text-red-500 cursor-pointer ml-2"></i></span>
                                     </div>
                                 </div>
