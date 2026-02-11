@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 68
-Lines: 7609
-Tokens: ~80661
+Lines: 7643
+Tokens: ~81109
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -4224,7 +4224,7 @@ const {
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
     removeProductConsumable, addProductConsumable, tempProductConsumable,
-    calculatedStock, fetchCalculatedStock
+    calculatedStock, fetchCalculatedStock, generateSKU
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -4585,7 +4585,23 @@ const toggleProcessGroup = (id) => {
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">SKU (Артикул)</label>
-                                <input v-model="variantBuilder.sku" type="text" placeholder="CODE-123" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+                                <div class="relative">
+                                    <input 
+                                        v-model="variantBuilder.sku" 
+                                        type="text" 
+                                        placeholder="Наприклад: LAT-XL-001"
+                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors pr-10"
+                                    >
+                                    <!-- Кнопка генерації -->
+                                    <button 
+                                        @click.prevent="generateSKU"
+                                        type="button"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-purple-600 hover:text-purple-800 p-1.5 rounded-md hover:bg-purple-50 transition-colors"
+                                        title="Згенерувати автоматично"
+                                    >
+                                        <i class="fas fa-magic"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -5243,6 +5259,24 @@ export function useProducts() {
         }
     }
     
+    const generateSKU = () => {
+        // Перевіряємо, чи є базова інформація для генерації
+        const productName = newProduct.value.name || 'PROD';
+        const variantName = variantBuilder.value.name || 'VAR';
+        
+        // Беремо перші 3 літери назви товару та варіанту в верхньому регістрі
+        const pPart = productName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        const vPart = variantName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        
+        // Генеруємо випадкове 4-значне число
+        const randomPart = Math.floor(1000 + Math.random() * 9000);
+        
+        // Формуємо SKU
+        variantBuilder.value.sku = `${pPart}-${vPart}-${randomPart}`;
+        
+        console.log("🆕 Згенеровано новий SKU:", variantBuilder.value.sku);
+    }
+
     // 🔥 Додаємо автоматичне оновлення розрахунку при зміні залишків інгредієнтів
     watch(() => warehouse.ingredients, () => {
         // Якщо зараз відкрита форма редагування конкретного варіанту
@@ -5429,7 +5463,7 @@ export function useProducts() {
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
         addIngredientToVariant, removeIngredientFromVariant,
-        calculatedStock, fetchCalculatedStock
+        calculatedStock, fetchCalculatedStock, generateSKU
     }
 }
 </file>
