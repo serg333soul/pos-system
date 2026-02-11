@@ -56,6 +56,24 @@ export function useProducts() {
         }
     }
     
+    const generateSKU = () => {
+        // Перевіряємо, чи є базова інформація для генерації
+        const productName = newProduct.value.name || 'PROD';
+        const variantName = variantBuilder.value.name || 'VAR';
+        
+        // Беремо перші 3 літери назви товару та варіанту в верхньому регістрі
+        const pPart = productName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        const vPart = variantName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        
+        // Генеруємо випадкове 4-значне число
+        const randomPart = Math.floor(1000 + Math.random() * 9000);
+        
+        // Формуємо SKU
+        variantBuilder.value.sku = `${pPart}-${vPart}-${randomPart}`;
+        
+        console.log("🆕 Згенеровано новий SKU:", variantBuilder.value.sku);
+    }
+
     // 🔥 Додаємо автоматичне оновлення розрахунку при зміні залишків інгредієнтів
     watch(() => warehouse.ingredients, () => {
         // Якщо зараз відкрита форма редагування конкретного варіанту
@@ -242,6 +260,6 @@ export function useProducts() {
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
         addIngredientToVariant, removeIngredientFromVariant,
-        calculatedStock, fetchCalculatedStock
+        calculatedStock, fetchCalculatedStock, generateSKU
     }
 }

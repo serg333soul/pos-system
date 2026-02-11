@@ -28,7 +28,7 @@ const {
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
     removeProductConsumable, addProductConsumable, tempProductConsumable,
-    calculatedStock, fetchCalculatedStock
+    calculatedStock, fetchCalculatedStock, generateSKU
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -389,7 +389,23 @@ const toggleProcessGroup = (id) => {
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">SKU (Артикул)</label>
-                                <input v-model="variantBuilder.sku" type="text" placeholder="CODE-123" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+                                <div class="relative">
+                                    <input 
+                                        v-model="variantBuilder.sku" 
+                                        type="text" 
+                                        placeholder="Наприклад: LAT-XL-001"
+                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors pr-10"
+                                    >
+                                    <!-- Кнопка генерації -->
+                                    <button 
+                                        @click.prevent="generateSKU"
+                                        type="button"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-purple-600 hover:text-purple-800 p-1.5 rounded-md hover:bg-purple-50 transition-colors"
+                                        title="Згенерувати автоматично"
+                                    >
+                                        <i class="fas fa-magic"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
