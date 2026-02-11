@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { useWarehouse } from '@/composables/useWarehouse'
 
@@ -38,6 +38,50 @@ export function useProducts() {
     const products = warehouse?.products || ref([])
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
+    const calculatedStock = ref(null) // Змінна для збереження результату
+    
+    const fetchCalculatedStock = async (productId, variantId) => {
+        calculatedStock.value = null;
+        if (!productId || !variantId) return;
+    
+        try {
+            // Додай /api на початку шляху 🔥
+            const res = await axios.get(`/api/products/${productId}/variants/${variantId}/calculated-stock?t=${Date.now()}`);
+        
+            calculatedStock.value = res.data.calculated_stock;
+            console.log("✅ Отримано розрахунковий залишок:", res.data.calculated_stock);
+        } catch (err) {
+            console.error("Помилка розрахунку залишку:", err);
+            calculatedStock.value = 0;
+        }
+    }
+    
+    const generateSKU = () => {
+        // Перевіряємо, чи є базова інформація для генерації
+        const productName = newProduct.value.name || 'PROD';
+        const variantName = variantBuilder.value.name || 'VAR';
+        
+        // Беремо перші 3 літери назви товару та варіанту в верхньому регістрі
+        const pPart = productName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        const vPart = variantName.substring(0, 3).toUpperCase().replace(/\s/g, '');
+        
+        // Генеруємо випадкове 4-значне число
+        const randomPart = Math.floor(1000 + Math.random() * 9000);
+        
+        // Формуємо SKU
+        variantBuilder.value.sku = `${pPart}-${vPart}-${randomPart}`;
+        
+        console.log("🆕 Згенеровано новий SKU:", variantBuilder.value.sku);
+    }
+
+    // 🔥 Додаємо автоматичне оновлення розрахунку при зміні залишків інгредієнтів
+    watch(() => warehouse.ingredients, () => {
+        // Якщо зараз відкрита форма редагування конкретного варіанту
+        if     (editingId.value && variantBuilder.value.id) {
+            console.log("🔄 Склад змінився, перераховую залишок варіанту...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        }
+    }, { deep: true });
 
     // --- CRUD Товарів ---
     const fetchProducts = async () => {
@@ -134,8 +178,23 @@ export function useProducts() {
     }
 
     const editVariant = (index) => {
-        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]))
-        editingVariantIndex.value = index
+        console.log("🛠 [DEBUG] Клік на редагування варіанту. Індекс:", index);
+    
+        variantBuilder.value = JSON.parse(JSON.stringify(newProduct.value.variants[index]));
+        editingVariantIndex.value = index;
+
+        // Перевіряємо значення перед умовою
+        console.log("🔍 [DEBUG] Перевірка ID для запиту:");
+        console.log(" - Product ID (editingId):", editingId.value);
+        console.log(" - Variant ID (variantBuilder.id):", variantBuilder.value.id);
+
+        if (editingId.value && variantBuilder.value.id) {
+            console.log("🚀 [DEBUG] Умова виконана! Відправляю запит на сервер...");
+            fetchCalculatedStock(editingId.value, variantBuilder.value.id);
+        } else {
+            console.warn("⚠️ [DEBUG] Запит НЕ відправлено: ID продукту або варіанту відсутній.");
+            console.log("Підказка: якщо ви тільки що створили цей варіант і не зберегли товар, у нього ще немає ID в базі.");
+        }
     }
 
     const removeVariant = (index) => {
@@ -200,6 +259,7 @@ export function useProducts() {
         removeVariant,
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
-        addIngredientToVariant, removeIngredientFromVariant
+        addIngredientToVariant, removeIngredientFromVariant,
+        calculatedStock, fetchCalculatedStock, generateSKU
     }
 }

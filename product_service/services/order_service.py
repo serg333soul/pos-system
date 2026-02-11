@@ -1,7 +1,6 @@
 # FILE: product_service/services/order_service.py
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime
 import models
@@ -32,156 +31,167 @@ class OrderService:
             for item in order_data.items:
                 print(f"   -> Обробка товару ID: {item.product_id} (Варіант: {item.variant_id})")
                 
-                # Завантажуємо товар (Base load)
+                # Завантажуємо товар (блокуємо для безпеки)
                 product = db.query(models.Product).filter(
                     models.Product.id == item.product_id
                 ).with_for_update().first()
-
-                if not product:
-                    print(f"   ❌ Товар {item.product_id} не знайдено!")
-                    continue
-
-                item_name = product.name
-                price = product.price 
-                details_list = []
                 
-                target_recipe_id = None
-                base_weight = 0.0
+                if not product:
+                    raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
 
-                # === А. ВАРІАНТ ===
+                price = float(product.price)
+                item_name = product.name
+                details_list = []
+
+                # --- ЛОГІКА ВАРІАНТІВ ---
                 if item.variant_id:
-                    variant = db.query(models.ProductVariant).options(
-                        joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable)
-                    ).filter(
+                    variant = db.query(models.ProductVariant).filter(
                         models.ProductVariant.id == item.variant_id
                     ).with_for_update().first()
-
+                    
                     if not variant:
-                        raise HTTPException(status_code=404, detail=f"Варіант {item.variant_id} не знайдено")
+                        raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
+                    price = float(variant.price)
                     item_name = f"{product.name} ({variant.name})"
-                    price = variant.price
-                    details_list.append(f"Варіант: {variant.name}")
-                    
-                    target_recipe_id = variant.master_recipe_id or product.master_recipe_id
-                    base_weight = variant.output_weight
 
-                    # Списання варіанту
-                    old_qty = variant.stock_quantity
-                    variant.stock_quantity -= item.quantity
-                    InventoryLogger.log(db, "product_variant", variant.id, item_name, old_qty, variant.stock_quantity, transaction_reason)
-
-                    # Матеріали варіанту
-                    for vc in variant.consumables:
-                        if vc.consumable:
-                            c_old = vc.consumable.stock_quantity
-                            deduction = vc.quantity * item.quantity
-                            vc.consumable.stock_quantity -= deduction
-                            db.add(vc.consumable)
-                            InventoryLogger.log(db, "consumable", vc.consumable.id, vc.consumable.name, c_old, vc.consumable.stock_quantity, transaction_reason)
-
-                    # Інгредієнти варіанту (через relationship, тут зазвичай працює)
-                    if hasattr(variant, 'ingredients'):
-                        for vi in variant.ingredients:
-                            if vi.ingredient:
-                                i_old = vi.ingredient.stock_quantity
-                                deduction = vi.quantity * item.quantity
-                                vi.ingredient.stock_quantity -= deduction
-                                db.add(vi.ingredient)
-                                InventoryLogger.log(db, "ingredient", vi.ingredient.id, vi.ingredient.name, i_old, vi.ingredient.stock_quantity, transaction_reason)
-
-                # === Б. ПРОСТИЙ ТОВАР ===
-                else:
-                    target_recipe_id = product.master_recipe_id
-                    base_weight = product.output_weight
-                    
-                    # 1. Списання самого товару
-                    if product.track_stock:
-                        old_qty = product.stock_quantity
-                        product.stock_quantity -= item.quantity
-                        InventoryLogger.log(db, "product", product.id, product.name, old_qty, product.stock_quantity, transaction_reason)
-
-                    # 2. 🔥 БЕЗПЕЧНЕ СПИСАННЯ ПРЯМИХ ІНГРЕДІЄНТІВ 🔥
-                    # Ми робимо окремий запит, щоб не залежати від lazy loading
-                    try:
-                        direct_ingredients = db.query(models.ProductIngredient).filter(
-                            models.ProductIngredient.product_id == product.id
-                        ).all()
+                    # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
+                    # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
+                    if variant.stock_quantity is not None and not variant.master_recipe_id:
+                        current_stock = variant.stock_quantity
                         
-                        print(f"      🔍 Знайдено прямих інгредієнтів (SQL): {len(direct_ingredients)}")
+                        if current_stock < item.quantity:
+                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
+                        
+                        variant.stock_quantity = current_stock - item.quantity
+                        db.add(variant)
 
-                        for link in direct_ingredients:
-                            # Завантажуємо сам інгредієнт
-                            real_ingredient = db.query(models.Ingredient).filter(
-                                models.Ingredient.id == link.ingredient_id
-                            ).with_for_update().first()
+                        # Логування списання варіанту
+                        InventoryLogger.log(
+                            db, 
+                            "variant", 
+                            variant.id, 
+                            item_name, 
+                            current_stock, 
+                            variant.stock_quantity, 
+                            transaction_reason
+                        )
 
-                            if real_ingredient:
-                                i_old = real_ingredient.stock_quantity
-                                deduction = link.quantity * item.quantity
-                                real_ingredient.stock_quantity -= deduction
-                                db.add(real_ingredient)
-                                InventoryLogger.log(
-                                    db, "ingredient", real_ingredient.id, real_ingredient.name, 
-                                    i_old, real_ingredient.stock_quantity, 
-                                    f"{transaction_reason}_direct"
-                                )
-                            else:
-                                print(f"      ⚠️ Інгредієнт з ID {link.ingredient_id} не знайдено в таблиці ingredients!")
-                    except Exception as e:
-                        print(f"      ❌ ПОМИЛКА при списанні інгредієнтів товару {product.id}: {e}")
-                        # Ми не зупиняємо продаж, якщо впало списання цукру, але пишемо в лог
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
+                    if variant.master_recipe_id:
+                        recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == variant.master_recipe_id).first()
+                        if recipe:
+                            output_w = variant.output_weight or 1
+                            for r_item in recipe.items:
+                                ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
+                                if ing:
+                                    deduction = 0
+                                    if r_item.is_percentage:
+                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
+                                    else:
+                                         deduction = r_item.quantity * item.quantity
+                                    
+                                    i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    if ing.stock_quantity is None: ing.stock_quantity = 0.0
+                                    ing.stock_quantity -= deduction
+                                    db.add(ing)
+                                    
+                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
 
-                # === В. ЗАГАЛЬНІ МАТЕРІАЛИ ТОВАРУ ===
-                # Також робимо безпечно через прямий запит, якщо relationship підводить
-                prod_consumables = db.query(models.ProductConsumable).filter(
-                     models.ProductConsumable.product_id == product.id
-                ).all()
+                    # 3. Списання МАТЕРІАЛІВ варіанту
+                    for v_cons in variant.consumables:
+                         cons = db.query(models.Consumable).filter(models.Consumable.id == v_cons.consumable_id).with_for_update().first()
+                         if cons:
+                            c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
+                            qty_to_deduct = v_cons.quantity * item.quantity
+                            
+                            if cons.stock_quantity is None: cons.stock_quantity = 0.0
+                            cons.stock_quantity -= qty_to_deduct
+                            db.add(cons)
+                            InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+
+                # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
+                else:
+                    # 1. Списання залишку ПРОСТОГО товару (Та запис в історію!)
+                    if product.track_stock:
+                        current_stock = product.stock_quantity if product.stock_quantity is not None else 0.0
+                        if current_stock < item.quantity:
+                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
+                        
+                        product.stock_quantity = current_stock - item.quantity
+                        db.add(product)
+
+                        # Логування списання простого товару
+                        InventoryLogger.log(
+                            db, 
+                            "product", 
+                            product.id, 
+                            product.name, 
+                            current_stock, 
+                            product.stock_quantity, 
+                            transaction_reason
+                        )
+
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
+                    if product.master_recipe_id:
+                        recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
+                        if recipe:
+                             output_w = product.output_weight or 1
+                             for r_item in recipe.items:
+                                ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
+                                if ing:
+                                    deduction = 0
+                                    if r_item.is_percentage:
+                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
+                                    else:
+                                         deduction = r_item.quantity * item.quantity
+                                    
+                                    i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    if ing.stock_quantity is None: ing.stock_quantity = 0.0
+                                    ing.stock_quantity -= deduction
+                                    db.add(ing)
+                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+
+                # === ЗАГАЛЬНІ СПИСАННЯ ===
                 
-                for pc in prod_consumables:
-                    real_cons = db.query(models.Consumable).filter(
-                        models.Consumable.id == pc.consumable_id
-                    ).with_for_update().first()
-                    
-                    if real_cons:
-                        c_old = real_cons.stock_quantity
-                        deduction = pc.quantity * item.quantity
-                        real_cons.stock_quantity -= deduction
-                        db.add(real_cons)
-                        InventoryLogger.log(db, "consumable", real_cons.id, real_cons.name, c_old, real_cons.stock_quantity, transaction_reason)
+                # A. ProductIngredient (Додаткові інгредієнти поза рецептом)
+                for p_ing in product.ingredients:
+                    ing = db.query(models.Ingredient).filter(models.Ingredient.id == p_ing.ingredient_id).with_for_update().first()
+                    if ing:
+                        i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                        deduction = p_ing.quantity * item.quantity
+                        
+                        if ing.stock_quantity is None: ing.stock_quantity = 0.0
+                        ing.stock_quantity -= deduction
+                        db.add(ing)
+                        InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
 
-                # === Г. СПИСАННЯ ПО ТЕХКАРТІ ===
-                if target_recipe_id:
-                    recipe = db.query(models.MasterRecipe).options(
-                        joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
-                    ).filter(models.MasterRecipe.id == target_recipe_id).first()
-                    
-                    if recipe:
-                        for r_item in recipe.items:
-                            if r_item.ingredient:
-                                deduction_per_item = (r_item.quantity / 100.0 * base_weight) if r_item.is_percentage else r_item.quantity
-                                total_deduction = deduction_per_item * item.quantity
-                                
-                                i_old = r_item.ingredient.stock_quantity
-                                r_item.ingredient.stock_quantity -= total_deduction
-                                db.add(r_item.ingredient)
-                                InventoryLogger.log(db, "ingredient", r_item.ingredient.id, r_item.ingredient.name, i_old, r_item.ingredient.stock_quantity, transaction_reason)
+                # B. ProductConsumable (Загальні матеріали)
+                for p_cons in product.consumables:
+                    cons = db.query(models.Consumable).filter(models.Consumable.id == p_cons.consumable_id).with_for_update().first()
+                    if cons:
+                        c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
+                        qty_to_deduct = p_cons.quantity * item.quantity
+                        
+                        if cons.stock_quantity is None: cons.stock_quantity = 0.0
+                        cons.stock_quantity -= qty_to_deduct
+                        db.add(cons)
+                        InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
 
-                # === Д. МОДИФІКАТОРИ ===
-                for mod_ref in item.modifiers:
-                    modifier = db.query(models.Modifier).filter(models.Modifier.id == mod_ref.modifier_id).first()
-                    if modifier:
-                        price += modifier.price_change
-                        details_list.append(modifier.name)
-                        if modifier.ingredient_id:
-                             # Отримуємо інгредієнт
-                             mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.ingredient_id).with_for_update().first()
-                             if mod_ing:
-                                i_old = mod_ing.stock_quantity
-                                deduction = modifier.quantity * item.quantity
-                                mod_ing.stock_quantity -= deduction
-                                db.add(mod_ing)
-                                InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
+                # C. Modifiers (Модифікатори з фронтенду)
+                if item.modifiers:
+                    for modifier in item.modifiers:
+                         mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.modifier_id).with_for_update().first()
+                         if mod_ing:
+                            i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
+                            deduction = modifier.quantity * item.quantity
+                            
+                            if mod_ing.stock_quantity is None: mod_ing.stock_quantity = 0.0
+                            mod_ing.stock_quantity -= deduction
+                            db.add(mod_ing)
+                            
+                            InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
+                            details_list.append(f"+ {mod_ing.name}")
 
                 # === ЗАПИС У ЧЕК ===
                 db.add(models.OrderItem(
@@ -197,11 +207,15 @@ class OrderService:
             new_order.total_price = round(total_order_price, 2)
             db.commit()
             db.refresh(new_order)
-            print("✅ [CHECKOUT] Замовлення успішно створено!")
+            print(f"✅ [CHECKOUT] Замовлення {new_order.id} успішно створено! Сума: {new_order.total_price}")
             return new_order
 
+        except HTTPException as http_ex:
+            db.rollback()
+            print(f"⚠️ HTTP помилка при оплаті: {http_ex.detail}")
+            raise http_ex
         except Exception as e:
             db.rollback()
-            print("❌ ПОМИЛКА ПРИ ОПЛАТІ (CRITICAL):")
+            print("❌ КРИТИЧНА ПОМИЛКА ПРИ ОПЛАТІ:")
             print(traceback.format_exc())
-            raise HTTPException(status_code=500, detail="Помилка обробки замовлення")
+            raise HTTPException(status_code=500, detail="Помилка обробки замовлення. Деталі в логах сервера.")

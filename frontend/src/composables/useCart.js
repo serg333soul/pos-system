@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'; // 1. Імпортуємо склад
 
 const cartItems = ref([])
 const isProcessing = ref(false)
@@ -7,6 +8,7 @@ const selectedCustomer = ref(null)
 
 export function useCart() {
   
+  const { fetchWarehouseData } = useWarehouse(); // 2. Дістаємо функцію завантаження
   // Ця сума тепер ТІЛЬКИ для відображення користувачу
   const totalSum = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -64,7 +66,11 @@ export function useCart() {
           quantity: item.quantity,
           // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
-            ? item.modifiers.map(m => (typeof m === 'number' ? { modifier_id: m } : m))
+            ? item.modifiers.map(m => ({
+              // Якщо m - це число, беремо його. Якщо об'єкт - беремо m.id або m.modifier_id
+              modifier_id: typeof m === 'number' ? m : (m.id || m.modifier_id),
+              quantity: m.quantity || 1 // Додаємо кількість, якщо модифікаторів > 1
+              }))
             : []
         })),
         payment_method: paymentMethod.value,
@@ -83,6 +89,7 @@ export function useCart() {
       if (!res.ok) {
           const err = await res.json()
           throw new Error(err.detail || "Помилка при оплаті")
+          await fetchWarehouseData(); // 3. Оновлюємо дані складу після помилки (можливо, хтось інший змінив залишки)
       }
 
       const responseData = await res.json()
