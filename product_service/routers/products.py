@@ -69,6 +69,11 @@ def read_products(db: Session = Depends(database.get_db)):
             
         # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
+            # Якщо у варіанта є рецепт, ми підміняємо його статичний stock_quantity 
+            # на динамічно розрахований прямо перед відправкою на касу
+            if v.master_recipe_id:
+                v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+
             for vc in v.consumables:
                 if vc.consumable: 
                     vc.consumable_name = vc.consumable.name

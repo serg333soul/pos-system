@@ -129,16 +129,33 @@ const handleConfirm = async () => {
         <div v-if="product.has_variants && product.variants.length > 0">
           <label class="block text-sm font-bold text-gray-900 mb-3">Оберіть розмір/вагу:</label>
           <div class="grid grid-cols-3 gap-3">
-            <button 
-              v-for="variant in product.variants" 
-              :key="variant.id"
-              @click="selectedVariant = variant"
-              class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1"
-              :class="selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 text-gray-600'"
-            >
-              <span class="font-bold">{{ variant.name }}</span>
-              <span class="text-xs">{{ variant.price }} ₴</span>
-            </button>
+              <div v-for="variant in product.variants" 
+                  :key="variant.id"
+                  @click="selectedVariant = variant"
+                  class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden"
+                  :class="[
+                      selectedVariant?.id === variant.id 
+                          ? 'border-purple-600 bg-purple-50 text-purple-700' 
+                          : 'border-gray-200 hover:border-gray-300 text-gray-600',
+                      variant.stock_quantity <= 0 ? 'opacity-60' : ''
+                  ]"
+              >
+                  <!-- Назва та ціна -->
+                  <span class="font-bold text-sm text-center">{{ variant.name }}</span>
+                  <span class="text-xs opacity-80">{{ variant.price }} ₴</span>
+
+                  <!-- 🔥 НОВЕ: Відображення актуального залишку -->
+                  <div class="mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      :class="variant.stock_quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                  >
+                      {{ variant.stock_quantity > 0 ? `Залишок: ${variant.stock_quantity} шт` : 'Немає в наявності' }}
+                  </div>
+
+                  <!-- Індикатор обраного (галочка) -->
+                  <div v-if="selectedVariant?.id === variant.id" class="absolute top-1 right-1">
+                      <i class="fas fa-check-circle text-purple-600 text-xs"></i>
+                  </div>
+              </div>
           </div>
         </div>
 
