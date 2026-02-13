@@ -6,13 +6,16 @@ const isProcessing = ref(false)
 const paymentMethod = ref('cash')
 const selectedCustomer = ref(null)
 
-export function useCart() {
-  
-  const { fetchWarehouseData } = useWarehouse(); // 2. Дістаємо функцію завантаження
-  // Ця сума тепер ТІЛЬКИ для відображення користувачу
-  const totalSum = computed(() => {
+const totalSum = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   })
+
+export function useCart() {
+  
+  const warehouse = useWarehouse(); // Отримуємо весь об'єкт складу
+  const { fetchWarehouseData } = warehouse; // 2. Дістаємо функцію завантаження
+  // Ця сума тепер ТІЛЬКИ для відображення користувачу
+  
 
   const cartCount = computed(() => {
     return cartItems.value.reduce((sum, item) => sum + item.quantity, 0)
@@ -46,6 +49,42 @@ export function useCart() {
     } catch (err) { console.error(err) }
   }
   
+  const reservedResources = computed(() => {
+    const ingredients = {} 
+    const consumables = {} 
+
+    cartItems.value.forEach(item => {
+        const product = warehouse.products.value.find(p => p.id === item.product_id)
+        const variant = product?.variants?.find(v => v.id === item.variant_id)
+
+        if (variant) {
+            // 1. ПЕРЕВІРКА ТЕХКАРТИ (MasterRecipe) - 🔥 ЦЕ ТЕ, ЧОГО НЕ ВИСТАЧАЛО
+            if (variant.master_recipe_id) {
+                const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id)
+                recipe?.items?.forEach(rItem => {
+                    // Розраховуємо кількість (враховуючи % від ваги виходу)
+                    let qty = rItem.quantity
+                    if (rItem.is_percentage) {
+                        qty = (rItem.quantity / 100) * (variant.output_weight || 0)
+                    }
+                    ingredients[rItem.ingredient_id] = (ingredients[rItem.ingredient_id] || 0) + (qty * item.quantity)
+                })
+            }
+
+            // 2. Додаткові інгредієнти (якщо є)
+            variant.ingredients?.forEach(ing => {
+                ingredients[ing.ingredient_id] = (ingredients[ing.ingredient_id] || 0) + (ing.quantity * item.quantity)
+            })
+
+            // 3. Матеріали (стаканчики тощо)
+            variant.consumables?.forEach(con => {
+                consumables[con.consumable_id] = (consumables[con.consumable_id] || 0) + (con.quantity * item.quantity)
+            })
+        }
+    })
+    return { ingredients, consumables }
+})
+
   const clearCart = async () => {
     try {
         await fetch('/api/cart/', { method: 'DELETE' })
@@ -93,6 +132,8 @@ export function useCart() {
       }
 
       const responseData = await res.json()
+
+      await fetchWarehouseData();
       
       // Очищення
       await fetch('/api/cart/', { method: 'DELETE' })
@@ -113,12 +154,14 @@ export function useCart() {
     }
   }
 
+  cartItems.value = []
+
   const setCustomer = (c) => { selectedCustomer.value = c }
   const removeCustomer = () => { selectedCustomer.value = null }
 
   return {
     cartItems, cartCount, totalSum, isProcessing, paymentMethod, selectedCustomer,
     fetchCart, addToCart, removeFromCart, clearCart, processCheckout,
-    setCustomer, removeCustomer
+    setCustomer, removeCustomer, reservedResources
   }
 }

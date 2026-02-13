@@ -54,6 +54,15 @@ class OrderService:
                     
                     price = float(variant.price)
                     item_name = f"{product.name} ({variant.name})"
+                    
+                    # 🔥 FIX: Списуємо фізичний залишок, якщо активовано track_stock АБО немає рецепта
+                    should_deduct_static = product.track_stock or not variant.master_recipe_id
+                    
+                    if variant.stock_quantity is not None and should_deduct_static:
+                        current_stock = variant.stock_quantity
+                        # (перевірка на ліміт і списання)
+                        variant.stock_quantity -= item.quantity
+                        # (логування InventoryLogger)
 
                     # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
                     # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька

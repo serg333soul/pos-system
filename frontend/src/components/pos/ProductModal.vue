@@ -1,11 +1,15 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
+import { useWarehouse } from '@/composables/useWarehouse'
 
 const props = defineProps({
   isOpen: Boolean,
   product: Object 
 })
+
+const { cartItems, reservedResources } = useCart()
+const warehouse = useWarehouse()
 
 const emit = defineEmits(['close'])
 
@@ -48,6 +52,48 @@ watch(() => props.isOpen, (isOpen) => {
   }
 })
 
+const getAvailableStock = (variant) => {
+    if (!variant || !props.product) return 0;
+
+    // Сценарій 1: Фізичний облік (track_stock = true)
+    if (props.product.track_stock) {
+        const inCart = cartItems.value
+            .filter(i => i.variant_id === variant.id)
+            .reduce((sum, i) => sum + i.quantity, 0);
+        return Math.max(0, (variant.stock_quantity || 0) - inCart);
+    }
+
+    // Сценарій 2: Напої (рецепти)
+    let maxPossible = Infinity;
+
+    // --- ПЕРЕВІРКА ЧЕРЕЗ ТЕХКАРТУ (MasterRecipe) ---
+    if (variant.master_recipe_id) {
+        const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
+        recipe?.items?.forEach(rItem => {
+            const inStore = warehouse.ingredients.value.find(i => i.id === rItem.ingredient_id);
+            if (inStore) {
+                // Віднімаємо те, що вже заброньовано ВСІМА товарами в кошику
+                const reserved = reservedResources.value.ingredients[rItem.ingredient_id] || 0;
+                const available = Math.max(0, inStore.stock_quantity - reserved);
+                
+                let qtyPerOne = rItem.quantity;
+                if (rItem.is_percentage) {
+                    qtyPerOne = (rItem.quantity / 100) * (variant.output_weight || 0);
+                }
+                
+                if (qtyPerOne > 0) {
+                    const possible = Math.floor(available / qtyPerOne);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            }
+        });
+    }
+
+    // (Аналогічно можна додати перевірку для variant.ingredients та variant.consumables)
+    
+    return maxPossible === Infinity ? 0 : maxPossible;
+}
+
 const currentPrice = computed(() => {
   if (!props.product) return 0
   let price = 0
@@ -83,26 +129,29 @@ const generateName = () => {
   return name
 }
 
-const handleConfirm = async () => {
-  if (props.product.has_variants && !selectedVariant.value) {
-      alert("Будь ласка, оберіть розмір/варіант")
-      return
-  }
+const handleConfirm = () => {
+    if (!selectedVariant.value) return;
 
-  // Формуємо об'єкт для кошика (співпадає з backend схемою)
-  const payload = {
-    product_id: props.product.id,
-    variant_id: selectedVariant.value ? selectedVariant.value.id : null,
-    modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    quantity: 1, // За замовчуванням 1
-    // Додаткові поля для UI, які не йдуть в БД, але можуть бути корисні для оптимістичного оновлення
-    name: generateName(),
-    price: currentPrice.value
-  }
+    // 🔥 ПЕРЕВІРКА ЗАЛИШКУ ПЕРЕД ДОДАВАННЯМ
+    const available = getAvailableStock(selectedVariant.value);
+    
+    if (available < 1) {
+        alert("На жаль, цей товар щойно закінчився (або не вистачає інгредієнтів)");
+        return;
+    }
 
-  await addToCart(payload) // Викликаємо глобальну дію
-  emit('close')
-}
+    const payload = {
+        product_id: props.product.id,
+        variant_id: selectedVariant.value.id,
+        name: `${props.product.name} (${selectedVariant.value.name})`,
+        price: selectedVariant.value.price,
+        quantity: 1,
+        modifiers: [] // Тут додаси вибрані модифікатори за потреби
+    };
+
+    addToCart(payload);
+    emit('close');
+};
 
 </script>
 
@@ -129,31 +178,31 @@ const handleConfirm = async () => {
         <div v-if="product.has_variants && product.variants.length > 0">
           <label class="block text-sm font-bold text-gray-900 mb-3">Оберіть розмір/вагу:</label>
           <div class="grid grid-cols-3 gap-3">
-              <div v-for="variant in product.variants" 
+              <div 
+                  v-for="variant in product.variants" 
                   :key="variant.id"
-                  @click="selectedVariant = variant"
+                  @click="getAvailableStock(variant) > 0 ? selectedVariant = variant : null"
                   class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden"
                   :class="[
-                      selectedVariant?.id === variant.id 
-                          ? 'border-purple-600 bg-purple-50 text-purple-700' 
-                          : 'border-gray-200 hover:border-gray-300 text-gray-600',
-                      variant.stock_quantity <= 0 ? 'opacity-60' : ''
+                      // Якщо вибрано
+                      selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600',
+        
+                      // 🔥 НОВА ЛОГІКА: Якщо залишку немає
+                      getAvailableStock(variant) < 1 
+                          ? 'opacity-40 cursor-not-allowed grayscale pointer-events-none' 
+                          : 'hover:border-gray-300 cursor-pointer'
                   ]"
               >
-                  <!-- Назва та ціна -->
-                  <span class="font-bold text-sm text-center">{{ variant.name }}</span>
-                  <span class="text-xs opacity-80">{{ variant.price }} ₴</span>
-
-                  <!-- 🔥 НОВЕ: Відображення актуального залишку -->
-                  <div class="mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
-                      :class="variant.stock_quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                  <!-- Вміст картки варіанту -->
+                  <span class="font-bold">{{ variant.name }}</span>
+                  <span class="text-sm">{{ variant.price }} ₴</span>
+    
+                  <!-- Мітка залишку -->
+                  <div 
+                      class="text-[10px] px-1.5 py-0.5 rounded-full mt-1"
+                      :class="getAvailableStock(variant) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                   >
-                      {{ variant.stock_quantity > 0 ? `Залишок: ${variant.stock_quantity} шт` : 'Немає в наявності' }}
-                  </div>
-
-                  <!-- Індикатор обраного (галочка) -->
-                  <div v-if="selectedVariant?.id === variant.id" class="absolute top-1 right-1">
-                      <i class="fas fa-check-circle text-purple-600 text-xs"></i>
+                      {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
                   </div>
               </div>
           </div>
@@ -206,10 +255,11 @@ const handleConfirm = async () => {
           {{ currentPrice }} ₴
         </div>
         <button 
-          @click="handleConfirm"
-          class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-lg shadow-purple-200 active:scale-95 flex items-center gap-2"
+            @click="handleConfirm"
+            :disabled="!selectedVariant || getAvailableStock(selectedVariant) < 1"
+            class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <i class="fas fa-cart-plus"></i> Додати
+            Додати в кошик
         </button>
       </div>
 

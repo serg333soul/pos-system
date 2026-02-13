@@ -71,8 +71,12 @@ def read_products(db: Session = Depends(database.get_db)):
         for v in p.variants:
             # Якщо у варіанта є рецепт, ми підміняємо його статичний stock_quantity 
             # на динамічно розрахований прямо перед відправкою на касу
-            if v.master_recipe_id:
+            if v.master_recipe_id and not p.track_stock:
                 v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+            
+            # ПЕРЕВІРКА: чи не приходить None?
+            if v.stock_quantity is None:
+                v.stock_quantity = 0.0
 
             for vc in v.consumables:
                 if vc.consumable: 
