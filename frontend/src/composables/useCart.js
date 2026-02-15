@@ -154,7 +154,6 @@ export function useCart() {
     }
   }
 
-  cartItems.value = []
 
   const setCustomer = (c) => { selectedCustomer.value = c }
   const removeCustomer = () => { selectedCustomer.value = null }

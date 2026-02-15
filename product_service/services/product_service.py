@@ -50,18 +50,29 @@ class ProductService:
         Розраховує, скільки одиниць варіанту можна виготовити 
         виходячи з поточних залишків інгредієнтів на складі.
         """
-        # 1. Отримуємо варіант
+        # 1. Отримуємо варіант із бази
         variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
-        if not variant or not variant.master_recipe_id:
-            # Якщо немає рецепту, повертаємо те, що вписано вручну (для штучних товарів)
-            return int(variant.stock_quantity)
+    
+        # ЗАХИСТ: Якщо варіанта не існує в природі
+        if not variant:
+            return 0
+        
+        # ЗАХИСТ: Якщо це простий товар або товар без техкарти
+        if not variant.master_recipe_id:
+            # Повертаємо фізичний залишок, безпечно обробляючи None через 'or 0'
+            return int(variant.stock_quantity or 0)
 
-        # 2. Отримуємо рецепт
+        # 2. Отримуємо рецепт (Master Recipe)
         recipe = variant.master_recipe
-        if not recipe.items:
-            return 9999 # Якщо рецепт пустий, обмежень немає
+    
+        # ЗАХИСТ: Якщо ID рецепта є, але самого рецепта або його складників немає в базі
+        if not recipe or not recipe.items:
+            # Повертаємо 9999 (або інше велике число), щоб не блокувати продаж 
+            # товару, який не має обмежень по сировині
+            return 9999 
 
-        max_portions = float('inf') # Починаємо з нескінченності
+        # 3. Якщо ми тут, значить рецепт є і він не порожній — починаємо рахунок по інгредієнтах
+        max_portions = float('inf')
 
         # 3. Перевіряємо кожен інгредієнт рецепту
         for r_item in recipe.items:

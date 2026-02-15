@@ -187,7 +187,8 @@ class Variant(VariantCreate):
 
 # --- PRODUCTS ---
 class ProductBase(BaseModel):
-    name: str
+    # min_length=1 гарантує, що порожній рядок не пройде валідацію
+    name: str = Field(..., min_length=1, description="Назва товару обов'язкова")
     description: Optional[str] = None
     category_id: Optional[int] = None
     has_variants: bool = False

@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 68
-Lines: 7779
-Tokens: ~82554
+Lines: 7838
+Tokens: ~83099
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -224,12 +224,12 @@ frontend\src\composables\useProducts.js
   └── 💾 State: editingId
   └── 💾 State: isEditing
   └── 💾 State: productSearch
+  └── 💾 State: isSaving
   └── 💾 State: editingVariantIndex
   └── 💾 State: tempProductConsumable
   └── 💾 State: tempVariantConsumable
   └── 💾 State: tempVariantIngredient
   └── 💾 State: variantBuilder
-  └── 💾 State: products
 frontend\src\composables\useStatistics.js
   └── 💾 State: orders
   └── 💾 State: loading
@@ -1691,8 +1691,8 @@ const displayPrice = computed(() => {
     </div>
 
     <div class="p-4">
-      <div v-if="product.category" class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-        {{ product.category.name }}
+      <div class="text-[10px] uppercase tracking-wider text-gray-400 mb-1">
+        {{ product.category?.name || 'Без категорії' }}
       </div>
       
       <h3 class="font-bold text-lg text-gray-800 leading-tight mb-2 line-clamp-2 min-h-[3.5rem]">
@@ -4285,6 +4285,16 @@ const emit = defineEmits(['close', 'saved'])
 // Підключаємо глобальні довідники
 const { categories, recipes, ingredients, consumables, processGroups } = useWarehouse()
 
+const handleAddVariant = () => {
+    // 1. Викликаємо логіку додавання в масив
+    saveVariant();
+    
+    // 2. 🔥 ЗАКРИВАЄМО ВІКНО (цього не вистачало)
+    showVariantForm.value = false;
+    
+    console.log("✅ Варіант додано до списку, вікно закрито");
+}
+
 // Підключаємо логіку роботи з товаром
 const { 
     newProduct, 
@@ -4358,9 +4368,15 @@ const closeVariantForm = () => {
     showVariantForm.value = false
 }
 
-const handleSaveVariant = () => {
-    saveVariant()
-    showVariantForm.value = false
+const handleSave = async () => {
+    const success = await saveProduct();
+    if (success) {
+        // ТУТ МИ ВИРІШУЄМО: закрити вікно чи залишити
+        // Якщо закриваємо, викликаємо emit('close')
+        // І ТІЛЬКИ ПРИ ЗАКРИТТІ викликаємо resetForm()
+        emit('close');
+        resetForm(); 
+    }
 }
 
 const handleSaveProduct = async () => {
@@ -4767,7 +4783,10 @@ const toggleProcessGroup = (id) => {
 
                     <div class="p-4 border-t bg-white flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                         <button @click="closeVariantForm" class="px-5 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Скасувати</button>
-                        <button @click="handleSaveVariant" class="px-5 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 shadow-md">
+                        <button 
+                            @click="handleAddVariant"
+                            class="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition"
+                        >
                             <i class="fas fa-check mr-1"></i> Зберегти варіант
                         </button>
                     </div>
@@ -5161,7 +5180,6 @@ export function useCart() {
     }
   }
 
-  cartItems.value = []
 
   const setCustomer = (c) => { selectedCustomer.value = c }
   const removeCustomer = () => { selectedCustomer.value = null }
@@ -5336,6 +5354,7 @@ const newProduct = ref({
 const editingId = ref(null)
 const isEditing = ref(false)
 const productSearch = ref('')
+const isSaving = ref(false); // Запобіжник
 
 // Стан редагування варіанту
 const editingVariantIndex = ref(null) 
@@ -5440,29 +5459,44 @@ export function useProducts() {
     }
 
     const saveProduct = async () => {
+
+        // 1. Валідація: не даємо зберегти, якщо ім'я пусте
+        if (!newProduct.value.name || newProduct.value.name.trim() === '') {
+            alert("Назва товару не може бути порожньою!");
+            return false;
+        }
+
+        if (isSaving.value) return;
+        isSaving.value = true;
+
         try {
             // Формуємо payload
             const payload = {
                 ...newProduct.value,
                 // Переконуємось, що числа є числами
-                price: parseFloat(newProduct.value.price),
-                stock_quantity: parseFloat(newProduct.value.stock_quantity),
-                output_weight: parseFloat(newProduct.value.output_weight),
+                price: parseFloat(newProduct.value.price) || 0,
+                stock_quantity: parseFloat(newProduct.value.stock_quantity) || 0,
+                output_weight: parseFloat(newProduct.value.output_weight) || 0
             }
 
-            if (isEditing.value) {
-                await axios.put(`/api/products/${editingId.value}`, payload)
+            if (isEditing.value && editingId.value) {
+                await axios.put(`/api/products/${editingId.value}`, payload);
+                // ПІСЛЯ РЕДАГУВАННЯ: не викликаємо resetForm тут, 
+                // якщо хочемо залишити вікно відкритим з даними.
             } else {
-                await axios.post('/api/products/', payload)
+                await axios.post('/api/products/', payload);
+                resetForm(); // Тільки при створенні нового можна скинути
             }
             
             await fetchProducts()
-            resetForm()
+            //resetForm()
             return true
         } catch (e) {
-            console.error("Помилка збереження товару:", e)
-            alert("Помилка збереження: " + (e.response?.data?.detail || e.message))
-            return false
+            console.error("Помилка збереження:", e);
+            alert("Помилка: " + (e.response?.data?.detail || e.message));
+            return false;
+        } finally {
+            isSaving.value = false;
         }
     }
 
@@ -6447,7 +6481,8 @@ class Variant(VariantCreate):
 
 # --- PRODUCTS ---
 class ProductBase(BaseModel):
-    name: str
+    # min_length=1 гарантує, що порожній рядок не пройде валідацію
+    name: str = Field(..., min_length=1, description="Назва товару обов'язкова")
     description: Optional[str] = None
     category_id: Optional[int] = None
     has_variants: bool = False
@@ -6954,6 +6989,12 @@ def read_products(db: Session = Depends(database.get_db)):
 
     # Тепер об'єкти вже в пам'яті, і ми можемо безпечно переприсвоїти імена для схем Pydantic [1, 7]
     for p in products:
+
+        # Захист для основного товару
+        if p.stock_quantity is None: p.stock_quantity = 0.0
+        if p.price is None: p.price = 0.0
+        if p.output_weight is None: p.output_weight = 0.0
+
         # Для простого товару
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
@@ -6962,10 +7003,17 @@ def read_products(db: Session = Depends(database.get_db)):
             
         # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
-            # Якщо у варіанта є рецепт, ми підміняємо його статичний stock_quantity 
-            # на динамічно розрахований прямо перед відправкою на касу
+            # Захист для варіантів
+            if v.stock_quantity is None: v.stock_quantity = 0.0
+            if v.price is None: v.price = 0.0
+            if v.output_weight is None: v.output_weight = 0.0
+
             if v.master_recipe_id and not p.track_stock:
-                v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                try:
+                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                except Exception as e:
+                    print(f"⚠️ Помилка розрахунку для варіанта {v.id}: {e}")
+                    v.stock_quantity = 0.0
             
             # ПЕРЕВІРКА: чи не приходить None?
             if v.stock_quantity is None:
@@ -7580,18 +7628,29 @@ class ProductService:
         Розраховує, скільки одиниць варіанту можна виготовити 
         виходячи з поточних залишків інгредієнтів на складі.
         """
-        # 1. Отримуємо варіант
+        # 1. Отримуємо варіант із бази
         variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
-        if not variant or not variant.master_recipe_id:
-            # Якщо немає рецепту, повертаємо те, що вписано вручну (для штучних товарів)
-            return int(variant.stock_quantity)
+    
+        # ЗАХИСТ: Якщо варіанта не існує в природі
+        if not variant:
+            return 0
+        
+        # ЗАХИСТ: Якщо це простий товар або товар без техкарти
+        if not variant.master_recipe_id:
+            # Повертаємо фізичний залишок, безпечно обробляючи None через 'or 0'
+            return int(variant.stock_quantity or 0)
 
-        # 2. Отримуємо рецепт
+        # 2. Отримуємо рецепт (Master Recipe)
         recipe = variant.master_recipe
-        if not recipe.items:
-            return 9999 # Якщо рецепт пустий, обмежень немає
+    
+        # ЗАХИСТ: Якщо ID рецепта є, але самого рецепта або його складників немає в базі
+        if not recipe or not recipe.items:
+            # Повертаємо 9999 (або інше велике число), щоб не блокувати продаж 
+            # товару, який не має обмежень по сировині
+            return 9999 
 
-        max_portions = float('inf') # Починаємо з нескінченності
+        # 3. Якщо ми тут, значить рецепт є і він не порожній — починаємо рахунок по інгредієнтах
+        max_portions = float('inf')
 
         # 3. Перевіряємо кожен інгредієнт рецепту
         for r_item in recipe.items:

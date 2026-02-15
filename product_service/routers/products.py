@@ -61,6 +61,12 @@ def read_products(db: Session = Depends(database.get_db)):
 
     # Тепер об'єкти вже в пам'яті, і ми можемо безпечно переприсвоїти імена для схем Pydantic [1, 7]
     for p in products:
+
+        # Захист для основного товару
+        if p.stock_quantity is None: p.stock_quantity = 0.0
+        if p.price is None: p.price = 0.0
+        if p.output_weight is None: p.output_weight = 0.0
+
         # Для простого товару
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
@@ -69,10 +75,17 @@ def read_products(db: Session = Depends(database.get_db)):
             
         # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
-            # Якщо у варіанта є рецепт, ми підміняємо його статичний stock_quantity 
-            # на динамічно розрахований прямо перед відправкою на касу
+            # Захист для варіантів
+            if v.stock_quantity is None: v.stock_quantity = 0.0
+            if v.price is None: v.price = 0.0
+            if v.output_weight is None: v.output_weight = 0.0
+
             if v.master_recipe_id and not p.track_stock:
-                v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                try:
+                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                except Exception as e:
+                    print(f"⚠️ Помилка розрахунку для варіанта {v.id}: {e}")
+                    v.stock_quantity = 0.0
             
             # ПЕРЕВІРКА: чи не приходить None?
             if v.stock_quantity is None:
