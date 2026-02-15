@@ -349,25 +349,18 @@ class ProductService:
     @staticmethod
     def delete_product(db: Session, product_id: int):
         try:
-            # Завантажуємо товар (це активує cascade в models.py)
+            # Завантажуємо об'єкт товару
             product = db.query(models.Product).filter(models.Product.id == product_id).first()
             if not product:
-                raise HTTPException(status_code=404, detail="Product not found")
-            
-            # Видаляємо
+                return False
+
+            # Коли ми видаляємо ОБ'ЄКТ (а не через query.delete()), 
+            # SQLAlchemy запускає каскадне видалення варіантів, інгредієнтів тощо.
             db.delete(product)
             db.commit()
             return True
-            
-        except IntegrityError as e:
-            db.rollback()
-            # Це перехопить помилку foreign key, якщо вона все ж таки виникне
-            print(f"❌ DB Integrity Error: {e}")
-            raise HTTPException(
-                status_code=400, 
-                detail="Неможливо видалити товар. Перевірте, чи не використовується він у замовленнях."
-            )
         except Exception as e:
             db.rollback()
-            print(f"❌ General Error: {e}")
-            raise HTTPException(status_code=500, detail="Помилка сервера при видаленні")
+            print(f"❌ Помилка при видаленні товару: {e}")
+            # Якщо товар є в замовленнях, база все одно може заблокувати видалення
+            raise HTTPException(status_code=400, detail="Неможливо видалити товар, бо він фігурує в історії продажів")

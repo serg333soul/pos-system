@@ -132,18 +132,13 @@ def read_product(product_id: int, db: Session = Depends(database.get_db)):
 
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(database.get_db)):
-    product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not product:
+    # Використовуємо сервіс, який ми вже написали для безпечного видалення
+    success = ProductService.delete_product(db, product_id)
+    
+    if not success:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    db.query(models.ProductVariant).filter(models.ProductVariant.product_id == product_id).delete()
-    db.query(models.ProductModifierGroup).filter(models.ProductModifierGroup.product_id == product_id).delete()
-    db.query(models.ProductConsumable).filter(models.ProductConsumable.product_id == product_id).delete()
-    db.query(models.ProductIngredient).filter(models.ProductIngredient.product_id == product_id).delete()
-    
-    db.delete(product)
-    db.commit()
-    return {"status": "deleted"}
+        
+    return {"status": "deleted", "message": f"Product {product_id} and all its components removed"}
 
 @router.post("/{product_id}/stock")
 def update_stock(product_id: int, qty: float, db: Session = Depends(database.get_db)):

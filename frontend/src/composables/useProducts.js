@@ -168,7 +168,9 @@ export function useProducts() {
             await fetchProducts()
         } catch (e) {
             console.error(e)
-            alert("Не вдалося видалити товар")
+            // Виводимо конкретну помилку від бекенда (напр. "Товар у замовленнях")
+            const msg = e.response?.data?.detail || "Не вдалося видалити товар"
+            alert(msg)
         }
     }
 
