@@ -61,6 +61,12 @@ def read_products(db: Session = Depends(database.get_db)):
 
     # Тепер об'єкти вже в пам'яті, і ми можемо безпечно переприсвоїти імена для схем Pydantic [1, 7]
     for p in products:
+
+        # Захист для основного товару
+        if p.stock_quantity is None: p.stock_quantity = 0.0
+        if p.price is None: p.price = 0.0
+        if p.output_weight is None: p.output_weight = 0.0
+
         # Для простого товару
         for c in p.consumables:
             if c.consumable: c.consumable_name = c.consumable.name
@@ -69,10 +75,21 @@ def read_products(db: Session = Depends(database.get_db)):
             
         # Для варіантів (це те, що у тебе "відпадало")
         for v in p.variants:
-            # Якщо у варіанта є рецепт, ми підміняємо його статичний stock_quantity 
-            # на динамічно розрахований прямо перед відправкою на касу
-            if v.master_recipe_id:
-                v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+            # Захист для варіантів
+            if v.stock_quantity is None: v.stock_quantity = 0.0
+            if v.price is None: v.price = 0.0
+            if v.output_weight is None: v.output_weight = 0.0
+
+            if v.master_recipe_id and not p.track_stock:
+                try:
+                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                except Exception as e:
+                    print(f"⚠️ Помилка розрахунку для варіанта {v.id}: {e}")
+                    v.stock_quantity = 0.0
+            
+            # ПЕРЕВІРКА: чи не приходить None?
+            if v.stock_quantity is None:
+                v.stock_quantity = 0.0
 
             for vc in v.consumables:
                 if vc.consumable: 
@@ -115,18 +132,13 @@ def read_product(product_id: int, db: Session = Depends(database.get_db)):
 
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(database.get_db)):
-    product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not product:
+    # Використовуємо сервіс, який ми вже написали для безпечного видалення
+    success = ProductService.delete_product(db, product_id)
+    
+    if not success:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    db.query(models.ProductVariant).filter(models.ProductVariant.product_id == product_id).delete()
-    db.query(models.ProductModifierGroup).filter(models.ProductModifierGroup.product_id == product_id).delete()
-    db.query(models.ProductConsumable).filter(models.ProductConsumable.product_id == product_id).delete()
-    db.query(models.ProductIngredient).filter(models.ProductIngredient.product_id == product_id).delete()
-    
-    db.delete(product)
-    db.commit()
-    return {"status": "deleted"}
+        
+    return {"status": "deleted", "message": f"Product {product_id} and all its components removed"}
 
 @router.post("/{product_id}/stock")
 def update_stock(product_id: int, qty: float, db: Session = Depends(database.get_db)):

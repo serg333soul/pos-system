@@ -14,6 +14,16 @@ const emit = defineEmits(['close', 'saved'])
 // Підключаємо глобальні довідники
 const { categories, recipes, ingredients, consumables, processGroups } = useWarehouse()
 
+const handleAddVariant = () => {
+    // 1. Викликаємо логіку додавання в масив
+    saveVariant();
+    
+    // 2. 🔥 ЗАКРИВАЄМО ВІКНО (цього не вистачало)
+    showVariantForm.value = false;
+    
+    console.log("✅ Варіант додано до списку, вікно закрито");
+}
+
 // Підключаємо логіку роботи з товаром
 const { 
     newProduct, 
@@ -87,14 +97,36 @@ const closeVariantForm = () => {
     showVariantForm.value = false
 }
 
-const handleSaveVariant = () => {
-    saveVariant()
-    showVariantForm.value = false
+const handleSave = async () => {
+    const success = await saveProduct();
+    if (success) {
+        // ТУТ МИ ВИРІШУЄМО: закрити вікно чи залишити
+        // Якщо закриваємо, викликаємо emit('close')
+        // І ТІЛЬКИ ПРИ ЗАКРИТТІ викликаємо resetForm()
+        emit('close');
+        resetForm(); 
+    }
 }
 
 const handleSaveProduct = async () => {
-    const success = await saveProduct()
-    if(success) emit('saved')
+    // 1. Викликаємо основну логіку збереження з useProducts.js
+    const success = await saveProduct();
+    
+    // 2. Якщо сервер відповів успішно (success === true)
+    if (success) {
+        // Повідомляємо батьківський компонент, що дані оновлено
+        emit('saved');
+        
+        // 🔥 ЗАКРИВАЄМО ВІКНО
+        emit('close');
+        
+        // Очищуємо глобальний стан товару для наступного використання
+        resetForm(); 
+        
+        console.log("✅ Товар збережено, форма закрита та очищена");
+    }
+    // Якщо success === false, вікно залишиться відкритим, 
+    // щоб користувач міг виправити помилки (наприклад, пусте ім'я).
 }
 
 const toggleProcessGroup = (id) => {
@@ -365,10 +397,13 @@ const toggleProcessGroup = (id) => {
                     Скасувати
                 </button>
                 <button 
-                    @click="handleSaveProduct" 
-                    class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-purple-200 hover:bg-purple-700 hover:shadow-xl active:scale-95 transition flex items-center gap-2"
+                    type="button"
+                    @click="handleSaveProduct"
+                    :disabled="isSaving"
+                    class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700 transition disabled:opacity-50"
                 >
-                    <i class="fas fa-save"></i> Зберегти товар
+                    <i v-if="isSaving" class="fas fa-spinner fa-spin mr-2"></i>
+                    {{ isSaving ? 'Зберігання...' : (isEditing ? 'Зберегти зміни' : 'Створити товар') }}
                 </button>
             </div>
 
@@ -496,7 +531,10 @@ const toggleProcessGroup = (id) => {
 
                     <div class="p-4 border-t bg-white flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                         <button @click="closeVariantForm" class="px-5 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Скасувати</button>
-                        <button @click="handleSaveVariant" class="px-5 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 shadow-md">
+                        <button 
+                            @click="handleAddVariant"
+                            class="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition"
+                        >
                             <i class="fas fa-check mr-1"></i> Зберегти варіант
                         </button>
                     </div>

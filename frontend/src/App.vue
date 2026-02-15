@@ -14,9 +14,11 @@ import Customers from '@/components/crm/Customers.vue'
 // --- Імпортуємо логіку (Composables) ---
 import { useProducts } from '@/composables/useProducts'
 import { useCart } from '@/composables/useCart'
+import { useWarehouse } from '@/composables/useWarehouse'
 
 // Стан навігації
 const currentPage = ref('pos')
+const { fetchWarehouseData } = useWarehouse()
 
 // --- Логіка POS (Каси) ---
 // Використовуємо useProducts для завантаження товарів на вітрину
@@ -53,9 +55,15 @@ const handleProductClick = (product) => {
 }
 
 // Завантаження даних при старті
-onMounted(() => {
+onMounted(async() => {
+
+  // 1. Спочатку завантажуємо актуальні залишки зі складу
+  await fetchWarehouseData()
+
   fetchProducts()
-  fetchCart()
+  // ВІДРАЗУ завантажуємо вміст кошика з сервера
+  // Це наповнить cartItems і активує "м'яку броню" для ProductModal
+  await fetchCart()
 })
 </script>
 

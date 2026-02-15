@@ -55,8 +55,8 @@ const displayPrice = computed(() => {
     </div>
 
     <div class="p-4">
-      <div v-if="product.category" class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-        {{ product.category.name }}
+      <div class="text-[10px] uppercase tracking-wider text-gray-400 mb-1">
+        {{ product.category?.name || 'Без категорії' }}
       </div>
       
       <h3 class="font-bold text-lg text-gray-800 leading-tight mb-2 line-clamp-2 min-h-[3.5rem]">

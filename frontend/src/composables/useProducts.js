@@ -15,6 +15,7 @@ const newProduct = ref({
 const editingId = ref(null)
 const isEditing = ref(false)
 const productSearch = ref('')
+const isSaving = ref(false); // Запобіжник
 
 // Стан редагування варіанту
 const editingVariantIndex = ref(null) 
@@ -119,29 +120,44 @@ export function useProducts() {
     }
 
     const saveProduct = async () => {
+
+        // 1. Валідація: не даємо зберегти, якщо ім'я пусте
+        if (!newProduct.value.name || newProduct.value.name.trim() === '') {
+            alert("Назва товару не може бути порожньою!");
+            return false;
+        }
+
+        if (isSaving.value) return;
+        isSaving.value = true;
+
         try {
             // Формуємо payload
             const payload = {
                 ...newProduct.value,
                 // Переконуємось, що числа є числами
-                price: parseFloat(newProduct.value.price),
-                stock_quantity: parseFloat(newProduct.value.stock_quantity),
-                output_weight: parseFloat(newProduct.value.output_weight),
+                price: parseFloat(newProduct.value.price) || 0,
+                stock_quantity: parseFloat(newProduct.value.stock_quantity) || 0,
+                output_weight: parseFloat(newProduct.value.output_weight) || 0
             }
 
-            if (isEditing.value) {
-                await axios.put(`/api/products/${editingId.value}`, payload)
+            if (isEditing.value && editingId.value) {
+                await axios.put(`/api/products/${editingId.value}`, payload);
+                // ПІСЛЯ РЕДАГУВАННЯ: не викликаємо resetForm тут, 
+                // якщо хочемо залишити вікно відкритим з даними.
             } else {
-                await axios.post('/api/products/', payload)
+                await axios.post('/api/products/', payload);
+                resetForm(); // Тільки при створенні нового можна скинути
             }
             
             await fetchProducts()
-            resetForm()
+            //resetForm()
             return true
         } catch (e) {
-            console.error("Помилка збереження товару:", e)
-            alert("Помилка збереження: " + (e.response?.data?.detail || e.message))
-            return false
+            console.error("Помилка збереження:", e);
+            alert("Помилка: " + (e.response?.data?.detail || e.message));
+            return false;
+        } finally {
+            isSaving.value = false;
         }
     }
 
@@ -152,7 +168,9 @@ export function useProducts() {
             await fetchProducts()
         } catch (e) {
             console.error(e)
-            alert("Не вдалося видалити товар")
+            // Виводимо конкретну помилку від бекенда (напр. "Товар у замовленнях")
+            const msg = e.response?.data?.detail || "Не вдалося видалити товар"
+            alert(msg)
         }
     }
 
