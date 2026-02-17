@@ -43,7 +43,7 @@ class OrderService:
                 item_name = product.name
                 details_list = []
 
-                # --- ЛОГІКА ВАРІАНТІВ ---
+                # --- ЛОГІКА ВАРІАНТІВ (ВИПРАВЛЕНО) ---
                 if item.variant_id:
                     variant = db.query(models.ProductVariant).filter(
                         models.ProductVariant.id == item.variant_id
@@ -52,39 +52,60 @@ class OrderService:
                     if not variant:
                         raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
-                    price = float(variant.price)
                     item_name = f"{product.name} ({variant.name})"
                     
-                    # 🔥 FIX: Списуємо фізичний залишок, якщо активовано track_stock АБО немає рецепта
-                    should_deduct_static = product.track_stock or not variant.master_recipe_id
+                    # 1. Фіксуємо баланс "ДО" (для історії)
+                    balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     
-                    if variant.stock_quantity is not None and should_deduct_static:
-                        current_stock = variant.stock_quantity
-                        # (перевірка на ліміт і списання)
+                    # Визначаємо, чи треба фізично віднімати цифру залишку
+                    should_deduct_physical = (variant.stock_quantity is not None) and (not variant.master_recipe_id)
+                    if should_deduct_physical:
                         variant.stock_quantity -= item.quantity
+
+                    # 3. ЛОГУВАННЯ (ЗАВЖДИ!)
+                    # Ми винесли це за межі 'if should_deduct_physical'.
+                    # Тепер історія пишеться навіть для товарів з рецептами.
+                    balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
+
+                    # 🔥 ФІКС: Логуємо ЗАВЖДИ, використовуючи правильний тип і явну зміну
+                    InventoryLogger.log(
+                        db,
+                        entity_type="product_variant", # Узгоджуємо з роутером історії [4]
+                        entity_id=variant.id,
+                        entity_name=item_name,
+                        balance_before=balance_before,
+                        balance_after=balance_after,
+                        reason=transaction_reason,
+                        force_change=-item.quantity # 🔥 Передаємо від'ємну кількість продажу
+                    )
+
+                    #if variant.stock_quantity is not None and should_deduct_static:
+                    #    current_stock = variant.stock_quantity
+                    #    # (перевірка на ліміт і списання)
+                    #    variant.stock_quantity -= item.quantity
                         # (логування InventoryLogger)
 
                     # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
                     # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    if variant.stock_quantity is not None and not variant.master_recipe_id:
-                        current_stock = variant.stock_quantity
+                    #if variant.stock_quantity is not None and not variant.master_recipe_id:
+                    #    current_stock = variant.stock_quantity
+                    #    
+                    #    if current_stock < item.quantity:
+                    #        raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
                         
-                        if current_stock < item.quantity:
-                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
-                        
-                        variant.stock_quantity = current_stock - item.quantity
-                        db.add(variant)
+                    #    variant.stock_quantity = current_stock - item.quantity
+                    #    db.add(variant)
 
                         # Логування списання варіанту
-                        InventoryLogger.log(
-                            db, 
-                            "variant", 
-                            variant.id, 
-                            item_name, 
-                            current_stock, 
-                            variant.stock_quantity, 
-                            transaction_reason
-                        )
+                    #    InventoryLogger.log(
+                    #        db, 
+                    #        "variant", 
+                    #        variant.id, 
+                    #        item_name, 
+                    #        current_stock, 
+                    #        variant.stock_quantity, 
+                    #        transaction_reason
+                    #    )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:

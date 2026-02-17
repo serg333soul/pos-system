@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 68
-Lines: 7838
-Tokens: ~83099
+Files: 70
+Lines: 8109
+Tokens: ~86167
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -257,6 +257,8 @@ order_service\schemas.py
   └── 📦 class CartItem
 product_service\database.py
   └── ƒ  def get_db
+product_service\db_audit.py
+  └── ƒ  def audit_schema
 product_service\main.py
   └── ƒ  def read_root
 product_service\models.py
@@ -321,13 +323,13 @@ product_service\routers\products.py
   └── 🌐 Router: router
   └── ƒ  def calculate_cost
   └── ƒ  def get_variant_calculated_stock
+  └── ƒ  def get_product_history
   └── ƒ  def create_product
   └── ƒ  def update_product
   └── ƒ  def read_products
   └── ƒ  def read_product
   └── ƒ  def delete_product
   └── ƒ  def update_stock
-  └── ƒ  def deduct_stock_for_order
 product_service\routers\recipes.py
   └── 🌐 Router: router
   └── ƒ  def create_recipe
@@ -440,6 +442,8 @@ product_service\tests\test_warehouse.py
     📂 product_service/
         📄 Dockerfile
         📄 database.py
+        📄 db_audit.py
+        📄 local_db_audit.txt
         📄 main.py
         📄 models.py
         📄 requirements.txt
@@ -4380,8 +4384,24 @@ const handleSave = async () => {
 }
 
 const handleSaveProduct = async () => {
-    const success = await saveProduct()
-    if(success) emit('saved')
+    // 1. Викликаємо основну логіку збереження з useProducts.js
+    const success = await saveProduct();
+    
+    // 2. Якщо сервер відповів успішно (success === true)
+    if (success) {
+        // Повідомляємо батьківський компонент, що дані оновлено
+        emit('saved');
+        
+        // 🔥 ЗАКРИВАЄМО ВІКНО
+        emit('close');
+        
+        // Очищуємо глобальний стан товару для наступного використання
+        resetForm(); 
+        
+        console.log("✅ Товар збережено, форма закрита та очищена");
+    }
+    // Якщо success === false, вікно залишиться відкритим, 
+    // щоб користувач міг виправити помилки (наприклад, пусте ім'я).
 }
 
 const toggleProcessGroup = (id) => {
@@ -4652,10 +4672,13 @@ const toggleProcessGroup = (id) => {
                     Скасувати
                 </button>
                 <button 
-                    @click="handleSaveProduct" 
-                    class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-purple-200 hover:bg-purple-700 hover:shadow-xl active:scale-95 transition flex items-center gap-2"
+                    type="button"
+                    @click="handleSaveProduct"
+                    :disabled="isSaving"
+                    class="bg-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700 transition disabled:opacity-50"
                 >
-                    <i class="fas fa-save"></i> Зберегти товар
+                    <i v-if="isSaving" class="fas fa-spinner fa-spin mr-2"></i>
+                    {{ isSaving ? 'Зберігання...' : (isEditing ? 'Зберегти зміни' : 'Створити товар') }}
                 </button>
             </div>
 
@@ -5507,7 +5530,9 @@ export function useProducts() {
             await fetchProducts()
         } catch (e) {
             console.error(e)
-            alert("Не вдалося видалити товар")
+            // Виводимо конкретну помилку від бекенда (напр. "Товар у замовленнях")
+            const msg = e.response?.data?.detail || "Не вдалося видалити товар"
+            alert(msg)
         }
     }
 
@@ -5978,6 +6003,223 @@ def get_db():
         yield db
     finally:
         db.close()
+</file>
+
+<file path="product_service\db_audit.py">
+import os
+from sqlalchemy import create_engine, inspect
+
+# Отримуємо URL бази з оточення (як у проекті)
+USER = os.getenv("POSTGRES_USER", "user")
+PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
+DB_NAME = os.getenv("POSTGRES_DB", "products_db")
+HOST = os.getenv("DB_HOST", "pos_postgres") # Для локального запуску поза Docker змініть на localhost
+
+SQLALCHEMY_DATABASE_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}/{DB_NAME}"
+
+def audit_schema():
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    inspector = inspect(engine)
+    
+    output_file = "db_schema_audit.txt"
+    
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("📊 АУДИТ СТРУКТУРИ БАЗИ ДАНИХ POS-СИСТЕМИ\n")
+        f.write("="*40 + "\n\n")
+        
+        for table_name in inspector.get_table_names():
+            f.write(f"📋 ТАБЛИЦЯ: {table_name}\n")
+            f.write("-" * 30 + "\n")
+            
+            columns = inspector.get_columns(table_name)
+            for column in columns:
+                col_name = column['name']
+                col_type = column['type']
+                nullable = "NULL" if column['nullable'] else "NOT NULL"
+                default = f" DEFAULT {column['default']}" if column.get('default') else ""
+                
+                f.write(f"  🔹 {col_name:20} | {str(col_type):15} | {nullable}{default}\n")
+            f.write("\n")
+            
+    print(f"✅ Аудит завершено! Результат записано у файл: {output_file}")
+
+if __name__ == "__main__":
+    audit_schema()
+</file>
+
+<file path="product_service\local_db_audit.txt">
+📊 АУДИТ СТРУКТУРИ БАЗИ ДАНИХ POS-СИСТЕМИ
+========================================
+
+📋 ТАБЛИЦЯ: categories
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('categories_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 slug                 | VARCHAR         | NULL
+  🔹 color                | VARCHAR         | NULL
+  🔹 parent_id            | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: inventory_transactions
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('inventory_transactions_id_seq'::regclass)
+  🔹 entity_type          | VARCHAR         | NULL
+  🔹 entity_id            | INTEGER         | NULL
+  🔹 entity_name          | VARCHAR         | NULL
+  🔹 change_amount        | DOUBLE PRECISION | NULL
+  🔹 balance_after        | DOUBLE PRECISION | NULL
+  🔹 reason               | VARCHAR         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL
+
+📋 ТАБЛИЦЯ: units
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('units_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 symbol               | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('consumables_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 unit_id              | INTEGER         | NULL
+  🔹 cost_per_unit        | DOUBLE PRECISION | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL DEFAULT now()
+
+📋 ТАБЛИЦЯ: ingredients
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('ingredients_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 unit_id              | INTEGER         | NULL
+  🔹 cost_per_unit        | DOUBLE PRECISION | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL DEFAULT now()
+
+📋 ТАБЛИЦЯ: process_groups
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('process_groups_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: process_options
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('process_options_id_seq'::regclass)
+  🔹 group_id             | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: products
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('products_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 description          | VARCHAR         | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 has_variants         | BOOLEAN         | NULL
+  🔹 price                | DOUBLE PRECISION | NULL
+  🔹 output_weight        | DOUBLE PRECISION | NULL
+  🔹 master_recipe_id     | INTEGER         | NULL
+  🔹 track_stock          | BOOLEAN         | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: master_recipes
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('master_recipes_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 description          | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: customers
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('customers_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 phone                | VARCHAR         | NULL
+  🔹 email                | VARCHAR         | NULL
+  🔹 notes                | VARCHAR         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL
+
+📋 ТАБЛИЦЯ: orders
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('orders_id_seq'::regclass)
+  🔹 created_at           | TIMESTAMP       | NULL
+  🔹 total_price          | DOUBLE PRECISION | NULL
+  🔹 payment_method       | VARCHAR         | NULL
+  🔹 customer_id          | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: product_process_groups_link
+------------------------------
+  🔹 product_id           | INTEGER         | NULL
+  🔹 process_group_id     | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: master_recipe_items
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('master_recipe_items_id_seq'::regclass)
+  🔹 recipe_id            | INTEGER         | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+  🔹 is_percentage        | BOOLEAN         | NULL
+
+📋 ТАБЛИЦЯ: product_consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_consumables_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 consumable_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_variants
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variants_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 price                | DOUBLE PRECISION | NULL
+  🔹 sku                  | VARCHAR         | NULL
+  🔹 output_weight        | DOUBLE PRECISION | NULL
+  🔹 master_recipe_id     | INTEGER         | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_modifier_groups
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_modifier_groups_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 is_required          | BOOLEAN         | NULL
+
+📋 ТАБЛИЦЯ: order_items
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('order_items_id_seq'::regclass)
+  🔹 order_id             | INTEGER         | NULL
+  🔹 product_name         | VARCHAR         | NULL
+  🔹 quantity             | INTEGER         | NULL
+  🔹 price_at_moment      | DOUBLE PRECISION | NULL
+  🔹 details              | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: product_variant_consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variant_consumables_id_seq'::regclass)
+  🔹 variant_id           | INTEGER         | NULL
+  🔹 consumable_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_variant_ingredients
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variant_ingredients_id_seq'::regclass)
+  🔹 variant_id           | INTEGER         | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: modifiers
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('modifiers_id_seq'::regclass)
+  🔹 group_id             | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 price_change         | DOUBLE PRECISION | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_ingredients
+------------------------------
+  🔹 product_id           | INTEGER         | NOT NULL
+  🔹 ingredient_id        | INTEGER         | NOT NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+
 </file>
 
 <file path="product_service\main.py">
@@ -6930,6 +7172,7 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_
 from typing import List
 import database, schemas, models
 from services.product_service import ProductService
@@ -6959,6 +7202,36 @@ def get_variant_calculated_stock(
     """
     stock = ProductService.calculate_max_possible_stock(db, variant_id)
     return {"calculated_stock": stock}
+
+# 🔥 НОВИЙ РОУТ: Розумна історія (Товар + Варіанти)
+@router.get("/{product_id}/history", response_model=List[schemas.InventoryTransactionRead])
+def get_product_history(product_id: int, db: Session = Depends(database.get_db)):
+    """
+    Отримує об'єднану історію руху коштів/товарів.
+    Якщо це простий товар - повертає його історію.
+    Якщо товар з варіантами - підтягує історію всіх його варіантів.
+    """
+    product = db.query(models.Product).options(joinedload(models.Product.variants)).filter(models.Product.id == product_id).first()
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Формуємо критерії пошуку: (Type=Product AND ID=X)
+    criteria = [
+        and_(models.InventoryTransaction.entity_type == "product", models.InventoryTransaction.entity_id == product_id)
+    ]
+
+    # Якщо є варіанти, додаємо: OR (Type=Variant AND ID in [v1, v2...])
+    if product.variants:
+        variant_ids = [v.id for v in product.variants]
+        if variant_ids:
+            criteria.append(
+                and_(models.InventoryTransaction.entity_type == "product_variant", models.InventoryTransaction.entity_id.in_(variant_ids))
+            )
+
+    # Виконуємо запит з OR
+    history = db.query(models.InventoryTransaction).filter(or_(*criteria)).order_by(models.InventoryTransaction.created_at.desc()).all()
+    return history
 
 # --- CRUD ОПЕРАЦІЇ ---
 
@@ -7060,18 +7333,13 @@ def read_product(product_id: int, db: Session = Depends(database.get_db)):
 
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(database.get_db)):
-    product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not product:
+    # Використовуємо сервіс, який ми вже написали для безпечного видалення
+    success = ProductService.delete_product(db, product_id)
+    
+    if not success:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    db.query(models.ProductVariant).filter(models.ProductVariant.product_id == product_id).delete()
-    db.query(models.ProductModifierGroup).filter(models.ProductModifierGroup.product_id == product_id).delete()
-    db.query(models.ProductConsumable).filter(models.ProductConsumable.product_id == product_id).delete()
-    db.query(models.ProductIngredient).filter(models.ProductIngredient.product_id == product_id).delete()
-    
-    db.delete(product)
-    db.commit()
-    return {"status": "deleted"}
+        
+    return {"status": "deleted", "message": f"Product {product_id} and all its components removed"}
 
 @router.post("/{product_id}/stock")
 def update_stock(product_id: int, qty: float, db: Session = Depends(database.get_db)):
@@ -7315,29 +7583,29 @@ import models
 
 class InventoryLogger:
     @staticmethod
-    def log(db: Session, entity_type: str, entity_id: int, entity_name: str, 
-            balance_before: float, balance_after: float, reason: str):
-        """
-        entity_type: 'product', 'variant', 'ingredient', 'consumable'
-        """
+    def log(db: Session, entity_type: str, entity_id: int, entity_name: str,
+            balance_before: float, balance_after: float, reason: str, 
+            force_change: float = None): # 🔥 Додаємо опціональний параметр
         try:
-            change_amount = balance_after - balance_before
-            
-            # Якщо змін немає, нічого не пишемо
-            if change_amount == 0:
+            # Якщо передано явну зміну (наприклад, продаж), використовуємо її
+            # Якщо ні - вираховуємо автоматично
+            change_amount = force_change if force_change is not None else (balance_after - balance_before)
+
+            # Тепер ми ігноруємо запис ТІЛЬКИ якщо зміна дійсно нульова 
+            # і ми не намагаємось зафіксувати продаж
+            if change_amount == 0 and force_change is None:
                 return
 
             transaction = models.InventoryTransaction(
                 entity_type=entity_type,
                 entity_id=entity_id,
                 entity_name=entity_name,
-                change_amount=change_amount,
+                change_amount=change_amount, # Запишеться напр. -2
                 balance_after=balance_after,
                 reason=reason,
                 created_at=datetime.utcnow()
             )
             db.add(transaction)
-            # Commit не робимо, бо це частина великої транзакції в OrderService
         except Exception as e:
             print(f"⚠️ Помилка логування складу: {e}")
 </file>
@@ -7388,7 +7656,7 @@ class OrderService:
                 item_name = product.name
                 details_list = []
 
-                # --- ЛОГІКА ВАРІАНТІВ ---
+                # --- ЛОГІКА ВАРІАНТІВ (ВИПРАВЛЕНО) ---
                 if item.variant_id:
                     variant = db.query(models.ProductVariant).filter(
                         models.ProductVariant.id == item.variant_id
@@ -7397,39 +7665,60 @@ class OrderService:
                     if not variant:
                         raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
-                    price = float(variant.price)
                     item_name = f"{product.name} ({variant.name})"
                     
-                    # 🔥 FIX: Списуємо фізичний залишок, якщо активовано track_stock АБО немає рецепта
-                    should_deduct_static = product.track_stock or not variant.master_recipe_id
+                    # 1. Фіксуємо баланс "ДО" (для історії)
+                    balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     
-                    if variant.stock_quantity is not None and should_deduct_static:
-                        current_stock = variant.stock_quantity
-                        # (перевірка на ліміт і списання)
+                    # Визначаємо, чи треба фізично віднімати цифру залишку
+                    should_deduct_physical = (variant.stock_quantity is not None) and (not variant.master_recipe_id)
+                    if should_deduct_physical:
                         variant.stock_quantity -= item.quantity
+
+                    # 3. ЛОГУВАННЯ (ЗАВЖДИ!)
+                    # Ми винесли це за межі 'if should_deduct_physical'.
+                    # Тепер історія пишеться навіть для товарів з рецептами.
+                    balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
+
+                    # 🔥 ФІКС: Логуємо ЗАВЖДИ, використовуючи правильний тип і явну зміну
+                    InventoryLogger.log(
+                        db,
+                        entity_type="product_variant", # Узгоджуємо з роутером історії [4]
+                        entity_id=variant.id,
+                        entity_name=item_name,
+                        balance_before=balance_before,
+                        balance_after=balance_after,
+                        reason=transaction_reason,
+                        force_change=-item.quantity # 🔥 Передаємо від'ємну кількість продажу
+                    )
+
+                    #if variant.stock_quantity is not None and should_deduct_static:
+                    #    current_stock = variant.stock_quantity
+                    #    # (перевірка на ліміт і списання)
+                    #    variant.stock_quantity -= item.quantity
                         # (логування InventoryLogger)
 
                     # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
                     # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    if variant.stock_quantity is not None and not variant.master_recipe_id:
-                        current_stock = variant.stock_quantity
+                    #if variant.stock_quantity is not None and not variant.master_recipe_id:
+                    #    current_stock = variant.stock_quantity
+                    #    
+                    #    if current_stock < item.quantity:
+                    #        raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
                         
-                        if current_stock < item.quantity:
-                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
-                        
-                        variant.stock_quantity = current_stock - item.quantity
-                        db.add(variant)
+                    #    variant.stock_quantity = current_stock - item.quantity
+                    #    db.add(variant)
 
                         # Логування списання варіанту
-                        InventoryLogger.log(
-                            db, 
-                            "variant", 
-                            variant.id, 
-                            item_name, 
-                            current_stock, 
-                            variant.stock_quantity, 
-                            transaction_reason
-                        )
+                    #    InventoryLogger.log(
+                    #        db, 
+                    #        "variant", 
+                    #        variant.id, 
+                    #        item_name, 
+                    #        current_stock, 
+                    #        variant.stock_quantity, 
+                    #        transaction_reason
+                    #    )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -7927,28 +8216,21 @@ class ProductService:
     @staticmethod
     def delete_product(db: Session, product_id: int):
         try:
-            # Завантажуємо товар (це активує cascade в models.py)
+            # Завантажуємо об'єкт товару
             product = db.query(models.Product).filter(models.Product.id == product_id).first()
             if not product:
-                raise HTTPException(status_code=404, detail="Product not found")
-            
-            # Видаляємо
+                return False
+
+            # Коли ми видаляємо ОБ'ЄКТ (а не через query.delete()), 
+            # SQLAlchemy запускає каскадне видалення варіантів, інгредієнтів тощо.
             db.delete(product)
             db.commit()
             return True
-            
-        except IntegrityError as e:
-            db.rollback()
-            # Це перехопить помилку foreign key, якщо вона все ж таки виникне
-            print(f"❌ DB Integrity Error: {e}")
-            raise HTTPException(
-                status_code=400, 
-                detail="Неможливо видалити товар. Перевірте, чи не використовується він у замовленнях."
-            )
         except Exception as e:
             db.rollback()
-            print(f"❌ General Error: {e}")
-            raise HTTPException(status_code=500, detail="Помилка сервера при видаленні")
+            print(f"❌ Помилка при видаленні товару: {e}")
+            # Якщо товар є в замовленнях, база все одно може заблокувати видалення
+            raise HTTPException(status_code=400, detail="Неможливо видалити товар, бо він фігурує в історії продажів")
 </file>
 
 <file path="product_service\tests\conftest.py">
