@@ -9,6 +9,7 @@ const consumables = ref([])
 const processGroups = ref([])
 const recipes = ref([])
 const loading = ref(false)
+const productRooms = ref([]) // <--- 2. ДОДАНО: Сховище для кімнат
 
 export function useWarehouse() {
 
@@ -37,7 +38,9 @@ export function useWarehouse() {
       safeFetch('/api/consumables/'),
       safeFetch('/api/processes/groups/'),
       safeFetch('/api/recipes/'),
-      safeFetch('/api/products/') // <--- 2. ДОДАНО: Запит на товари
+      safeFetch('/api/products/'), // <--- 2. ДОДАНО: Запит на товари
+      safeFetch('/api/product_rooms/') // <--- 3. ДОДАНО: Запит на кімнати
+
     ])
 
     // Розподіляємо результати
@@ -48,6 +51,7 @@ export function useWarehouse() {
     processGroups.value = results[4]
     recipes.value = results[5]
     products.value = results[6] // <--- 3. ДОДАНО: Збереження товарів
+    productRooms.value = results[7] // <--- 4. ДОДАНО: Збереження кімнат
 
     console.log(`✅ Дані оновлено. Товарів: ${products.value.length}`)
     
@@ -110,7 +114,7 @@ export function useWarehouse() {
 
   return {
     // Експортуємо products
-    products, categories, units, ingredients, consumables, processGroups, recipes, loading,
+    products, productRooms, categories, units, ingredients, consumables, processGroups, recipes, loading,
     // Експортуємо правильну назву функції
     fetchWarehouseData, 
     // Залишаємо стару назву як аліас про всяк випадок

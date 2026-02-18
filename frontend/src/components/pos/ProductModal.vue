@@ -52,6 +52,27 @@ watch(() => props.isOpen, (isOpen) => {
   }
 })
 
+const canAddToCart = computed(() => {
+  if (!props.product) return false;
+
+  // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
+  if (props.product.has_variants) {
+    // 1. Має бути обраний варіант
+    if (!selectedVariant.value) return false;
+    // 2. Перевіряємо залишок цього варіанту
+    return getAvailableStock(selectedVariant.value) >= 1;
+  }
+
+  // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
+  // Якщо ведемо облік (track_stock = true), перевіряємо фізичну кількість [5, 6]
+  if (props.product.track_stock) {
+    return (props.product.stock_quantity || 0) >= 1;
+  }
+
+  // Якщо облік не ведеться (track_stock = false), товар завжди доступний
+  return true;
+})
+
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
@@ -130,28 +151,31 @@ const generateName = () => {
 }
 
 const handleConfirm = () => {
-    if (!selectedVariant.value) return;
+  // Захист: якщо товар з варіантами, але нічого не обрано
+  if (props.product.has_variants && !selectedVariant.value) {
+    alert("Оберіть варіант товару");
+    return;
+  }
 
-    // 🔥 ПЕРЕВІРКА ЗАЛИШКУ ПЕРЕД ДОДАВАННЯМ
-    const available = getAvailableStock(selectedVariant.value);
+  const payload = {
+    product_id: props.product.id,
+    quantity: 1,
+    // Формуємо модифікатори [7]
+    modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
     
-    if (available < 1) {
-        alert("На жаль, цей товар щойно закінчився (або не вистачає інгредієнтів)");
-        return;
-    }
+    // Динамічні поля залежно від типу товару [8, 9]
+    variant_id: props.product.has_variants ? selectedVariant.value.id : null,
+    name: props.product.has_variants 
+            ? `${props.product.name} (${selectedVariant.value.name})` 
+            : props.product.name,
+    price: props.product.has_variants 
+            ? selectedVariant.value.price 
+            : props.product.price
+  };
 
-    const payload = {
-        product_id: props.product.id,
-        variant_id: selectedVariant.value.id,
-        name: `${props.product.name} (${selectedVariant.value.name})`,
-        price: selectedVariant.value.price,
-        quantity: 1,
-        modifiers: [] // Тут додаси вибрані модифікатори за потреби
-    };
-
-    addToCart(payload);
-    emit('close');
-};
+  addToCart(payload); // Виклик useCart.js [10]
+  emit('close');
+}
 
 </script>
 
@@ -256,7 +280,7 @@ const handleConfirm = () => {
         </div>
         <button 
             @click="handleConfirm"
-            :disabled="!selectedVariant || getAvailableStock(selectedVariant) < 1"
+            :disabled="!canAddToCart || getAvailableStock(selectedVariant) < 1"
             class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
             Додати в кошик

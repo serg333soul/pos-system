@@ -150,6 +150,15 @@ const handleSave = async () => {
                                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                                 </select>
                             </div>
+                            <div class="mb-4">
+                              <label class="block text-sm font-bold text-gray-600 mb-1">Прикріпити до кімнати (опціонально)</label>
+                              <select v-model="newProduct.room_id" class="w-full border p-2 rounded-xl bg-white">
+                                <option :value="null">-- Без кімнати (окремий товар) --</option>
+                                <option v-for="room in warehouse.productRooms.value" :key="room.id" :value="room.id">
+                                  {{ room.name }}
+                                </option>
+                              </select>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-600 mb-1">Опис</label>

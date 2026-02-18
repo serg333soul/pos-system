@@ -128,6 +128,10 @@ class Product(Base):
     track_stock = Column(Boolean, default=False)
     stock_quantity = Column(Float, default=0.0)
 
+    # 🔥 НОВЕ: Зовнішній ключ для зв'язку з кімнатою
+    room_id = Column(Integer, ForeignKey("product_rooms.id"), nullable=True)
+    room = relationship("ProductRoom", back_populates="products")
+
     category = relationship("Category")
     master_recipe = relationship("MasterRecipe")
     
@@ -158,6 +162,16 @@ class ProductVariant(Base):
     
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
+
+class ProductRoom(Base):
+    __tablename__ = "product_rooms"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # Напр: "Кава Delicate"
+    description = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    
+    # Зв'язок: одна кімната має багато товарів
+    products = relationship("Product", back_populates="room")
 
 class ProductVariantIngredient(Base):
     __tablename__ = "product_variant_ingredients"

@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 70
-Lines: 8109
-Tokens: ~86167
+Files: 73
+Lines: 8572
+Tokens: ~90930
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -130,6 +130,8 @@ httpx==0.26.0
 ================================
 frontend\src\App.vue
   └── 💾 State: currentPage
+  └── 💾 State: isRoomModalOpen
+  └── 💾 State: selectedRoom
   └── 💾 State: isCartOpen
   └── 💾 State: isModalOpen
   └── 💾 State: selectedProduct
@@ -151,6 +153,11 @@ frontend\src\components\pos\ProductModal.vue
   └── 💾 State: selectedVariant
   └── 💾 State: selectedModifiers
   └── 💾 State: selectedProcesses
+frontend\src\components\pos\ProductRoomModal.vue
+  └── 💾 State: selectedProduct
+  └── 💾 State: selectedProcess
+  └── 💾 State: selectedMaterial
+  └── 💾 State: quantity
 frontend\src\components\warehouse\Warehouse.vue
   └── 💾 State: activeTab
 frontend\src\components\warehouse\modals\HistoryModal.vue
@@ -180,6 +187,8 @@ frontend\src\components\warehouse\tabs\RecipesTab.vue
   └── 💾 State: editingRecipeId
   └── 💾 State: newRecipe
   └── 💾 State: tempRecipeItem
+frontend\src\components\warehouse\tabs\RoomsTab.vue
+  └── 💾 State: newRoom
 frontend\src\components\warehouse\tabs\StockTab.vue
   └── 💾 State: activeTab
   └── 💾 State: search
@@ -244,6 +253,7 @@ frontend\src\composables\useWarehouse.js
   └── 💾 State: processGroups
   └── 💾 State: recipes
   └── 💾 State: loading
+  └── 💾 State: productRooms
 order_service\main.py
   └── ƒ  def read_root
   └── ƒ  def get_cart
@@ -319,6 +329,15 @@ product_service\routers\processes.py
   └── ƒ  def delete_process_group
   └── ƒ  def add_process_option
   └── ƒ  def delete_process_option
+product_service\routers\product_rooms.py
+  └── 🌐 Router: router
+  └── ƒ  def create_room
+  └── ƒ  def get_rooms
+  └── ƒ  def get_room
+  └── ƒ  def update_room
+  └── ƒ  def delete_room
+  └── ƒ  def assign_product_to_room
+  └── ƒ  def remove_product_from_room
 product_service\routers\products.py
   └── 🌐 Router: router
   └── ƒ  def calculate_cost
@@ -408,6 +427,7 @@ product_service\tests\test_warehouse.py
                     📄 CartDrawer.vue
                     📄 ProductCard.vue
                     📄 ProductModal.vue
+                    📄 ProductRoomModal.vue
                 📂 stats/
                     📄 SalesTable.vue
                     📄 Statistics.vue
@@ -422,6 +442,7 @@ product_service\tests\test_warehouse.py
                         📄 ProcessesTab.vue
                         📄 ProductsTab.vue
                         📄 RecipesTab.vue
+                        📄 RoomsTab.vue
                         📄 StockTab.vue
                         📄 UnitsTab.vue
                         📂 products/
@@ -455,6 +476,7 @@ product_service\tests\test_warehouse.py
             📄 inventory.py
             📄 orders.py
             📄 processes.py
+            📄 product_rooms.py
             📄 products.py
             📄 recipes.py
         📂 services/
@@ -828,12 +850,13 @@ export default defineConfig({
 
 <file path="frontend\src\App.vue">
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 // --- Імпортуємо НОВІ компоненти ---
 import Sidebar from '@/components/common/Sidebar.vue'
 import ProductCard from '@/components/pos/ProductCard.vue'
 import CartDrawer from '@/components/pos/CartDrawer.vue'
 import ProductModal from '@/components/pos/ProductModal.vue'
+import ProductRoomModal from '@/components/pos/ProductRoomModal.vue'; // 🔥 Імпорт нової модалки [13, 14]
 
 // --- Імпортуємо великі розділи ---
 import Warehouse from '@/components/warehouse/Warehouse.vue'
@@ -847,7 +870,7 @@ import { useWarehouse } from '@/composables/useWarehouse'
 
 // Стан навігації
 const currentPage = ref('pos')
-const { fetchWarehouseData } = useWarehouse()
+const { products, productRooms, loading, fetchWarehouseData } = useWarehouse()
 
 // --- Логіка POS (Каси) ---
 // Використовуємо useProducts для завантаження товарів на вітрину
@@ -862,6 +885,49 @@ const {
   cartCount, 
   fetchCart // Щоб оновити лічильник при старті
 } = useCart()
+
+// Стан для кімнат
+const isRoomModalOpen = ref(false)
+const selectedRoom = ref(null)
+
+const handleRoomClick = (room) => {
+  selectedRoom.value = room;
+  isRoomModalOpen.value = true;
+}
+
+// Фільтрація: показуємо лише товари, які НЕ входять в жодну кімнату [15, 16]
+const independentProducts = computed(() => {
+  return products.value.filter(p => p.room_id === null);
+})
+
+// Кімнати, що підпадають під пошук
+const filteredRooms = computed(() => {
+  if (!productSearch.value) return productRooms.value;
+  const s = productSearch.value.toLowerCase();
+  return productRooms.value.filter(r => r.name.toLowerCase().includes(s));
+})
+
+// Обробка кліку
+const handleItemClick = (item, type) => {
+  if (type === 'room') {
+    selectedRoom.value = item;
+    isRoomModalOpen.value = true;
+  } else {
+    selectedProduct.value = item;
+    isModalOpen.value = true;
+  }
+}
+
+// Товари, що підпадають під пошук ТА не належать до кімнат
+const independentFilteredProducts = computed(() => {
+  // 1. Спочатку беремо товари без кімнат
+  const independent = products.value.filter(p => !p.room_id)
+  
+  // 2. Потім фільтруємо їх за пошуком
+  if (!productSearch.value) return independent;
+  const s = productSearch.value.toLowerCase();
+  return independent.filter(p => p.name.toLowerCase().includes(s));
+})
 
 // Стан для UI каси
 const isCartOpen = ref(false)
@@ -901,6 +967,7 @@ onMounted(async() => {
     <Sidebar :current-page="currentPage" @change-page="(page) => currentPage = page" />
 
     <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
+      <!-- Header залишаємо без змін, він працює добре -->
       <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200 px-8 py-4 flex justify-between items-center">
         <div>
           <h2 class="text-2xl font-bold text-gray-800">Меню</h2>
@@ -917,15 +984,37 @@ onMounted(async() => {
 
       <div class="p-8 overflow-y-auto flex-1 custom-scrollbar">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+          
+          <!-- 1. РЕНДЕРИМО КІМНАТИ (ЯК ПАПКИ) -->
+          <!-- Ми фільтруємо кімнати за пошуковим запитом назви кімнати -->
+          <div 
+            v-for="room in filteredRooms" 
+            :key="'room-' + room.id"
+            @click="handleRoomClick(room)"
+            class="cursor-pointer bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-2xl text-white shadow-lg transform hover:scale-[1.02] transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden"
+          >
+            <!-- Декор папки -->
+            <div class="absolute -right-4 -top-4 bg-white/10 w-20 h-20 rounded-full blur-2xl group-hover:bg-white/20 transition-colors"></div>
+            
+            <div class="text-5xl mb-3 drop-shadow-md">📂</div>
+            <div class="font-bold text-lg leading-tight">{{ room.name }}</div>
+            <div class="text-xs opacity-80 mt-2 bg-black/20 px-3 py-1 rounded-full">
+              {{ room.products?.length || 0 }} позицій
+            </div>
+          </div>
+
+          <!-- 2. РЕНДЕРИМО НЕЗАЛЕЖНІ ТОВАРИ -->
+          <!-- Використовуємо оновлений computed "independentFilteredProducts" -->
           <ProductCard 
-            v-for="item in filteredProducts" 
+            v-for="item in independentFilteredProducts" 
             :key="item.id" 
             :product="item" 
             @click="handleProductClick" 
           />
         </div>
         
-        <div v-if="filteredProducts.length === 0" class="text-center text-gray-400 mt-20">
+        <!-- Стан порожнього пошуку -->
+        <div v-if="independentFilteredProducts.length === 0 && filteredRooms.length === 0" class="text-center text-gray-400 mt-20">
             <i class="fas fa-mug-hot text-6xl mb-4 opacity-20"></i>
             <p>Товарів не знайдено</p>
         </div>
@@ -936,21 +1025,29 @@ onMounted(async() => {
         @close="isCartOpen = false"
       />
       
+      <!-- СТАНДАРТНА МОДАЛКА (для товарів без кімнат) -->
       <ProductModal 
+        v-if="selectedProduct"
         :is-open="isModalOpen"
         :product="selectedProduct"
         @close="isModalOpen = false"
       />
+
+      <!-- НОВА МОДАЛКА КІМНАТИ (для вибору фасувань) -->
+      <ProductRoomModal
+        v-if="selectedRoom"
+        :is-open="isRoomModalOpen"
+        :group="selectedRoom"
+        @close="isRoomModalOpen = false"
+      />
     </main>
 
     <Warehouse v-if="currentPage === 'warehouse'" />
-
     <Statistics v-if="currentPage === 'statistics'" />
-
     <Customers v-if="currentPage === 'customers'" />
-    
   </div>
 </template>
+
 </file>
 
 <file path="frontend\src\main.js">
@@ -1774,6 +1871,27 @@ watch(() => props.isOpen, (isOpen) => {
   }
 })
 
+const canAddToCart = computed(() => {
+  if (!props.product) return false;
+
+  // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
+  if (props.product.has_variants) {
+    // 1. Має бути обраний варіант
+    if (!selectedVariant.value) return false;
+    // 2. Перевіряємо залишок цього варіанту
+    return getAvailableStock(selectedVariant.value) >= 1;
+  }
+
+  // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
+  // Якщо ведемо облік (track_stock = true), перевіряємо фізичну кількість [5, 6]
+  if (props.product.track_stock) {
+    return (props.product.stock_quantity || 0) >= 1;
+  }
+
+  // Якщо облік не ведеться (track_stock = false), товар завжди доступний
+  return true;
+})
+
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
@@ -1852,28 +1970,31 @@ const generateName = () => {
 }
 
 const handleConfirm = () => {
-    if (!selectedVariant.value) return;
+  // Захист: якщо товар з варіантами, але нічого не обрано
+  if (props.product.has_variants && !selectedVariant.value) {
+    alert("Оберіть варіант товару");
+    return;
+  }
 
-    // 🔥 ПЕРЕВІРКА ЗАЛИШКУ ПЕРЕД ДОДАВАННЯМ
-    const available = getAvailableStock(selectedVariant.value);
+  const payload = {
+    product_id: props.product.id,
+    quantity: 1,
+    // Формуємо модифікатори [7]
+    modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
     
-    if (available < 1) {
-        alert("На жаль, цей товар щойно закінчився (або не вистачає інгредієнтів)");
-        return;
-    }
+    // Динамічні поля залежно від типу товару [8, 9]
+    variant_id: props.product.has_variants ? selectedVariant.value.id : null,
+    name: props.product.has_variants 
+            ? `${props.product.name} (${selectedVariant.value.name})` 
+            : props.product.name,
+    price: props.product.has_variants 
+            ? selectedVariant.value.price 
+            : props.product.price
+  };
 
-    const payload = {
-        product_id: props.product.id,
-        variant_id: selectedVariant.value.id,
-        name: `${props.product.name} (${selectedVariant.value.name})`,
-        price: selectedVariant.value.price,
-        quantity: 1,
-        modifiers: [] // Тут додаси вибрані модифікатори за потреби
-    };
-
-    addToCart(payload);
-    emit('close');
-};
+  addToCart(payload); // Виклик useCart.js [10]
+  emit('close');
+}
 
 </script>
 
@@ -1978,7 +2099,7 @@ const handleConfirm = () => {
         </div>
         <button 
             @click="handleConfirm"
-            :disabled="!selectedVariant || getAvailableStock(selectedVariant) < 1"
+            :disabled="!canAddToCart || getAvailableStock(selectedVariant) < 1"
             class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
             Додати в кошик
@@ -1996,6 +2117,175 @@ const handleConfirm = () => {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 </style>
+</file>
+
+<file path="frontend\src\components\pos\ProductRoomModal.vue">
+<script setup>
+import { ref, computed, watch } from 'vue';
+import { useCart } from '@/composables/useCart';
+
+const props = defineProps({
+  group: {
+    type: Object,
+    required: true // Об'єкт ProductRoom з вкладеним списком products [3]
+  },
+  isOpen: Boolean
+});
+
+const emit = defineEmits(['close']);
+const { addToCart } = useCart(); // [4]
+
+// Стан вибору всередині "кімнати" [5]
+const selectedProduct = ref(null);
+const selectedProcess = ref(null);
+const selectedMaterial = ref(null);
+const quantity = ref(1);
+
+// Скидання вибору при відкритті іншої кімнати
+watch(() => props.isOpen, (newVal) => {
+  if (newVal) {
+    selectedProduct.ref = null;
+    selectedProcess.value = null;
+    selectedMaterial.value = null;
+    quantity.value = 1;
+  }
+});
+
+// Розрахунок підсумкової ціни для кнопки [6]
+const totalPrice = computed(() => {
+  if (!selectedProduct.value) return 0;
+  let price = selectedProduct.value.price || 0;
+  
+  // Додаємо вартість матеріалу (якщо це передбачено бізнес-логікою)
+  if (selectedMaterial.value) {
+    // Матеріали часто мають собівартість, але тут ми можемо додати ціну продажу
+    price += selectedMaterial.value.cost_per_unit || 0; 
+  }
+  
+  return (price * quantity.value).toFixed(2);
+});
+
+// Перевірка, чи можна додати в кошик
+const canConfirm = computed(() => {
+  return selectedProduct.value !== null;
+});
+
+const handleConfirm = () => {
+  if (!selectedProduct.value) return;
+
+  // Формуємо Payload для Order Service [7]
+  const payload = {
+    product_id: selectedProduct.value.id,
+    variant_id: null, // Кімната працює з простими товарами
+    quantity: quantity.value,
+    
+    // Динамічна назва для чека: "Кава Delicate 250г (Мелена) + Пакет"
+    name: `${selectedProduct.value.name}${selectedProcess.value ? ' (' + selectedProcess.value.name + ')' : ''}${selectedMaterial.value ? ' + ' + selectedMaterial.value.name : ''}`,
+    
+    price: selectedProduct.value.price, // Базова ціна товару
+    
+    // Передаємо матеріал як модифікатор для списання зі складу [7, 8]
+    modifiers: []
+  };
+
+  if (selectedMaterial.value) {
+    payload.modifiers.push({
+      modifier_id: selectedMaterial.value.id,
+      quantity: 1
+    });
+  }
+
+  addToCart(payload); // [9]
+  emit('close');
+};
+</script>
+
+<template>
+  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      
+      <!-- Заголовок Кімнати -->
+      <div class="px-6 py-4 bg-purple-600 text-white flex justify-between items-center">
+        <h2 class="text-xl font-bold">{{ group.name }}</h2>
+        <button @click="emit('close')" class="text-2xl hover:rotate-90 transition-transform">×</button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6">
+        <!-- 1. Вибір товару (Фасування) -->
+        <section>
+          <h3 class="text-sm font-bold text-gray-400 uppercase mb-3">Оберіть фасування:</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <button 
+              v-for="p in group.products" 
+              :key="p.id"
+              @click="selectedProduct = p; selectedProcess = null; selectedMaterial = null"
+              class="p-4 rounded-2xl border-2 transition-all text-center relative"
+              :class="selectedProduct?.id === p.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-100 hover:border-gray-200'"
+            >
+              <div class="font-bold">{{ p.name }}</div>
+              <div class="text-sm opacity-70">{{ p.price }} ₴</div>
+            </button>
+          </div>
+        </section>
+
+        <!-- 2. Процеси (якщо є у вибраного товару) [10, 11] -->
+        <section v-if="selectedProduct?.process_groups?.length">
+          <h3 class="text-sm font-bold text-gray-400 uppercase mb-3">Приготування (Процес):</h3>
+          <div v-for="pg in selectedProduct.process_groups" :key="pg.id" class="mb-4">
+            <div class="flex flex-wrap gap-2">
+              <button 
+                v-for="opt in pg.options" 
+                :key="opt.id"
+                @click="selectedProcess = opt"
+                class="px-4 py-2 rounded-xl border text-sm font-medium transition-all"
+                :class="selectedProcess?.id === opt.id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 hover:bg-gray-50'"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Матеріали (Пакет тощо) [12, 13] -->
+        <section v-if="selectedProduct?.consumables?.length">
+          <h3 class="text-sm font-bold text-gray-400 uppercase mb-3">Матеріали / Упаковка:</h3>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              v-for="c in selectedProduct.consumables" 
+              :key="c.consumable_id"
+              @click="selectedMaterial = (selectedMaterial?.id === c.consumable_id ? null : {id: c.consumable_id, name: c.consumable_name})"
+              class="px-4 py-2 rounded-xl border text-sm font-medium transition-all"
+              :class="selectedMaterial?.id === c.consumable_id ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 hover:bg-gray-50'"
+            >
+              + {{ c.consumable_name }}
+            </button>
+          </div>
+        </section>
+
+        <!-- 4. Кількість -->
+        <section v-if="selectedProduct" class="flex items-center justify-between bg-gray-50 p-4 rounded-2xl">
+          <span class="font-bold">Кількість:</span>
+          <div class="flex items-center gap-4">
+            <button @click="quantity > 1 && quantity--" class="w-10 h-10 rounded-full bg-white shadow-sm border flex items-center justify-center text-xl">-</button>
+            <span class="text-xl font-bold w-8 text-center">{{ quantity }}</span>
+            <button @click="quantity++" class="w-10 h-10 rounded-full bg-white shadow-sm border flex items-center justify-center text-xl">+</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- Кнопка додавання -->
+      <div class="p-6 border-t bg-gray-50">
+        <button 
+          @click="handleConfirm"
+          :disabled="!canConfirm"
+          class="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold text-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-200"
+        >
+          Додати в кошик — {{ totalPrice }} ₴
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
 </file>
 
 <file path="frontend\src\components\stats\SalesTable.vue">
@@ -2201,7 +2491,6 @@ import { useWarehouse } from '@/composables/useWarehouse'
 
 // --- НОВИЙ ІМПОРТ ---
 const StockTab = defineAsyncComponent(() => import('./tabs/StockTab.vue'))
-
 const ProductsTab = defineAsyncComponent(() => import('./tabs/products/ProductsTab.vue'))
 const IngredientsTab = defineAsyncComponent(() => import('./tabs/IngredientsTab.vue'))
 const RecipesTab = defineAsyncComponent(() => import('./tabs/RecipesTab.vue'))
@@ -2209,6 +2498,7 @@ const ProcessesTab = defineAsyncComponent(() => import('./tabs/ProcessesTab.vue'
 const ConsumablesTab = defineAsyncComponent(() => import('./tabs/ConsumablesTab.vue'))
 const UnitsTab = defineAsyncComponent(() => import('./tabs/UnitsTab.vue'))
 const CategoriesTab = defineAsyncComponent(() => import('./tabs/CategoriesTab.vue'))
+const RoomsTab = defineAsyncComponent(() => import('./tabs/RoomsTab.vue')) // Додано для вкладки кімнат
 
 // Змінимо дефолтну вкладку на 'stock'
 const activeTab = ref('stock')
@@ -2223,7 +2513,8 @@ const tabs = {
     processes: ProcessesTab,
     consumables: ConsumablesTab,
     units: UnitsTab,
-    categories: CategoriesTab
+    categories: CategoriesTab,
+    rooms: RoomsTab // <-- Додано для вкладки кімнат
 }
 
 onMounted(() => {
@@ -2252,6 +2543,7 @@ onMounted(() => {
       
       <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці</button>
       <button @click="activeTab='categories'" :class="activeTab==='categories'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
+      <button @click="activeTab = 'rooms'" :class="activeTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">📂 Кімнати</button>
     </div>
 
     <component :is="tabs[activeTab]" />
@@ -3575,6 +3867,58 @@ const handleDelete = (id) => deleteItem(`/api/recipes/${id}`)
 </template>
 </file>
 
+<file path="frontend\src\components\warehouse\tabs\RoomsTab.vue">
+<script setup>
+import { ref } from 'vue';
+import { useWarehouse } from '@/composables/useWarehouse';
+
+const { productRooms, createItem, deleteItem } = useWarehouse();
+const newRoom = ref({ name: '', description: '' });
+
+const handleCreate = async () => {
+  if (!newRoom.value.name) return alert("Вкажіть назву кімнати");
+  const success = await createItem('/api/product_rooms/', newRoom.value);
+  if (success) newRoom.value = { name: '', description: '' };
+};
+</script>
+
+<template>
+  <div class="p-6">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+      <h3 class="text-lg font-bold mb-4">📂 Створити нову кімнату</h3>
+      <div class="flex gap-4">
+        <input v-model="newRoom.name" type="text" placeholder="Назва (напр. Кава Delicate)" class="flex-1 border p-2 rounded-xl">
+        <input v-model="newRoom.description" type="text" placeholder="Опис" class="flex-1 border p-2 rounded-xl">
+        <button @click="handleCreate" class="bg-purple-600 text-white px-6 py-2 rounded-xl font-bold">Створити</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div v-for="room in productRooms" :key="room.id" class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h4 class="font-bold text-xl text-purple-700">{{ room.name }}</h4>
+            <p class="text-gray-400 text-sm">{{ room.description }}</p>
+          </div>
+          <button @click="deleteItem(`/api/product_rooms/${room.id}`)" class="text-red-400 hover:text-red-600">Видалити</button>
+        </div>
+        
+        <div class="bg-gray-50 p-4 rounded-xl">
+          <p class="text-xs font-bold text-gray-400 uppercase mb-2">Товари в кімнаті:</p>
+          <ul v-if="room.products?.length" class="space-y-1">
+            <li v-for="p in room.products" :key="p.id" class="text-sm flex justify-between">
+              <span>{{ p.name }}</span>
+              <span class="font-bold text-gray-400">{{ p.price }} ₴</span>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-gray-300 italic">Порожньо</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+</file>
+
 <file path="frontend\src\components\warehouse\tabs\StockTab.vue">
 <script setup>
 import { ref, computed, onMounted } from 'vue'
@@ -4029,6 +4373,15 @@ const handleSave = async () => {
                                     <option :value="null">-- Без категорії --</option>
                                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                                 </select>
+                            </div>
+                            <div class="mb-4">
+                              <label class="block text-sm font-bold text-gray-600 mb-1">Прикріпити до кімнати (опціонально)</label>
+                              <select v-model="newProduct.room_id" class="w-full border p-2 rounded-xl bg-white">
+                                <option :value="null">-- Без кімнати (окремий товар) --</option>
+                                <option v-for="room in warehouse.productRooms.value" :key="room.id" :value="room.id">
+                                  {{ room.name }}
+                                </option>
+                              </select>
                             </div>
                         </div>
                         <div>
@@ -5704,6 +6057,7 @@ const consumables = ref([])
 const processGroups = ref([])
 const recipes = ref([])
 const loading = ref(false)
+const productRooms = ref([]) // <--- 2. ДОДАНО: Сховище для кімнат
 
 export function useWarehouse() {
 
@@ -5732,7 +6086,9 @@ export function useWarehouse() {
       safeFetch('/api/consumables/'),
       safeFetch('/api/processes/groups/'),
       safeFetch('/api/recipes/'),
-      safeFetch('/api/products/') // <--- 2. ДОДАНО: Запит на товари
+      safeFetch('/api/products/'), // <--- 2. ДОДАНО: Запит на товари
+      safeFetch('/api/product_rooms/') // <--- 3. ДОДАНО: Запит на кімнати
+
     ])
 
     // Розподіляємо результати
@@ -5743,6 +6099,7 @@ export function useWarehouse() {
     processGroups.value = results[4]
     recipes.value = results[5]
     products.value = results[6] // <--- 3. ДОДАНО: Збереження товарів
+    productRooms.value = results[7] // <--- 4. ДОДАНО: Збереження кімнат
 
     console.log(`✅ Дані оновлено. Товарів: ${products.value.length}`)
     
@@ -5805,7 +6162,7 @@ export function useWarehouse() {
 
   return {
     // Експортуємо products
-    products, categories, units, ingredients, consumables, processGroups, recipes, loading,
+    products, productRooms, categories, units, ingredients, consumables, processGroups, recipes, loading,
     // Експортуємо правильну назву функції
     fetchWarehouseData, 
     // Залишаємо стару назву як аліас про всяк випадок
@@ -6237,7 +6594,8 @@ from routers import (
     recipes, 
     processes, 
     customers, 
-    orders
+    orders,
+    product_rooms
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -6263,6 +6621,7 @@ app.include_router(categories.router)
 app.include_router(recipes.router)
 app.include_router(processes.router)
 app.include_router(customers.router)
+app.include_router(product_rooms.router)
 
 @app.get("/")
 def read_root():
@@ -6404,6 +6763,10 @@ class Product(Base):
     track_stock = Column(Boolean, default=False)
     stock_quantity = Column(Float, default=0.0)
 
+    # 🔥 НОВЕ: Зовнішній ключ для зв'язку з кімнатою
+    room_id = Column(Integer, ForeignKey("product_rooms.id"), nullable=True)
+    room = relationship("ProductRoom", back_populates="products")
+
     category = relationship("Category")
     master_recipe = relationship("MasterRecipe")
     
@@ -6434,6 +6797,16 @@ class ProductVariant(Base):
     
     ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
     consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
+
+class ProductRoom(Base):
+    __tablename__ = "product_rooms"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # Напр: "Кава Delicate"
+    description = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    
+    # Зв'язок: одна кімната має багато товарів
+    products = relationship("Product", back_populates="room")
 
 class ProductVariantIngredient(Base):
     __tablename__ = "product_variant_ingredients"
@@ -6733,6 +7106,7 @@ class ProductBase(BaseModel):
     master_recipe_id: Optional[int] = None
     track_stock: bool = False
     stock_quantity: float = 0.0
+    room_id: Optional[int] = None
 
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
@@ -6821,6 +7195,20 @@ class OrderRead(BaseModel):
     items: List[OrderItemRead]
     customer: Optional[Customer] = None
     class Config: from_attributes = True
+
+class ProductRoomRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    # Список товарів у кімнаті з усіма вкладеними даними (процеси, матеріали)
+    products: List[Product] 
+
+    class Config:
+        from_attributes = True
+
+class ProductRoomCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
 </file>
 
 <file path="product_service\routers\__init__.py">
@@ -7165,6 +7553,113 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
     if not opt: raise HTTPException(status_code=404)
     db.delete(opt); db.commit()
     return {"status": "deleted"}
+</file>
+
+<file path="product_service\routers\product_rooms.py">
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import List
+import models, schemas, database
+
+router = APIRouter(
+    prefix="/product_rooms",
+    tags=["Product Rooms"]
+)
+
+# --- УПРАВЛІННЯ КІМНАТАМИ ---
+
+@router.post("/", response_model=schemas.ProductRoomRead)
+def create_room(room: schemas.ProductRoomCreate, db: Session = Depends(database.get_db)):
+    # Перевірка на унікальність назви кімнати
+    db_room = db.query(models.ProductRoom).filter(models.ProductRoom.name == room.name).first()
+    if db_room:
+        raise HTTPException(status_code=400, detail="Кімната з такою назвою вже існує")
+    
+    new_room = models.ProductRoom(**room.dict())
+    db.add(new_room)
+    db.commit()
+    db.refresh(new_room)
+    return new_room
+
+@router.get("/", response_model=List[schemas.ProductRoomRead])
+def get_rooms(db: Session = Depends(database.get_db)):
+    return db.query(models.ProductRoom).all()
+
+@router.get("/{room_id}", response_model=schemas.ProductRoomRead)
+def get_room(room_id: int, db: Session = Depends(database.get_db)):
+    room = db.query(models.ProductRoom).filter(models.ProductRoom.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Кімнату не знайдено")
+    return room
+
+@router.put("/{room_id}", response_model=schemas.ProductRoomRead)
+def update_room(room_id: int, room_update: schemas.ProductRoomCreate, db: Session = Depends(database.get_db)):
+    db_room = db.query(models.ProductRoom).filter(models.ProductRoom.id == room_id).first()
+    if not db_room:
+        raise HTTPException(status_code=404, detail="Кімнату не знайдено")
+    
+    for key, value in room_update.dict().items():
+        setattr(db_room, key, value)
+    
+    db.commit()
+    db.refresh(db_room)
+    return db_room
+
+@router.delete("/{room_id}")
+def delete_room(room_id: int, db: Session = Depends(database.get_db)):
+    db_room = db.query(models.ProductRoom).filter(models.ProductRoom.id == room_id).first()
+    if not db_room:
+        raise HTTPException(status_code=404, detail="Кімнату не знайдено")
+    
+    # Перед видаленням кімнати, очищуємо room_id у всіх прикріплених товарів
+    db.query(models.Product).filter(models.Product.room_id == room_id).update({"room_id": None})
+    
+    db.delete(db_room)
+    db.commit()
+    return {"message": "Кімнату видалено, товари відкріплено"}
+
+# --- УПРАВЛІННЯ ТОВАРАМИ В КІМНАТІ ---
+
+@router.post("/{room_id}/add-product/{product_id}")
+def assign_product_to_room(room_id: int, product_id: int, db: Session = Depends(database.get_db)):
+    # Перевірка існування кімнати
+    room = db.query(models.ProductRoom).filter(models.ProductRoom.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Кімнату не знайдено")
+    
+    # Перевірка товару
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Товар не знайдено")
+    
+    # Перевірка: товар має бути простим (без варіантів)
+    if product.has_variants:
+        raise HTTPException(status_code=400, detail="У кімнату можна додавати тільки прості товари")
+
+    # Перевірка умови (1): товар не може бути в двох кімнатах одночасно
+    if product.room_id and product.room_id != room_id:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Товар вже прикріплений до іншої кімнати (ID: {product.room_id})"
+        )
+
+    product.room_id = room_id
+    db.commit()
+    return {"message": f"Товар '{product.name}' успішно додано до кімнати '{room.name}'"}
+
+@router.delete("/{room_id}/remove-product/{product_id}")
+def remove_product_from_room(room_id: int, product_id: int, db: Session = Depends(database.get_db)):
+    product = db.query(models.Product).filter(
+        models.Product.id == product_id, 
+        models.Product.room_id == room_id
+    ).first()
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Цей товар не знайдено в даній кімнаті")
+    
+    product.room_id = None
+    db.commit()
+    return {"message": "Товар відкріплено від кімнати"}
 </file>
 
 <file path="product_service\routers\products.py">
