@@ -1,0 +1,171 @@
+📊 АУДИТ СТРУКТУРИ БАЗИ ДАНИХ POS-СИСТЕМИ
+========================================
+
+📋 ТАБЛИЦЯ: categories
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('categories_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 slug                 | VARCHAR         | NULL
+  🔹 color                | VARCHAR         | NULL
+  🔹 parent_id            | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: inventory_transactions
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('inventory_transactions_id_seq'::regclass)
+  🔹 entity_type          | VARCHAR         | NULL
+  🔹 entity_id            | INTEGER         | NULL
+  🔹 entity_name          | VARCHAR         | NULL
+  🔹 change_amount        | DOUBLE PRECISION | NULL
+  🔹 balance_after        | DOUBLE PRECISION | NULL
+  🔹 reason               | VARCHAR         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL
+
+📋 ТАБЛИЦЯ: units
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('units_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 symbol               | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('consumables_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 unit_id              | INTEGER         | NULL
+  🔹 cost_per_unit        | DOUBLE PRECISION | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL DEFAULT now()
+
+📋 ТАБЛИЦЯ: ingredients
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('ingredients_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 unit_id              | INTEGER         | NULL
+  🔹 cost_per_unit        | DOUBLE PRECISION | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL DEFAULT now()
+
+📋 ТАБЛИЦЯ: process_groups
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('process_groups_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: process_options
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('process_options_id_seq'::regclass)
+  🔹 group_id             | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: products
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('products_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 description          | VARCHAR         | NULL
+  🔹 category_id          | INTEGER         | NULL
+  🔹 has_variants         | BOOLEAN         | NULL
+  🔹 price                | DOUBLE PRECISION | NULL
+  🔹 output_weight        | DOUBLE PRECISION | NULL
+  🔹 master_recipe_id     | INTEGER         | NULL
+  🔹 track_stock          | BOOLEAN         | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: master_recipes
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('master_recipes_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 description          | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: customers
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('customers_id_seq'::regclass)
+  🔹 name                 | VARCHAR         | NULL
+  🔹 phone                | VARCHAR         | NULL
+  🔹 email                | VARCHAR         | NULL
+  🔹 notes                | VARCHAR         | NULL
+  🔹 created_at           | TIMESTAMP       | NULL
+
+📋 ТАБЛИЦЯ: orders
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('orders_id_seq'::regclass)
+  🔹 created_at           | TIMESTAMP       | NULL
+  🔹 total_price          | DOUBLE PRECISION | NULL
+  🔹 payment_method       | VARCHAR         | NULL
+  🔹 customer_id          | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: product_process_groups_link
+------------------------------
+  🔹 product_id           | INTEGER         | NULL
+  🔹 process_group_id     | INTEGER         | NULL
+
+📋 ТАБЛИЦЯ: master_recipe_items
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('master_recipe_items_id_seq'::regclass)
+  🔹 recipe_id            | INTEGER         | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+  🔹 is_percentage        | BOOLEAN         | NULL
+
+📋 ТАБЛИЦЯ: product_consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_consumables_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 consumable_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_variants
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variants_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 price                | DOUBLE PRECISION | NULL
+  🔹 sku                  | VARCHAR         | NULL
+  🔹 output_weight        | DOUBLE PRECISION | NULL
+  🔹 master_recipe_id     | INTEGER         | NULL
+  🔹 stock_quantity       | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_modifier_groups
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_modifier_groups_id_seq'::regclass)
+  🔹 product_id           | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 is_required          | BOOLEAN         | NULL
+
+📋 ТАБЛИЦЯ: order_items
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('order_items_id_seq'::regclass)
+  🔹 order_id             | INTEGER         | NULL
+  🔹 product_name         | VARCHAR         | NULL
+  🔹 quantity             | INTEGER         | NULL
+  🔹 price_at_moment      | DOUBLE PRECISION | NULL
+  🔹 details              | VARCHAR         | NULL
+
+📋 ТАБЛИЦЯ: product_variant_consumables
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variant_consumables_id_seq'::regclass)
+  🔹 variant_id           | INTEGER         | NULL
+  🔹 consumable_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_variant_ingredients
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('product_variant_ingredients_id_seq'::regclass)
+  🔹 variant_id           | INTEGER         | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: modifiers
+------------------------------
+  🔹 id                   | INTEGER         | NOT NULL DEFAULT nextval('modifiers_id_seq'::regclass)
+  🔹 group_id             | INTEGER         | NULL
+  🔹 name                 | VARCHAR         | NULL
+  🔹 price_change         | DOUBLE PRECISION | NULL
+  🔹 ingredient_id        | INTEGER         | NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+
+📋 ТАБЛИЦЯ: product_ingredients
+------------------------------
+  🔹 product_id           | INTEGER         | NOT NULL
+  🔹 ingredient_id        | INTEGER         | NOT NULL
+  🔹 quantity             | DOUBLE PRECISION | NULL
+

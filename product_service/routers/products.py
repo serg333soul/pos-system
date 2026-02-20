@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_
 from typing import List
 import database, schemas, models
 from services.product_service import ProductService
@@ -31,6 +32,36 @@ def get_variant_calculated_stock(
     """
     stock = ProductService.calculate_max_possible_stock(db, variant_id)
     return {"calculated_stock": stock}
+
+# 🔥 НОВИЙ РОУТ: Розумна історія (Товар + Варіанти)
+@router.get("/{product_id}/history", response_model=List[schemas.InventoryTransactionRead])
+def get_product_history(product_id: int, db: Session = Depends(database.get_db)):
+    """
+    Отримує об'єднану історію руху коштів/товарів.
+    Якщо це простий товар - повертає його історію.
+    Якщо товар з варіантами - підтягує історію всіх його варіантів.
+    """
+    product = db.query(models.Product).options(joinedload(models.Product.variants)).filter(models.Product.id == product_id).first()
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Формуємо критерії пошуку: (Type=Product AND ID=X)
+    criteria = [
+        and_(models.InventoryTransaction.entity_type == "product", models.InventoryTransaction.entity_id == product_id)
+    ]
+
+    # Якщо є варіанти, додаємо: OR (Type=Variant AND ID in [v1, v2...])
+    if product.variants:
+        variant_ids = [v.id for v in product.variants]
+        if variant_ids:
+            criteria.append(
+                and_(models.InventoryTransaction.entity_type == "product_variant", models.InventoryTransaction.entity_id.in_(variant_ids))
+            )
+
+    # Виконуємо запит з OR
+    history = db.query(models.InventoryTransaction).filter(or_(*criteria)).order_by(models.InventoryTransaction.created_at.desc()).all()
+    return history
 
 # --- CRUD ОПЕРАЦІЇ ---
 

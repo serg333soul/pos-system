@@ -4,7 +4,6 @@ import { useWarehouse } from '@/composables/useWarehouse'
 
 // --- НОВИЙ ІМПОРТ ---
 const StockTab = defineAsyncComponent(() => import('./tabs/StockTab.vue'))
-
 const ProductsTab = defineAsyncComponent(() => import('./tabs/products/ProductsTab.vue'))
 const IngredientsTab = defineAsyncComponent(() => import('./tabs/IngredientsTab.vue'))
 const RecipesTab = defineAsyncComponent(() => import('./tabs/RecipesTab.vue'))
@@ -12,6 +11,7 @@ const ProcessesTab = defineAsyncComponent(() => import('./tabs/ProcessesTab.vue'
 const ConsumablesTab = defineAsyncComponent(() => import('./tabs/ConsumablesTab.vue'))
 const UnitsTab = defineAsyncComponent(() => import('./tabs/UnitsTab.vue'))
 const CategoriesTab = defineAsyncComponent(() => import('./tabs/CategoriesTab.vue'))
+const RoomsTab = defineAsyncComponent(() => import('./tabs/RoomsTab.vue')) // Додано для вкладки кімнат
 
 // Змінимо дефолтну вкладку на 'stock'
 const activeTab = ref('stock')
@@ -26,7 +26,8 @@ const tabs = {
     processes: ProcessesTab,
     consumables: ConsumablesTab,
     units: UnitsTab,
-    categories: CategoriesTab
+    categories: CategoriesTab,
+    rooms: RoomsTab // <-- Додано для вкладки кімнат
 }
 
 onMounted(() => {
@@ -55,6 +56,7 @@ onMounted(() => {
       
       <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці</button>
       <button @click="activeTab='categories'" :class="activeTab==='categories'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
+      <button @click="activeTab = 'rooms'" :class="activeTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">📂 Кімнати</button>
     </div>
 
     <component :is="tabs[activeTab]" />

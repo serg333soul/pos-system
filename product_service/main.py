@@ -12,7 +12,8 @@ from routers import (
     recipes, 
     processes, 
     customers, 
-    orders
+    orders,
+    product_rooms
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -38,6 +39,7 @@ app.include_router(categories.router)
 app.include_router(recipes.router)
 app.include_router(processes.router)
 app.include_router(customers.router)
+app.include_router(product_rooms.router)
 
 @app.get("/")
 def read_root():

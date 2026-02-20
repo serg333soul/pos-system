@@ -197,6 +197,7 @@ class ProductBase(BaseModel):
     master_recipe_id: Optional[int] = None
     track_stock: bool = False
     stock_quantity: float = 0.0
+    room_id: Optional[int] = None
 
 class ProductCreate(ProductBase):
     variants: List[VariantCreate] = []
@@ -285,3 +286,17 @@ class OrderRead(BaseModel):
     items: List[OrderItemRead]
     customer: Optional[Customer] = None
     class Config: from_attributes = True
+
+class ProductRoomRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    # Список товарів у кімнаті з усіма вкладеними даними (процеси, матеріали)
+    products: List[Product] 
+
+    class Config:
+        from_attributes = True
+
+class ProductRoomCreate(BaseModel):
+    name: str
+    description: Optional[str] = None

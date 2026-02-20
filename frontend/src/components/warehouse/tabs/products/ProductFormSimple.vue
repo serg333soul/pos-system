@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved'])
+const warehouse = useWarehouse();
 
 // Підключаємо логіку
 const { categories, recipes, ingredients, consumables } = useWarehouse()
@@ -18,6 +19,8 @@ const {
     saveProduct, 
     removeProductConsumable
 } = useProducts()
+
+
 
 // Локальні змінні
 const tempSimpleIngredient = ref({ id: null, qty: 0 })
@@ -149,6 +152,15 @@ const handleSave = async () => {
                                     <option :value="null">-- Без категорії --</option>
                                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                                 </select>
+                            </div>
+                            <div class="mb-4">
+                              <label class="block text-sm font-bold text-gray-600 mb-1">Прикріпити до кімнати (опціонально)</label>
+                              <select v-model="newProduct.room_id" class="w-full border p-2 rounded-xl bg-white">
+                                <option :value="null">-- Без кімнати (окремий товар) --</option>
+                                <option v-for="room in warehouse.productRooms.value" :key="room.id" :value="room.id">
+                                  {{ room.name }}
+                                </option>
+                              </select>
                             </div>
                         </div>
                         <div>

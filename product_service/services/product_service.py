@@ -127,7 +127,8 @@ class ProductService:
             track_stock=product.track_stock,
             stock_quantity=product.stock_quantity,
             master_recipe_id=product.master_recipe_id,
-            output_weight=product.output_weight
+            output_weight=product.output_weight,
+            room_id=product.room_id
         )
         db.add(db_product)
         db.flush() # Отримуємо ID
@@ -230,6 +231,7 @@ class ProductService:
         db_product.stock_quantity = product_data.stock_quantity
         db_product.master_recipe_id = product_data.master_recipe_id
         db_product.output_weight = product_data.output_weight
+        db_product.room_id = product_data.room_id
 
         # 2. Оновлення зв'язків (Інгредієнти, Матеріали)
         # Видаляємо старі, додаємо нові (простий і надійний спосіб)
