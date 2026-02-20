@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 73
-Lines: 8600
-Tokens: ~91003
+Lines: 8602
+Tokens: ~91025
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -128,271 +128,443 @@ httpx==0.26.0
 
 🗺 ARCHITECTURE MAP (Key Symbols)
 ================================
+frontend\postcss.config.js
+  └── 📦 Default Export
+frontend\tailwind.config.js
+  └── 📦 Default Export
+frontend\vite.config.js
+  └── 📦 Default Export
 frontend\src\App.vue
-  └── 💾 State: currentPage
-  └── 💾 State: isRoomModalOpen
-  └── 💾 State: selectedRoom
-  └── 💾 State: isCartOpen
-  └── 💾 State: isModalOpen
-  └── 💾 State: selectedProduct
+  └── 💾 State (ref): currentPage
+  └── 💾 State (ref): isRoomModalOpen
+  └── 💾 State (ref): selectedRoom
+  └── ƒ  handleRoomClick
+  └── 💾 State (computed): independentProducts
+  └── 💾 State (computed): filteredRooms
+  └── ƒ  handleItemClick
+  └── 💾 State (computed): independentFilteredProducts
+  └── 💾 State (ref): isCartOpen
+  └── 💾 State (ref): isModalOpen
+  └── 💾 State (ref): selectedProduct
+  └── ƒ  handleProductClick
 frontend\src\components\common\IngredientSelect.vue
-  └── 💾 State: isOpen
-  └── 💾 State: searchQuery
-  └── 💾 State: containerRef
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): isOpen
+  └── 💾 State (ref): searchQuery
+  └── 💾 State (ref): containerRef
+  └── 💾 State (computed): selectedName
+  └── 💾 State (computed): filteredList
+  └── ƒ  toggleDropdown
+  └── ƒ  selectItem
+  └── ƒ  handleClickOutside
+frontend\src\components\common\Sidebar.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── ƒ  navigate
 frontend\src\components\crm\Customers.vue
-  └── 💾 State: customers
-  └── 💾 State: showModal
-  └── 💾 State: searchQuery
-  └── 💾 State: isEditing
-  └── 💾 State: editingId
-  └── 💾 State: formData
+  └── 💾 State (ref): customers
+  └── 💾 State (ref): showModal
+  └── 💾 State (ref): searchQuery
+  └── 💾 State (ref): isEditing
+  └── 💾 State (ref): editingId
+  └── 💾 State (ref): formData
+  └── ƒ  openCreateModal
+  └── ƒ  openEditModal
+  └── ƒ  closeModal
+  └── 💾 State (computed): filteredCustomers
+frontend\src\components\crm\CustomersTable.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
 frontend\src\components\pos\CartDrawer.vue
-  └── 💾 State: customerSearch
-  └── 💾 State: customerResults
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): customerSearch
+  └── 💾 State (ref): customerResults
+  └── ƒ  selectCustomerUI
+frontend\src\components\pos\ProductCard.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (computed): productIcon
+  └── 💾 State (computed): cardColor
+  └── 💾 State (computed): hasOptions
+  └── 💾 State (computed): displayPrice
 frontend\src\components\pos\ProductModal.vue
-  └── 💾 State: selectedVariant
-  └── 💾 State: selectedModifiers
-  └── 💾 State: selectedProcesses
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): selectedVariant
+  └── 💾 State (ref): selectedModifiers
+  └── 💾 State (ref): selectedProcesses
+  └── 💾 State (computed): canAddToCart
+  └── ƒ  getAvailableStock
+  └── 💾 State (computed): currentPrice
+  └── ƒ  generateName
+  └── ƒ  handleConfirm
 frontend\src\components\pos\ProductRoomModal.vue
-  └── 💾 State: selectedProduct
-  └── 💾 State: selectedProcess
-  └── 💾 State: selectedMaterial
-  └── 💾 State: quantity
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): selectedProduct
+  └── 💾 State (ref): selectedProcess
+  └── 💾 State (ref): selectedMaterial
+  └── 💾 State (ref): quantity
+  └── 💾 State (computed): totalPrice
+  └── 💾 State (computed): canConfirm
+  └── ƒ  handleConfirm
+frontend\src\components\stats\SalesTable.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── ƒ  formatDate
+frontend\src\components\stats\Statistics.vue
+  └── ƒ  formatDate
 frontend\src\components\warehouse\Warehouse.vue
-  └── 💾 State: activeTab
+  └── 💾 State (ref): activeTab
 frontend\src\components\warehouse\modals\HistoryModal.vue
-  └── 💾 State: history
-  └── 💾 State: loading
-  └── 💾 State: error
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): history
+  └── 💾 State (ref): loading
+  └── 💾 State (ref): error
+  └── ƒ  formatDate
 frontend\src\components\warehouse\tabs\CategoriesTab.vue
-  └── 💾 State: newCategory
-  └── 💾 State: isEditing
-  └── 💾 State: editingId
+  └── 💾 State (ref): newCategory
+  └── 💾 State (ref): isEditing
+  └── 💾 State (ref): editingId
+  └── ƒ  getParentName
+  └── ƒ  prepareEdit
+  └── ƒ  resetForm
 frontend\src\components\warehouse\tabs\ConsumablesTab.vue
-  └── 💾 State: categories
-  └── 💾 State: newConsumable
+  └── 💾 State (ref): categories
+  └── 💾 State (ref): newConsumable
+  └── ƒ  handleDelete
 frontend\src\components\warehouse\tabs\IngredientsTab.vue
-  └── 💾 State: categories
-  └── 💾 State: newIngredient
+  └── 💾 State (ref): categories
+  └── 💾 State (ref): newIngredient
+  └── ƒ  handleDelete
 frontend\src\components\warehouse\tabs\ProcessesTab.vue
-  └── 💾 State: newProcessGroup
+  └── 💾 State (ref): newProcessGroup
+  └── ƒ  handleDeleteGroup
+  └── ƒ  deleteProcessOption
 frontend\src\components\warehouse\tabs\ProductsTab.vue
-  └── 💾 State: showTypeModal
-  └── 💾 State: showForm
-  └── 💾 State: productType
-  └── 💾 State: serverCalculatedCost
-  └── 💾 State: tempSimpleIngredient
-  └── 💾 State: tempSimpleConsumable
+  └── 💾 State (ref): showTypeModal
+  └── 💾 State (ref): showForm
+  └── 💾 State (ref): productType
+  └── 💾 State (ref): serverCalculatedCost
+  └── 💾 State (computed): selectedRecipeBreakdown
+  └── ƒ  getLinkCost
+  └── 💾 State (ref): tempSimpleIngredient
+  └── ƒ  addSimpleIngredient
+  └── ƒ  removeSimpleIngredient
+  └── 💾 State (ref): tempSimpleConsumable
+  └── ƒ  addSimpleConsumable
+  └── ƒ  removeSimpleConsumable
+  └── ƒ  startCreate
+  └── ƒ  selectType
+  └── ƒ  closeForm
 frontend\src\components\warehouse\tabs\RecipesTab.vue
-  └── 💾 State: editingRecipeId
-  └── 💾 State: newRecipe
-  └── 💾 State: tempRecipeItem
+  └── 💾 State (ref): editingRecipeId
+  └── 💾 State (ref): newRecipe
+  └── 💾 State (ref): tempRecipeItem
+  └── 💾 State (computed): getSelectedIngredientSymbol
+  └── ƒ  editRecipe
+  └── ƒ  resetRecipeForm
+  └── ƒ  addIngredientToMaster
+  └── ƒ  removeIngredientFromMaster
+  └── ƒ  handleDelete
 frontend\src\components\warehouse\tabs\RoomsTab.vue
-  └── 💾 State: newRoom
+  └── 💾 State (ref): newRoom
 frontend\src\components\warehouse\tabs\StockTab.vue
-  └── 💾 State: activeTab
-  └── 💾 State: search
-  └── 💾 State: loading
-  └── 💾 State: editingItemKey
-  └── 💾 State: editValue
-  └── 💾 State: isHistoryOpen
-  └── 💾 State: historyItem
+  └── 💾 State (ref): activeTab
+  └── 💾 State (ref): search
+  └── 💾 State (ref): loading
+  └── 💾 State (ref): editingItemKey
+  └── 💾 State (ref): editValue
+  └── 💾 State (ref): isHistoryOpen
+  └── 💾 State (ref): historyItem
+  └── ƒ  openHistory
+  └── 💾 State (computed): filteredItems
+  └── ƒ  startEdit
 frontend\src\components\warehouse\tabs\UnitsTab.vue
-  └── 💾 State: newUnit
+  └── 💾 State (ref): newUnit
 frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue
-  └── 💾 State: tempSimpleIngredient
-  └── 💾 State: tempProductConsumable
-  └── 💾 State: serverCalculatedCost
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): tempSimpleIngredient
+  └── 💾 State (ref): tempProductConsumable
+  └── 💾 State (ref): serverCalculatedCost
+  └── 💾 State (computed): selectedRecipe
+  └── ƒ  getIngredientPrice
+  └── ƒ  getConsumablePrice
+  └── ƒ  addSimpleIngredient
+  └── ƒ  removeSimpleIngredient
+  └── ƒ  handleAddConsumable
 frontend\src\components\warehouse\tabs\products\ProductFormVariant.vue
-  └── 💾 State: activeTab
-  └── 💾 State: showVariantForm
-  └── 💾 State: tempCommonIngredient
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── ƒ  handleAddVariant
+  └── 💾 State (ref): activeTab
+  └── 💾 State (ref): showVariantForm
+  └── 💾 State (ref): tempCommonIngredient
+  └── ƒ  addCommonIngredient
+  └── ƒ  removeCommonIngredient
+  └── ƒ  openAddVariant
+  └── ƒ  handleEditVariant
+  └── ƒ  closeVariantForm
+  └── ƒ  toggleProcessGroup
 frontend\src\components\warehouse\tabs\products\ProductsTab.vue
-  └── 💾 State: showTypeModal
-  └── 💾 State: showSimpleForm
-  └── 💾 State: showVariantForm
-  └── 💾 State: isEditing
+  └── 💾 State (ref): showTypeModal
+  └── 💾 State (ref): showSimpleForm
+  └── 💾 State (ref): showVariantForm
+  └── 💾 State (ref): isEditing
+  └── ƒ  openCreateModal
+  └── ƒ  openCreateForm
+  └── ƒ  selectType
+  └── ƒ  handleEditWrapper
+  └── ƒ  closeAllForms
 frontend\src\composables\useCart.js
-  └── 💾 State: cartItems
-  └── 💾 State: isProcessing
-  └── 💾 State: paymentMethod
-  └── 💾 State: selectedCustomer
+  └── 💾 State (ref): cartItems
+  └── 💾 State (ref): isProcessing
+  └── 💾 State (ref): paymentMethod
+  └── 💾 State (ref): selectedCustomer
+  └── 💾 State (computed): totalSum
+  └── 💾 State (computed): cartCount
+  └── 💾 State (computed): reservedResources
+  └── ƒ  setCustomer
+  └── ƒ  removeCustomer
 frontend\src\composables\useCustomers.js
-  └── 💾 State: customers
-  └── 💾 State: loading
-  └── 💾 State: searchQuery
-  └── 💾 State: showModal
-  └── 💾 State: isEditing
-  └── 💾 State: editingId
-  └── 💾 State: formData
-  └── 💾 State: showHistoryModal
-  └── 💾 State: historyLoading
-  └── 💾 State: currentCustomerHistory
+  └── 💾 State (ref): customers
+  └── 💾 State (ref): loading
+  └── 💾 State (ref): searchQuery
+  └── 💾 State (ref): showModal
+  └── 💾 State (ref): isEditing
+  └── 💾 State (ref): editingId
+  └── 💾 State (ref): formData
+  └── 💾 State (ref): showHistoryModal
+  └── 💾 State (ref): historyLoading
+  └── 💾 State (ref): currentCustomerHistory
+  └── 💾 State (ref): customerOrders
+  └── ƒ  openCreateModal
+  └── ƒ  openEditModal
 frontend\src\composables\useProducts.js
-  └── 💾 State: newProduct
-  └── 💾 State: editingId
-  └── 💾 State: isEditing
-  └── 💾 State: productSearch
-  └── 💾 State: isSaving
-  └── 💾 State: editingVariantIndex
-  └── 💾 State: tempProductConsumable
-  └── 💾 State: tempVariantConsumable
-  └── 💾 State: tempVariantIngredient
-  └── 💾 State: variantBuilder
+  └── 💾 State (ref): newProduct
+  └── 💾 State (ref): editingId
+  └── 💾 State (ref): isEditing
+  └── 💾 State (ref): productSearch
+  └── 💾 State (ref): isSaving
+  └── 💾 State (ref): editingVariantIndex
+  └── 💾 State (ref): tempProductConsumable
+  └── 💾 State (ref): tempVariantConsumable
+  └── 💾 State (ref): tempVariantIngredient
+  └── 💾 State (ref): variantBuilder
+  └── 💾 State (ref): calculatedStock
+  └── ƒ  generateSKU
+  └── ƒ  resetForm
+  └── ƒ  prepareEdit
+  └── ƒ  saveVariant
 frontend\src\composables\useStatistics.js
-  └── 💾 State: orders
-  └── 💾 State: loading
-  └── 💾 State: showDetailModal
-  └── 💾 State: selectedOrder
+  └── 💾 State (ref): orders
+  └── 💾 State (ref): loading
+  └── 💾 State (ref): showDetailModal
+  └── 💾 State (ref): selectedOrder
+  └── ƒ  openDetails
+  └── ƒ  closeDetails
 frontend\src\composables\useWarehouse.js
-  └── 💾 State: products
-  └── 💾 State: categories
-  └── 💾 State: units
-  └── 💾 State: ingredients
-  └── 💾 State: consumables
-  └── 💾 State: processGroups
-  └── 💾 State: recipes
-  └── 💾 State: loading
-  └── 💾 State: productRooms
+  └── 💾 State (ref): products
+  └── 💾 State (ref): categories
+  └── 💾 State (ref): units
+  └── 💾 State (ref): ingredients
+  └── 💾 State (ref): consumables
+  └── 💾 State (ref): processGroups
+  └── 💾 State (ref): recipes
+  └── 💾 State (ref): loading
+  └── 💾 State (ref): productRooms
 order_service\main.py
-  └── ƒ  def read_root
-  └── ƒ  def get_cart
-  └── ƒ  def add_item
-  └── ƒ  def update_quantity
-  └── ƒ  def remove_item
-  └── ƒ  def clear_cart
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  read_root
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  get_cart
+  └── 🌐 Endpoint: @app.post
+  └── ƒ  add_item
+  └── 🌐 Endpoint: @app.post
+  └── ƒ  update_quantity
+  └── 🌐 Endpoint: @app.delete
+  └── ƒ  remove_item
+  └── 🌐 Endpoint: @app.delete
+  └── ƒ  clear_cart
 order_service\schemas.py
-  └── 📦 class ModifierItem
-  └── 📦 class CartItemCreate
-  └── 📦 class CartItem
+  └── 📄 Schema: ModifierItem
+  └── 📄 Schema: CartItemCreate
+  └── 📦 Class: CartItem
 product_service\database.py
-  └── ƒ  def get_db
+  └── ƒ  get_db
 product_service\db_audit.py
-  └── ƒ  def audit_schema
+  └── ƒ  audit_schema
 product_service\main.py
-  └── ƒ  def read_root
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  read_root
 product_service\models.py
-  └── 📦 class Category
-  └── 📦 class Unit
-  └── 📦 class Ingredient
-  └── 📦 class Consumable
-  └── 📦 class MasterRecipe
-  └── 📦 class MasterRecipeItem
-  └── 📦 class ProcessGroup
-  └── 📦 class ProcessOption
-  └── 📦 class ProductConsumable
-  └── 📦 class ProductIngredient
+  └── 🗄️ Model: Category
+  └── 🗄️ Model: Unit
+  └── 🗄️ Model: Ingredient
+  └── 🗄️ Model: Consumable
+  └── 🗄️ Model: MasterRecipe
+  └── 🗄️ Model: MasterRecipeItem
+  └── 🗄️ Model: ProcessGroup
+  └── 🗄️ Model: ProcessOption
+  └── 🗄️ Model: ProductConsumable
+  └── 🗄️ Model: ProductIngredient
+  └── 🗄️ Model: Product
+  └── 🗄️ Model: ProductVariant
+  └── 🗄️ Model: ProductRoom
+  └── 🗄️ Model: ProductVariantIngredient
+  └── 🗄️ Model: ProductVariantConsumable
 product_service\schemas.py
-  └── 📦 class Category
-  └── 📦 class Config from_attributes = True
-  └── 📦 class CategoryCreate
-  └── 📦 class Unit
-  └── 📦 class Config from_attributes = True
-  └── 📦 class UnitCreate
-  └── 📦 class IngredientCreate
-  └── 📦 class Ingredient
-  └── 📦 class Config from_attributes = True
-  └── 📦 class ConsumableBase
+  └── 📄 Schema: Category
+  └── 📦 Class: Config
+  └── 📄 Schema: CategoryCreate
+  └── 📄 Schema: Unit
+  └── 📦 Class: Config
+  └── 📄 Schema: UnitCreate
+  └── 📄 Schema: IngredientCreate
+  └── 📄 Schema: Ingredient
+  └── 📦 Class: Config
+  └── 📄 Schema: ConsumableBase
+  └── 🗄️ Model: ConsumableCreate
+  └── 🗄️ Model: Consumable
+  └── 📦 Class: Config
+  └── 📄 Schema: ProductIngredientLink
+  └── 📦 Class: Config
 product_service\routers\categories.py
-  └── 🌐 Router: router
-  └── ƒ  def create_category
-  └── ƒ  def read_categories
-  └── ƒ  def update_category
-  └── ƒ  def delete_category
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_category
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_categories
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_category
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_category
 product_service\routers\customers.py
-  └── 🌐 Router: router
-  └── ƒ  def create_customer
-  └── ƒ  def search_customers
-  └── ƒ  def read_customers
-  └── ƒ  def update_customer
-  └── ƒ  def delete_customer
-  └── ƒ  def read_customer_orders
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_customer
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  search_customers
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_customers
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_customer
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_customer
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_customer_orders
 product_service\routers\inventory.py
-  └── 🌐 Router: router
-  └── ƒ  def create_unit
-  └── ƒ  def read_units
-  └── ƒ  def create_ingredient
-  └── ƒ  def read_ingredients
-  └── ƒ  def update_ingredient
-  └── ƒ  def delete_ingredient
-  └── ƒ  def create_consumable
-  └── ƒ  def read_consumables
-  └── ƒ  def update_consumable
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_unit
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_units
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_ingredient
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_ingredients
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_ingredient
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_ingredient
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_consumable
+  └── 🌐 Endpoint: @router.get
 product_service\routers\orders.py
-  └── 🌐 Router: router
-  └── ƒ  def checkout
-  └── ƒ  def get_orders
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  checkout
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_orders
 product_service\routers\processes.py
-  └── 🌐 Router: router
-  └── ƒ  def create_process_group
-  └── ƒ  def read_process_groups
-  └── ƒ  def delete_process_group
-  └── ƒ  def add_process_option
-  └── ƒ  def delete_process_option
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_process_group
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_process_groups
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_process_group
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  add_process_option
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_process_option
 product_service\routers\product_rooms.py
-  └── 🌐 Router: router
-  └── ƒ  def create_room
-  └── ƒ  def get_rooms
-  └── ƒ  def get_room
-  └── ƒ  def update_room
-  └── ƒ  def delete_room
-  └── ƒ  def assign_product_to_room
-  └── ƒ  def remove_product_from_room
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_room
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_rooms
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_room
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_room
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_room
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  assign_product_to_room
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  remove_product_from_room
 product_service\routers\products.py
-  └── 🌐 Router: router
-  └── ƒ  def calculate_cost
-  └── ƒ  def get_variant_calculated_stock
-  └── ƒ  def get_product_history
-  └── ƒ  def create_product
-  └── ƒ  def update_product
-  └── ƒ  def read_products
-  └── ƒ  def read_product
-  └── ƒ  def delete_product
-  └── ƒ  def update_stock
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  calculate_cost
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_variant_calculated_stock
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_product_history
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_product
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_product
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_products
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_product
+  └── 🌐 Endpoint: @router.delete
 product_service\routers\recipes.py
-  └── 🌐 Router: router
-  └── ƒ  def create_recipe
-  └── ƒ  def read_recipes
-  └── ƒ  def update_recipe
-  └── ƒ  def delete_recipe
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_recipe
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  read_recipes
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_recipe
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_recipe
 product_service\services\inventory_logger.py
-  └── 📦 class InventoryLogger
-  └── ƒ  def log
+  └── 📦 Class: InventoryLogger
+  └── ƒ  log
 product_service\services\order_service.py
-  └── 📦 class OrderService
-  └── ƒ  def process_checkout
+  └── 📦 Class: OrderService
+  └── ƒ  process_checkout
 product_service\services\product_service.py
-  └── 📦 class ProductService
-  └── ƒ  def calculate_product_cost
-  └── ƒ  def calculate_max_possible_stock
-  └── ƒ  def create_product
-  └── ƒ  def update_product
-  └── ƒ  def delete_product
+  └── 📦 Class: ProductService
+  └── ƒ  calculate_product_cost
+  └── ƒ  calculate_max_possible_stock
+  └── ƒ  create_product
+  └── ƒ  update_product
+  └── ƒ  delete_product
 product_service\tests\conftest.py
-  └── ƒ  def db_session
-  └── ƒ  def client
-  └── ƒ  def override_get_db
+  └── ƒ  db_session
+  └── ƒ  client
+  └── ƒ  override_get_db
 product_service\tests\test_categories.py
-  └── ƒ  def test_create_category_success
-  └── ƒ  def test_create_subcategory
-  └── ƒ  def test_create_category_duplicate_slug
-  └── ƒ  def test_update_category
-  └── ƒ  def test_delete_category
+  └── ƒ  test_create_category_success
+  └── ƒ  test_create_subcategory
+  └── ƒ  test_create_category_duplicate_slug
+  └── ƒ  test_update_category
+  └── ƒ  test_delete_category
 product_service\tests\test_consumables.py
-  └── ƒ  def test_create_consumable_basic
-  └── ƒ  def test_create_consumable_with_category
-  └── ƒ  def test_update_consumable_stock
-  └── ƒ  def test_delete_consumable
+  └── ƒ  test_create_consumable_basic
+  └── ƒ  test_create_consumable_with_category
+  └── ƒ  test_update_consumable_stock
+  └── ƒ  test_delete_consumable
 product_service\tests\test_orders.py
-  └── ƒ  def setup_menu
-  └── ƒ  def test_create_order_zero_trust
-  └── ƒ  def test_order_validation_stock
+  └── ƒ  setup_menu
+  └── ƒ  test_create_order_zero_trust
+  └── ƒ  test_order_validation_stock
 product_service\tests\test_warehouse.py
-  └── ƒ  def test_create_unit
-  └── ƒ  def test_create_ingredient_simple
-  └── ƒ  def test_create_ingredient_with_category
-  └── ƒ  def test_ingredient_validation
-  └── ƒ  def test_list_ingredients
+  └── ƒ  test_create_unit
+  └── ƒ  test_create_ingredient_simple
+  └── ƒ  test_create_ingredient_with_category
+  └── ƒ  test_ingredient_validation
+  └── ƒ  test_list_ingredients
 
 🌳 PROJECT TREE
 ===============
@@ -494,7 +666,7 @@ product_service\tests\test_warehouse.py
 📦 FILE CONTENTS
 ================
 
-<file path="docker-compose.prod.yml">
+<file path="docker-compose.prod.yml" lang="yml">
 services:
   # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
   product_service:
@@ -513,7 +685,7 @@ services:
     pull_policy: always
 </file>
 
-<file path="docker-compose.yml">
+<file path="docker-compose.yml" lang="yml">
 #version: '3.8'
 
 services:
@@ -586,7 +758,7 @@ volumes:
 
 </file>
 
-<file path=".github\workflows\deploy.yml">
+<file path=".github\workflows\deploy.yml" lang="yml">
 name: CI/CD Pipeline
 
 on:
@@ -678,7 +850,7 @@ jobs:
             docker image prune -f
 </file>
 
-<file path="frontend\Dockerfile">
+<file path="frontend\Dockerfile" lang="text">
 # --- ЕТАП 1: Збірка (Build) ---
 # ВИКОРИСТОВУЄМО ВЕРСІЮ 22, бо Vite 6/7 цього вимагає
 FROM node:22-alpine AS build-stage
@@ -704,7 +876,7 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 </file>
 
-<file path="frontend\README.md">
+<file path="frontend\README.md" lang="md">
 # Vue 3 + Vite
 
 This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
@@ -713,7 +885,7 @@ Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://
 
 </file>
 
-<file path="frontend\index.html">
+<file path="frontend\index.html" lang="html">
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -730,7 +902,7 @@ Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://
 </html>
 </file>
 
-<file path="frontend\nginx.conf">
+<file path="frontend\nginx.conf" lang="conf">
 server {
     listen 80;
     server_name localhost;
@@ -762,7 +934,7 @@ server {
 }
 </file>
 
-<file path="frontend\package.json">
+<file path="frontend\package.json" lang="json">
 {
   "name": "frontend",
   "private": true,
@@ -789,7 +961,7 @@ server {
 
 </file>
 
-<file path="frontend\postcss.config.js">
+<file path="frontend\postcss.config.js" lang="js">
 export default {
   plugins: {
     tailwindcss: {}, // Ніяких собачок @tailwindcss/postcss! Просто tailwindcss.
@@ -798,7 +970,7 @@ export default {
 }
 </file>
 
-<file path="frontend\tailwind.config.js">
+<file path="frontend\tailwind.config.js" lang="js">
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -812,7 +984,7 @@ export default {
 }
 </file>
 
-<file path="frontend\vite.config.js">
+<file path="frontend\vite.config.js" lang="js">
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -848,7 +1020,7 @@ export default defineConfig({
 })
 </file>
 
-<file path="frontend\src\App.vue">
+<file path="frontend\src\App.vue" lang="vue">
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 // --- Імпортуємо НОВІ компоненти ---
@@ -1050,7 +1222,7 @@ onMounted(async() => {
 
 </file>
 
-<file path="frontend\src\main.js">
+<file path="frontend\src\main.js" lang="js">
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
@@ -1059,14 +1231,14 @@ createApp(App).mount('#app')
 
 </file>
 
-<file path="frontend\src\style.css">
+<file path="frontend\src\style.css" lang="css">
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 </file>
 
-<file path="frontend\src\components\common\IngredientSelect.vue">
+<file path="frontend\src\components\common\IngredientSelect.vue" lang="vue">
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
@@ -1177,7 +1349,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </style>
 </file>
 
-<file path="frontend\src\components\common\Sidebar.vue">
+<file path="frontend\src\components\common\Sidebar.vue" lang="vue">
 <script setup>
 import { computed } from 'vue'
 
@@ -1251,7 +1423,7 @@ const navigate = (pageId) => {
 </template>
 </file>
 
-<file path="frontend\src\components\crm\Customers.vue">
+<file path="frontend\src\components\crm\Customers.vue" lang="vue">
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
@@ -1503,7 +1675,7 @@ onMounted(fetchCustomers)
 </template>
 </file>
 
-<file path="frontend\src\components\crm\CustomersTable.vue">
+<file path="frontend\src\components\crm\CustomersTable.vue" lang="vue">
 <script setup>
 defineProps({
   customers: Array,
@@ -1564,7 +1736,7 @@ const emit = defineEmits(['edit', 'delete', 'history'])
 </template>
 </file>
 
-<file path="frontend\src\components\pos\CartDrawer.vue">
+<file path="frontend\src\components\pos\CartDrawer.vue" lang="vue">
 <script setup>
 import { ref, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
@@ -1734,7 +1906,7 @@ watch(() => props.isOpen, (val) => {
 </style>
 </file>
 
-<file path="frontend\src\components\pos\ProductCard.vue">
+<file path="frontend\src\components\pos\ProductCard.vue" lang="vue">
 <script setup>
 import { computed } from 'vue'
 
@@ -1816,7 +1988,7 @@ const displayPrice = computed(() => {
 </template>
 </file>
 
-<file path="frontend\src\components\pos\ProductModal.vue">
+<file path="frontend\src\components\pos\ProductModal.vue" lang="vue">
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
@@ -2119,7 +2291,7 @@ const handleConfirm = () => {
 </style>
 </file>
 
-<file path="frontend\src\components\pos\ProductRoomModal.vue">
+<file path="frontend\src\components\pos\ProductRoomModal.vue" lang="vue">
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useCart } from '@/composables/useCart';
@@ -2288,7 +2460,7 @@ const handleConfirm = () => {
 </template>
 </file>
 
-<file path="frontend\src\components\stats\SalesTable.vue">
+<file path="frontend\src\components\stats\SalesTable.vue" lang="vue">
 <script setup>
 defineProps({
   orders: Array,
@@ -2371,7 +2543,7 @@ const formatDate = (dateString) => {
 </template>
 </file>
 
-<file path="frontend\src\components\stats\Statistics.vue">
+<file path="frontend\src\components\stats\Statistics.vue" lang="vue">
 <script setup>
 import { onMounted } from 'vue'
 import { useStatistics } from '@/composables/useStatistics'
@@ -2484,7 +2656,7 @@ onMounted(() => fetchOrders())
 </style>
 </file>
 
-<file path="frontend\src\components\warehouse\Warehouse.vue">
+<file path="frontend\src\components\warehouse\Warehouse.vue" lang="vue">
 <script setup>
 import { ref, onMounted, defineAsyncComponent } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -2552,7 +2724,7 @@ onMounted(() => {
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\modals\HistoryModal.vue">
+<file path="frontend\src\components\warehouse\modals\HistoryModal.vue" lang="vue">
 <script setup>
 import { ref, watch } from 'vue'
 
@@ -2686,7 +2858,7 @@ watch(() => props.isOpen, (val) => {
 </style>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\CategoriesTab.vue">
+<file path="frontend\src\components\warehouse\tabs\CategoriesTab.vue" lang="vue">
 <script setup>
 import { ref } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -2857,7 +3029,7 @@ const handleDelete = async (id) => {
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\ConsumablesTab.vue">
+<file path="frontend\src\components\warehouse\tabs\ConsumablesTab.vue" lang="vue">
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -2997,7 +3169,7 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\IngredientsTab.vue">
+<file path="frontend\src\components\warehouse\tabs\IngredientsTab.vue" lang="vue">
 <script setup>
 // 👇 ДОДАНО: onMounted (це було пропущено)
 import { ref, onMounted } from 'vue'
@@ -3140,7 +3312,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\ProcessesTab.vue">
+<file path="frontend\src\components\warehouse\tabs\ProcessesTab.vue" lang="vue">
 <script setup>
 import { ref } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -3206,7 +3378,7 @@ const deleteProcessOption = (optionId) => deleteItem(`/api/processes/options/${o
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\ProductsTab.vue">
+<file path="frontend\src\components\warehouse\tabs\ProductsTab.vue" lang="vue">
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -3716,7 +3888,7 @@ onMounted(() => {
 </style>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\RecipesTab.vue">
+<file path="frontend\src\components\warehouse\tabs\RecipesTab.vue" lang="vue">
 <script setup>
 import { ref, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -3867,7 +4039,7 @@ const handleDelete = (id) => deleteItem(`/api/recipes/${id}`)
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\RoomsTab.vue">
+<file path="frontend\src\components\warehouse\tabs\RoomsTab.vue" lang="vue">
 <script setup>
 import { ref } from 'vue';
 import { useWarehouse } from '@/composables/useWarehouse';
@@ -3919,7 +4091,7 @@ const handleCreate = async () => {
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\StockTab.vue">
+<file path="frontend\src\components\warehouse\tabs\StockTab.vue" lang="vue">
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -4181,7 +4353,7 @@ onMounted(() => {
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\UnitsTab.vue">
+<file path="frontend\src\components\warehouse\tabs\UnitsTab.vue" lang="vue">
 <script setup>
 import { ref } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -4221,7 +4393,7 @@ const handleCreate = async () => {
 </template>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue">
+<file path="frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue" lang="vue">
 <script setup>
 import { ref, watch, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -4628,7 +4800,7 @@ const handleSave = async () => {
 </style>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\products\ProductFormVariant.vue">
+<file path="frontend\src\components\warehouse\tabs\products\ProductFormVariant.vue" lang="vue">
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -5189,7 +5361,7 @@ const toggleProcessGroup = (id) => {
 </style>
 </file>
 
-<file path="frontend\src\components\warehouse\tabs\products\ProductsTab.vue">
+<file path="frontend\src\components\warehouse\tabs\products\ProductsTab.vue" lang="vue">
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -5427,7 +5599,7 @@ const onSaved = async () => {
 </style>
 </file>
 
-<file path="frontend\src\composables\useCart.js">
+<file path="frontend\src\composables\useCart.js" lang="js">
 import { ref, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'; // 1. Імпортуємо склад
 
@@ -5596,7 +5768,7 @@ export function useCart() {
 }
 </file>
 
-<file path="frontend\src\composables\useCustomers.js">
+<file path="frontend\src\composables\useCustomers.js" lang="js">
 import { ref, watch } from 'vue'
 
 export function useCustomers() {
@@ -5740,7 +5912,7 @@ export function useCustomers() {
 }
 </file>
 
-<file path="frontend\src\composables\useProducts.js">
+<file path="frontend\src\composables\useProducts.js" lang="js">
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { useWarehouse } from '@/composables/useWarehouse'
@@ -6026,7 +6198,7 @@ export function useProducts() {
 }
 </file>
 
-<file path="frontend\src\composables\useStatistics.js">
+<file path="frontend\src\composables\useStatistics.js" lang="js">
 import { ref } from 'vue'
 
 export function useStatistics() {
@@ -6073,7 +6245,7 @@ export function useStatistics() {
 }
 </file>
 
-<file path="frontend\src\composables\useWarehouse.js">
+<file path="frontend\src\composables\useWarehouse.js" lang="js">
 import { ref } from 'vue'
 
 // Глобальний стан
@@ -6200,7 +6372,7 @@ export function useWarehouse() {
 }
 </file>
 
-<file path="order_service\Dockerfile">
+<file path="order_service\Dockerfile" lang="text">
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -6216,7 +6388,7 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 </file>
 
-<file path="order_service\main.py">
+<file path="order_service\main.py" lang="py">
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import redis
@@ -6313,7 +6485,7 @@ def clear_cart():
     return {"status": "cleared"}
 </file>
 
-<file path="order_service\requirements.txt">
+<file path="order_service\requirements.txt" lang="txt">
 fastapi
 uvicorn
 redis
@@ -6321,7 +6493,7 @@ pydantic
 
 </file>
 
-<file path="order_service\schemas.py">
+<file path="order_service\schemas.py" lang="py">
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -6341,7 +6513,7 @@ class CartItem(CartItemCreate):
     cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
 </file>
 
-<file path="product_service\Dockerfile">
+<file path="product_service\Dockerfile" lang="text">
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -6357,7 +6529,7 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 </file>
 
-<file path="product_service\database.py">
+<file path="product_service\database.py" lang="py">
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -6390,7 +6562,7 @@ def get_db():
         db.close()
 </file>
 
-<file path="product_service\db_audit.py">
+<file path="product_service\db_audit.py" lang="py">
 import os
 from sqlalchemy import create_engine, inspect
 
@@ -6432,7 +6604,7 @@ if __name__ == "__main__":
     audit_schema()
 </file>
 
-<file path="product_service\local_db_audit.txt">
+<file path="product_service\local_db_audit.txt" lang="txt">
 📊 АУДИТ СТРУКТУРИ БАЗИ ДАНИХ POS-СИСТЕМИ
 ========================================
 
@@ -6607,7 +6779,7 @@ if __name__ == "__main__":
 
 </file>
 
-<file path="product_service\main.py">
+<file path="product_service\main.py" lang="py">
 # FILE: product_service/main.py
 
 from fastapi import FastAPI
@@ -6660,7 +6832,7 @@ def read_root():
     }
 </file>
 
-<file path="product_service\models.py">
+<file path="product_service\models.py" lang="py">
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
 from sqlalchemy.orm import relationship, backref
 from database import Base
@@ -6924,7 +7096,7 @@ class Customer(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 </file>
 
-<file path="product_service\requirements.txt">
+<file path="product_service\requirements.txt" lang="txt">
 fastapi
 uvicorn
 sqlalchemy
@@ -6934,7 +7106,7 @@ pytest==8.0.0
 httpx==0.26.0
 </file>
 
-<file path="product_service\schemas.py">
+<file path="product_service\schemas.py" lang="py">
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
@@ -7239,11 +7411,11 @@ class ProductRoomCreate(BaseModel):
     description: Optional[str] = None
 </file>
 
-<file path="product_service\routers\__init__.py">
+<file path="product_service\routers\__init__.py" lang="py">
 
 </file>
 
-<file path="product_service\routers\categories.py">
+<file path="product_service\routers\categories.py" lang="py">
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -7308,7 +7480,7 @@ def delete_category(category_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 </file>
 
-<file path="product_service\routers\customers.py">
+<file path="product_service\routers\customers.py" lang="py">
 # FILE: product_service/routers/customers.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7359,7 +7531,7 @@ def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db
     return db.query(models.Order).filter(models.Order.customer_id == customer_id).order_by(models.Order.created_at.desc()).all()
 </file>
 
-<file path="product_service\routers\inventory.py">
+<file path="product_service\routers\inventory.py" lang="py">
 # FILE: product_service/routers/inventory.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7510,7 +7682,7 @@ def get_inventory_history(
 
 </file>
 
-<file path="product_service\routers\orders.py">
+<file path="product_service\routers\orders.py" lang="py">
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -7535,7 +7707,7 @@ def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.ge
     return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
 </file>
 
-<file path="product_service\routers\processes.py">
+<file path="product_service\routers\processes.py" lang="py">
 # FILE: product_service/routers/processes.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7583,7 +7755,7 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 </file>
 
-<file path="product_service\routers\product_rooms.py">
+<file path="product_service\routers\product_rooms.py" lang="py">
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -7690,7 +7862,7 @@ def remove_product_from_room(room_id: int, product_id: int, db: Session = Depend
     return {"message": "Товар відкріплено від кімнати"}
 </file>
 
-<file path="product_service\routers\products.py">
+<file path="product_service\routers\products.py" lang="py">
 # FILE: product_service/routers/products.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8029,7 +8201,7 @@ def deduct_stock_for_order(items: List[schemas.StockDeductionItem], db: Session 
     return {"status": "deducted"}
 </file>
 
-<file path="product_service\routers\recipes.py">
+<file path="product_service\routers\recipes.py" lang="py">
 # FILE: product_service/routers/recipes.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8095,11 +8267,11 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 </file>
 
-<file path="product_service\services\__init__.py">
+<file path="product_service\services\__init__.py" lang="py">
 
 </file>
 
-<file path="product_service\services\inventory_logger.py">
+<file path="product_service\services\inventory_logger.py" lang="py">
 from sqlalchemy.orm import Session
 from datetime import datetime
 import models
@@ -8133,7 +8305,7 @@ class InventoryLogger:
             print(f"⚠️ Помилка логування складу: {e}")
 </file>
 
-<file path="product_service\services\order_service.py">
+<file path="product_service\services\order_service.py" lang="py">
 # FILE: product_service/services/order_service.py
 
 from sqlalchemy.orm import Session
@@ -8387,7 +8559,7 @@ class OrderService:
             raise HTTPException(status_code=500, detail="Помилка обробки замовлення. Деталі в логах сервера.")
 </file>
 
-<file path="product_service\services\product_service.py">
+<file path="product_service\services\product_service.py" lang="py">
 from sqlalchemy.orm import Session
 # 🔥 1. Додаємо імпорт для обробки помилок БД
 from sqlalchemy.exc import IntegrityError
@@ -8517,7 +8689,8 @@ class ProductService:
             track_stock=product.track_stock,
             stock_quantity=product.stock_quantity,
             master_recipe_id=product.master_recipe_id,
-            output_weight=product.output_weight
+            output_weight=product.output_weight,
+            room_id=product.room_id
         )
         db.add(db_product)
         db.flush() # Отримуємо ID
@@ -8620,6 +8793,7 @@ class ProductService:
         db_product.stock_quantity = product_data.stock_quantity
         db_product.master_recipe_id = product_data.master_recipe_id
         db_product.output_weight = product_data.output_weight
+        db_product.room_id = product_data.room_id
 
         # 2. Оновлення зв'язків (Інгредієнти, Матеріали)
         # Видаляємо старі, додаємо нові (простий і надійний спосіб)
@@ -8756,7 +8930,7 @@ class ProductService:
             raise HTTPException(status_code=400, detail="Неможливо видалити товар, бо він фігурує в історії продажів")
 </file>
 
-<file path="product_service\tests\conftest.py">
+<file path="product_service\tests\conftest.py" lang="py">
 import sys
 import os
 import pytest
@@ -8826,7 +9000,7 @@ def client(db_session):
     app.dependency_overrides.clear()
 </file>
 
-<file path="product_service\tests\test_categories.py">
+<file path="product_service\tests\test_categories.py" lang="py">
 import pytest
 from sqlalchemy.exc import IntegrityError
 
@@ -8935,7 +9109,7 @@ def test_delete_category(client):
     assert cat_id not in found_ids
 </file>
 
-<file path="product_service\tests\test_consumables.py">
+<file path="product_service\tests\test_consumables.py" lang="py">
 import pytest
 
 def test_create_consumable_basic(client):
@@ -9051,7 +9225,7 @@ def test_delete_consumable(client):
     assert c_id not in ids
 </file>
 
-<file path="product_service\tests\test_orders.py">
+<file path="product_service\tests\test_orders.py" lang="py">
 import pytest
 from sqlalchemy.orm import Session
 import models  # Імпортуємо моделі напряму для налаштування меню
@@ -9203,7 +9377,7 @@ def test_order_validation_stock(client, db_session):
         assert milk.stock_quantity == -200.0
 </file>
 
-<file path="product_service\tests\test_warehouse.py">
+<file path="product_service\tests\test_warehouse.py" lang="py">
 import pytest
 
 def test_create_unit(client):

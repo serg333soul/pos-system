@@ -71,35 +71,63 @@ class ProjectPacker:
 
     def extract_symbols(self, content, file_ext):
         """
-        Дуже простий парсер для пошуку класів та функцій, 
-        щоб AI міг швидко зрозуміти структуру файлу.
+        Покращений парсер для пошуку сутностей FastAPI, SQLAlchemy, Pydantic та Vue 3.
         """
         symbols = []
-        lines = content.split('\n')
+        lines = content.splitlines()
         
         for line in lines:
-            line = line.strip()
-            # Python
-            if file_ext == '.py':
-                if line.startswith('class '):
-                    symbols.append(f"📦 {line.split('(')[0].replace(':', '')}")
-                elif line.startswith('def ') and not line.startswith('def _'): # ігноруємо приватні
-                    symbols.append(f"ƒ  {line.split('(')[0]}")
-                elif 'APIRouter' in line and '=' in line:
-                    symbols.append(f"🌐 Router: {line.split('=')[0].strip()}")
+            line_stripped = line.strip()
             
-            # JS / Vue
-            elif file_ext in ['.js', '.vue', '.ts']:
-                if line.startswith('export default class'):
-                    symbols.append(f"📦 Class: {line.split('class')[1].strip().split('{')[0]}")
-                elif line.startswith('function '):
-                    symbols.append(f"ƒ  {line.split('(')[0]}")
-                elif 'const' in line and 'ref(' in line:
-                    # Спроба знайти важливі стейти у Vue
-                    var_name = line.split('const')[1].split('=')[0].strip()
-                    symbols.append(f"💾 State: {var_name}")
+            # --- Python (FastAPI, SQLAlchemy, Pydantic) ---
+            if file_ext == '.py':
+                # Класи (з визначенням наслідування, напр. BaseModel)
+                class_match = re.match(r'^class\s+([A-Za-z0-9_]+)(?:\(([^)]+)\))?:', line_stripped)
+                if class_match:
+                    class_name = class_match.group(1)
+                    parent = class_match.group(2)
+                    if parent and 'BaseModel' in parent:
+                        symbols.append(f"📄 Schema: {class_name}")
+                    elif parent and ('Base' in parent or 'Model' in parent):
+                        symbols.append(f"🗄️ Model: {class_name}")
+                    else:
+                        symbols.append(f"📦 Class: {class_name}")
+                
+                # Роути FastAPI
+                elif re.match(r'^@(router|app)\.(get|post|put|delete|patch)', line_stripped):
+                    symbols.append(f"🌐 Endpoint: {line_stripped.split('(')[0]}")
+                
+                # Звичайні функції (ігноруємо приватні)
+                elif line_stripped.startswith('def ') and not line_stripped.startswith('def _'):
+                    symbols.append(f"ƒ  {line_stripped.split('(')[0].replace('def ', '')}")
 
-        return symbols[:10] # Не більше 10 символів на файл, щоб не засмічувати карту
+            # --- JavaScript / TypeScript / Vue 3 ---
+            elif file_ext in ['.js', '.vue', '.ts', '.jsx', '.tsx']:
+                # Компоненти та класи
+                if 'export default' in line_stripped:
+                    symbols.append("📦 Default Export")
+                
+                # Vue 3: Props та Emits
+                elif 'defineProps' in line_stripped:
+                    symbols.append("📥 Props defined")
+                elif 'defineEmits' in line_stripped:
+                    symbols.append("📤 Emits defined")
+                
+                # Vue 3: Важливі стани та обчислення
+                elif re.match(r'^(const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(ref|computed|reactive)\(', line_stripped):
+                    var_name = line_stripped.split()[1]
+                    type_match = re.search(r'(ref|computed|reactive)', line_stripped).group(1)
+                    symbols.append(f"💾 State ({type_match}): {var_name}")
+                
+                # Функції
+                elif line_stripped.startswith('function ') or 'const ' in line_stripped and '=>' in line_stripped:
+                    # Простий пошук стрілочних функцій
+                    func_match = re.match(r'const\s+([A-Za-z0-9_]+)\s*=\s*\(.*=>', line_stripped)
+                    if func_match:
+                        symbols.append(f"ƒ  {func_match.group(1)}")
+
+        # Збільшимо ліміт до 15, оскільки інформація стала більш детальною
+        return symbols[:15]
 
     def scan_directory(self):
         print(f"🚀 Scanning project in: {self.root_dir.resolve()}")
@@ -168,8 +196,10 @@ class ProjectPacker:
                     content = "\n".join(content.splitlines()[:TRUNCATE_LINES])
                     content += f"\n... (Truncated remaining {lines_count - TRUNCATE_LINES} lines) ..."
 
+                # Визначаємо мову для атрибута lang (без крапки)
+                lang = ext.replace('.', '') if ext else 'text'
                 self.file_contents.append(
-                    f"\n<file path=\"{file_path}\">\n"
+                    f"\n<file path=\"{file_path}\" lang=\"{lang}\">\n"
                     f"{content}\n"
                     f"</file>\n"
                 )
