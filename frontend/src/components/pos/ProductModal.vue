@@ -280,7 +280,7 @@ const handleConfirm = () => {
         </div>
         <button 
             @click="handleConfirm"
-            :disabled="!canAddToCart || getAvailableStock(selectedVariant) < 1"
+            :disabled="!canAddToCart"
             class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
             Додати в кошик

@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved'])
+const warehouse = useWarehouse();
 
 // Підключаємо логіку
 const { categories, recipes, ingredients, consumables } = useWarehouse()
@@ -18,6 +19,8 @@ const {
     saveProduct, 
     removeProductConsumable
 } = useProducts()
+
+
 
 // Локальні змінні
 const tempSimpleIngredient = ref({ id: null, qty: 0 })

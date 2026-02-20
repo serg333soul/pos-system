@@ -39,6 +39,23 @@ const openCreateModal = () => {
     showTypeModal.value = true
 }
 
+const openCreateForm = (type) => {
+  console.log("🛠 Відкриваємо форму типу:", type);
+  
+  // 1. Скидаємо дані в глобальному сховищі useProducts [2]
+  resetForm(); 
+  
+  // 2. ЗАКРИВАЄМО вікно вибору
+  showTypeModal.value = false;
+  
+  // 3. ВІДКРИВАЄМО потрібну форму (використовуємо nextTick для надійності Vue)
+  if (type === 'simple') {
+    showSimpleForm.value = true;
+  } else {
+    showVariantForm.value = true;
+  }
+};
+
 // 2. Обрали тип -> Відкриваємо відповідну форму
 const selectType = (type) => {
     showTypeModal.value = false // Закриваємо вибір
@@ -172,26 +189,34 @@ const onSaved = async () => {
                 <p class="text-gray-500 mb-8 text-sm">Оберіть тип товару, який ви хочете створити</p>
                 
                 <div class="grid grid-cols-2 gap-4">
-                    <button @click="selectType('simple')" class="p-6 border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition group flex flex-col items-center">
-                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">☕</div>
-                        <div class="font-bold text-gray-800">Простий</div>
-                        <div class="text-[10px] text-gray-500 mt-1 leading-tight">Фіксована ціна,<br>один рецепт</div>
-                    </button>
+                  <!-- Картка простого товару -->
+                  <div 
+                    @click="openCreateForm('simple')" 
+                    class="cursor-pointer p-6 border-2 border-gray-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition text-center"
+                  >
+                    <div class="text-4xl mb-2">☕</div>
+                    <div class="font-bold">Простий товар</div>
+                    <div class="text-xs text-gray-400">Одна ціна, один рецепт</div>
+                  </div>
 
-                    <button @click="selectType('variant')" class="p-6 border-2 border-gray-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition group flex flex-col items-center">
-                        <div class="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">👕</div>
-                        <div class="font-bold text-gray-800">З варіантами</div>
-                        <div class="text-[10px] text-gray-500 mt-1 leading-tight">Різні розміри,<br>об'єми, ціни</div>
-                    </button>
+                  <!-- Картка товару з варіантами -->
+                  <div 
+                    @click="openCreateForm('variant')" 
+                    class="cursor-pointer p-6 border-2 border-gray-100 rounded-2xl hover:border-purple-500 hover:bg-purple-50 transition text-center"
+                  >
+                    <div class="text-4xl mb-2">🎨</div>
+                    <div class="font-bold">З варіантами</div>
+                    <div class="text-xs text-gray-400">Різні об'єми або види</div>
+                  </div>
                 </div>
             </div>
         </div>
 
         <ProductFormSimple 
-            :isOpen="showSimpleForm"
-            :isEdit="isEditing"
-            @close="closeAllForms"
-            @saved="onSaved"
+          :isOpen="showSimpleForm" 
+          :isEdit="false" 
+          @close="showSimpleForm = false" 
+          @saved="fetchWarehouseData" 
         />
 
         <ProductFormVariant
