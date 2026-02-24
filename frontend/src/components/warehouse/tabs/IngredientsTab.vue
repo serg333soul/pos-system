@@ -1,5 +1,4 @@
 <script setup>
-// 👇 ДОДАНО: onMounted (це було пропущено)
 import { ref, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 
@@ -12,9 +11,9 @@ const categories = ref([])
 const newIngredient = ref({ 
     name: '', 
     unit_id: '', 
-    cost_per_unit: 0, 
-    stock_quantity: 0, 
-    category_id: null 
+     
+    category_id: null,
+    costing_method: 'wac' // 🔥 ДОДАНО: Метод обліку за замовчуванням
 })
 
 // Функція завантаження категорій з бекенду
@@ -44,7 +43,8 @@ const handleCreate = async () => {
             unit_id:'',
             cost_per_unit:0,
             stock_quantity:0,
-            category_id: null
+            category_id: null,
+            costing_method: 'wac' // 🔥 ДОДАНО: Скидання до дефолту
         }
     }
 }
@@ -54,6 +54,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
 
 <template>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
             <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3>
             
@@ -86,14 +87,31 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label>
-                        <input v-model="newIngredient.cost_per_unit" type="number" step="0.01" placeholder="0.00" class="border p-2 rounded-lg w-full">
+                    
+                    <div class="flex-1">
+                      <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Поточний залишок</label>
+                      <input 
+                        :value="0" 
+                        disabled 
+                        type="number" 
+                        class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                        placeholder="0"
+                      >
+                      <p class="text-[10px] text-orange-500 mt-1 italic">
+                        * Поповнюється тільки через "Постачання" [10]
+                      </p>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
-                        <input v-model="newIngredient.stock_quantity" type="number" step="0.01" placeholder="0" class="border p-2 rounded-lg w-full">
-                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Метод списання партій</label>
+                    <select v-model="newIngredient.costing_method" class="border p-2 rounded-lg w-full bg-white h-[42px]">
+                        <option value="wac">Середньозважена ціна (WAC)</option>
+                        <option value="fifo">По найстарішій партії (FIFO)</option>
+                    </select>
+                    <p class="text-[10px] text-gray-400 mt-1">
+                        * WAC - для молока, цукру, стаканчиків. FIFO - для кави, дорогої сировини.
+                    </p>
                 </div>
 
                 <button @click="handleCreate" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2">
@@ -102,7 +120,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 h-fit">
             <table class="w-full text-sm text-left">
                 <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
                     <tr>
@@ -115,9 +133,13 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                     <tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50">
                         <td class="p-4 font-bold text-gray-700">
                             {{ i.name }}
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="flex items-center gap-2 mt-1 flex-wrap">
                                 <span v-if="i.category" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
                                     {{ i.category.name }}
+                                </span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold" 
+                                      :class="i.costing_method === 'fifo' ? 'bg-purple-50 text-purple-600' : 'bg-green-50 text-green-600'">
+                                    {{ i.costing_method === 'fifo' ? 'FIFO' : 'WAC' }}
                                 </span>
                                 <span class="text-xs text-gray-400 font-normal">
                                     {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}
@@ -136,5 +158,6 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                 </tbody>
             </table>
         </div>
+        
     </div>
 </template>

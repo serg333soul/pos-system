@@ -28,21 +28,24 @@ class UnitCreate(BaseModel):
 
 class IngredientCreate(BaseModel):
     name: str
-    cost_per_unit: float
-    stock_quantity: float
+    #cost_per_unit: float
+    costing_method: str = "wac"
     unit_id: int
     category_id: Optional[int] = None 
 
 class Ingredient(BaseModel):
     id: int
     name: str
-    cost_per_unit: float
+    
     stock_quantity: float
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
     category_id: Optional[int] = None
     category: Optional[Category] = None
+    costing_method: str
     class Config: from_attributes = True
+    class Config:
+        extra = 'ignore' # Ігноруємо зайві поля з фронтенду (наприклад, cost_per_unit при створенні)
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
@@ -300,3 +303,35 @@ class ProductRoomRead(BaseModel):
 class ProductRoomCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+class SupplierCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class Supplier(SupplierCreate):
+    id: int
+    class Config: from_attributes = True
+
+class SupplyItemCreate(BaseModel):
+    entity_type: str
+    entity_id: int
+    quantity: float
+    cost_per_unit: float
+
+class SupplyCreate(BaseModel):
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+    items: List[SupplyItemCreate]
+
+class SupplyResponse(SupplyCreate):
+    id: int
+    total_cost: float
+    created_at: datetime
+    supplier: Optional[Supplier] = None
+    
+    class Config:
+        from_attributes = True

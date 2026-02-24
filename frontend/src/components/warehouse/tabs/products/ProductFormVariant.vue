@@ -48,6 +48,8 @@ const showVariantForm = ref(false)
 // Тимчасова змінна для Спільних Інгредієнтів (локально, щоб не ламати useProducts)
 const tempCommonIngredient = ref({ ingredient_id: "", quantity: 0 })
 
+
+
 // 🔥 Слідкуємо за відкриттям варіанту на редагування
 watch(() => variantBuilder.value, (newVal) => {
     // Якщо це редагування існуючого варіанту (є ID) і у нього є рецепт
@@ -112,6 +114,12 @@ const handleSaveProduct = async () => {
     // 1. Викликаємо основну логіку збереження з useProducts.js
     const success = await saveProduct();
     
+    // Якщо товар має варіанти, він ЗАВЖДИ повинен рахувати залишки за рецептами варіантів.
+    // Тому ми примусово ставимо track_stock у false.
+    if (newProduct.value.has_variants) {
+    newProduct.value.track_stock = false;
+    }
+
     // 2. Якщо сервер відповів успішно (success === true)
     if (success) {
         // Повідомляємо батьківський компонент, що дані оновлено
@@ -228,23 +236,7 @@ const toggleProcessGroup = (id) => {
                             </div>
                         </div>
 
-                        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
-                            <input 
-                                id="manual-track-stock"
-                                type="checkbox" 
-                                v-model="newProduct.track_stock"
-                                class="mt-1 w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
-                            >
-                            <div>
-                                <label for="manual-track-stock" class="block font-bold text-gray-800 cursor-pointer select-none">
-                                    Вести загальний облік залишків (Track Stock)
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">
-                                    Увімкніть це, якщо хочете бути впевнені, що списання працюватиме глобально.
-                                    (Зазвичай для товарів з варіантами це вимкнено, але ви можете увімкнути вручну).
-                                </p>
-                            </div>
-                        </div>
+                        
                     </div>
 
                     <div v-if="activeTab === 'variants'" class="space-y-6 animate-slide-up">

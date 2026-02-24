@@ -36,6 +36,7 @@ class Ingredient(Base):
     stock_quantity = Column(Float, default=0.0)
     unit_id = Column(Integer, ForeignKey("units.id"))
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    costing_method = Column(String, default='wac')
     
     unit = relationship("Unit")
     category = relationship("Category")
@@ -50,6 +51,7 @@ class Consumable(Base):
     
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
+    costing_method = Column(String, default='wac')
     
     category = relationship("Category")
     unit = relationship("Unit")
@@ -259,3 +261,46 @@ class Customer(Base):
     email = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- ПОСТАЧАННЯ ТА ПАРТІЇ ---
+
+class Supply(Base):
+    __tablename__ = "supplies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    total_cost = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True) # Нове поле
+    supplier_name = Column(String, nullable=True) # Залишаємо для історії (snapshot)
+    
+    items = relationship("SupplyItem", back_populates="supply", cascade="all, delete-orphan")
+    supplier = relationship("Supplier")
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True) # Твій "коментар"
+    created_at = Column(DateTime, default=datetime.utcnow)
+class SupplyItem(Base):
+    __tablename__ = "supply_items"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    supply_id = Column(Integer, ForeignKey("supplies.id"))
+    
+    entity_type = Column(String)  # 'ingredient', 'consumable', 'simple_product'
+    entity_id = Column(Integer)
+    entity_name = Column(String) 
+    
+    quantity = Column(Float)      # Скільки приїхало початково
+    remaining_quantity = Column(Float, default=0.0) # Залишок для FIFO та Manual Batch
+    
+    cost_per_unit = Column(Float) # Ціна закупівлі одиниці в ЦІЙ партії
+    total_cost = Column(Float)    # Загальна вартість рядка
+    
+    supply = relationship("Supply", back_populates="items")
+    

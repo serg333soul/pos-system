@@ -12,6 +12,7 @@ const ConsumablesTab = defineAsyncComponent(() => import('./tabs/ConsumablesTab.
 const UnitsTab = defineAsyncComponent(() => import('./tabs/UnitsTab.vue'))
 const CategoriesTab = defineAsyncComponent(() => import('./tabs/CategoriesTab.vue'))
 const RoomsTab = defineAsyncComponent(() => import('./tabs/RoomsTab.vue')) // Додано для вкладки кімнат
+const SupplyTab = defineAsyncComponent(() => import('./tabs/SupplyTab.vue'))
 
 // Змінимо дефолтну вкладку на 'stock'
 const activeTab = ref('stock')
@@ -27,7 +28,9 @@ const tabs = {
     consumables: ConsumablesTab,
     units: UnitsTab,
     categories: CategoriesTab,
-    rooms: RoomsTab // <-- Додано для вкладки кімнат
+    rooms: RoomsTab, // <-- Додано для вкладки кімнат
+    supplies: SupplyTab // <-- Додано для вкладки постачання
+
 }
 
 onMounted(() => {
@@ -45,6 +48,13 @@ onMounted(() => {
     </div>
 
     <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
+      <button 
+        @click="activeTab = 'supplies'" 
+        :class="activeTab === 'supplies' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'"
+        class="px-4 py-2 text-xs font-bold rounded-lg transition-all"
+      >
+        🚚 Постачання
+      </button>
       <button @click="activeTab='stock'" :class="activeTab==='stock'?'bg-white text-green-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-clipboard-check mr-2"></i>Залишки</button>
       
       <button @click="activeTab='recipes'" :class="activeTab==='recipes'?'bg-white text-orange-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-book-open mr-2"></i>Рецепти</button>

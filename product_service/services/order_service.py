@@ -7,6 +7,7 @@ import models
 import schemas
 import traceback
 from services.inventory_logger import InventoryLogger
+from services.inventory_service import InventoryService # 🔥 НОВЕ: Імпортуємо наш сервіс партій
 
 class OrderService:
     @staticmethod
@@ -43,7 +44,7 @@ class OrderService:
                 item_name = product.name
                 details_list = []
 
-                # --- ЛОГІКА ВАРІАНТІВ (ВИПРАВЛЕНО) ---
+                # --- ЛОГІКА ВАРІАНТІВ ---
                 if item.variant_id:
                     variant = db.query(models.ProductVariant).filter(
                         models.ProductVariant.id == item.variant_id
@@ -57,55 +58,36 @@ class OrderService:
                     # 1. Фіксуємо баланс "ДО" (для історії)
                     balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     
-                    # Визначаємо, чи треба фізично віднімати цифру залишку
+                    # Визначаємо, чи треба фізично віднімати цифру залишку самого варіанту
                     should_deduct_physical = (variant.stock_quantity is not None) and (not variant.master_recipe_id)
+                    
                     if should_deduct_physical:
+                        if variant.stock_quantity < item.quantity:
+                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку: {variant.name}")
+                        
+                        # 🔥 НОВЕ: Гібридний облік для варіанту (Manual або FIFO)
+                        # Якщо з фронтенду прийшов конкретний batch_id - списуємо з нього
+                        if getattr(item, 'batch_id', None):
+                            InventoryService.deduct_manual(db, item.batch_id, item.quantity)
+                        # Інакше перевіряємо, чи ввімкнено FIFO для цього варіанту
+                        elif getattr(variant, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
+                        
+                        # Завжди зменшуємо загальний залишок
                         variant.stock_quantity -= item.quantity
 
-                    # 3. ЛОГУВАННЯ (ЗАВЖДИ!)
-                    # Ми винесли це за межі 'if should_deduct_physical'.
-                    # Тепер історія пишеться навіть для товарів з рецептами.
+                    # 3. ЛОГУВАННЯ ВАРІАНТУ (ЗАВЖДИ!)
                     balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
-
-                    # 🔥 ФІКС: Логуємо ЗАВЖДИ, використовуючи правильний тип і явну зміну
                     InventoryLogger.log(
                         db,
-                        entity_type="product_variant", # Узгоджуємо з роутером історії [4]
+                        entity_type="product_variant",
                         entity_id=variant.id,
                         entity_name=item_name,
                         balance_before=balance_before,
                         balance_after=balance_after,
                         reason=transaction_reason,
-                        force_change=-item.quantity # 🔥 Передаємо від'ємну кількість продажу
+                        force_change=-item.quantity 
                     )
-
-                    #if variant.stock_quantity is not None and should_deduct_static:
-                    #    current_stock = variant.stock_quantity
-                    #    # (перевірка на ліміт і списання)
-                    #    variant.stock_quantity -= item.quantity
-                        # (логування InventoryLogger)
-
-                    # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
-                    # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    #if variant.stock_quantity is not None and not variant.master_recipe_id:
-                    #    current_stock = variant.stock_quantity
-                    #    
-                    #    if current_stock < item.quantity:
-                    #        raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
-                        
-                    #    variant.stock_quantity = current_stock - item.quantity
-                    #    db.add(variant)
-
-                        # Логування списання варіанту
-                    #    InventoryLogger.log(
-                    #        db, 
-                    #        "variant", 
-                    #        variant.id, 
-                    #        item_name, 
-                    #        current_stock, 
-                    #        variant.stock_quantity, 
-                    #        transaction_reason
-                    #    )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -122,6 +104,11 @@ class OrderService:
                                          deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    
+                                    # 🔥 НОВЕ: Перевірка FIFO для Інгредієнта
+                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
@@ -135,6 +122,10 @@ class OrderService:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
+                            # 🔥 НОВЕ: Перевірка FIFO для Матеріалу
+                            if getattr(cons, 'costing_method', 'wac') == 'fifo':
+                                InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
                             db.add(cons)
@@ -142,27 +133,27 @@ class OrderService:
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
-                    # 1. Списання залишку ПРОСТОГО товару (Та запис в історію!)
                     if product.track_stock:
                         current_stock = product.stock_quantity if product.stock_quantity is not None else 0.0
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
                         
+                        # 🔥 НОВЕ: Гібридний облік для простого товару
+                        if getattr(item, 'batch_id', None):
+                            InventoryService.deduct_manual(db, item.batch_id, item.quantity)
+                        elif getattr(product, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'product', product.id, item.quantity)
+
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
 
                         # Логування списання простого товару
                         InventoryLogger.log(
-                            db, 
-                            "product", 
-                            product.id, 
-                            product.name, 
-                            current_stock, 
-                            product.stock_quantity, 
-                            transaction_reason
+                            db, "product", product.id, product.name, 
+                            current_stock, product.stock_quantity, transaction_reason
                         )
 
-                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe) - Аналогічно додаємо FIFO
                     if product.master_recipe_id:
                         recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
                         if recipe:
@@ -177,6 +168,11 @@ class OrderService:
                                          deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    
+                                    # 🔥 НОВЕ: FIFO
+                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
@@ -191,6 +187,10 @@ class OrderService:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
+                        # 🔥 НОВЕ: FIFO
+                        if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
                         db.add(ing)
@@ -203,6 +203,10 @@ class OrderService:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
+                        # 🔥 НОВЕ: FIFO
+                        if getattr(cons, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
                         db.add(cons)
@@ -216,6 +220,10 @@ class OrderService:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
+                            # 🔥 НОВЕ: FIFO
+                            if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
+                                InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
+
                             if mod_ing.stock_quantity is None: mod_ing.stock_quantity = 0.0
                             mod_ing.stock_quantity -= deduction
                             db.add(mod_ing)
