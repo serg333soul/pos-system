@@ -8,6 +8,7 @@ import schemas
 import traceback
 from services.inventory_logger import InventoryLogger
 from services.inventory_service import InventoryService # 🔥 НОВЕ: Імпортуємо наш сервіс партій
+from services.product_service import ProductService
 
 class OrderService:
     @staticmethod
@@ -54,7 +55,8 @@ class OrderService:
                         raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
                     item_name = f"{product.name} ({variant.name})"
-                    
+                    price = float(variant.price) 
+
                     # 1. Фіксуємо баланс "ДО" (для історії)
                     balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     
@@ -97,23 +99,44 @@ class OrderService:
                             for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
+                                    # Розрахунок кількості списання
                                     deduction = 0
                                     if r_item.is_percentage:
-                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
+                                        deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
-                                         deduction = r_item.quantity * item.quantity
+                                        deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    # 🔥 НОВЕ: Перевірка FIFO для Інгредієнта
+                                    # Облік за методом FIFO або WAC
                                     if getattr(ing, 'costing_method', 'wac') == 'fifo':
                                         InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
+                                    # Оновлюємо фізичний залишок інгредієнта
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
+                                    # Логуємо зміну саме ІНГРЕДІЄНТА
                                     InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+
+                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
+                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
+                            # (calculated stock), який тепер доступний для цього варіанту.
+                            
+                            new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
+                            
+                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            InventoryLogger.log(
+                                db,
+                                entity_type="product_variant",
+                                entity_id=variant.id,
+                                entity_name=item_name,
+                                balance_before=balance_before, # Це значення ми взяли на початку циклу
+                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
+                                reason=transaction_reason,
+                                force_change=-item.quantity
+                            )
 
                     # 3. Списання МАТЕРІАЛІВ варіанту
                     for v_cons in variant.consumables:

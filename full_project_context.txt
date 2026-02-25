@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 78
-Lines: 9528
-Tokens: ~100129
+Lines: 9642
+Tokens: ~101759
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -292,6 +292,8 @@ frontend\src\components\warehouse\tabs\SupplyTab.vue
   └── 💾 State (ref): showSupplierModal
   └── 💾 State (ref): newSupplier
   └── 💾 State (ref): showCreateModal
+  └── 💾 State (ref): expandedSupplyId
+  └── ƒ  toggleSupplyDetails
   └── ƒ  resetForm
   └── 💾 State (ref): form
   └── ƒ  handleSupplierChange
@@ -4505,9 +4507,14 @@ const warehouse = useWarehouse(); // 🔥 Отримуємо доступ до �
 const { supplies, fetchSupplies, createSupply, isLoading, suppliers, fetchSuppliers, addSupplier } = useSupplies()
 const showSupplierModal = ref(false)
 const newSupplier = ref({ name: '', phone: '', email: '', notes: '' })
-
 // 1. Стан для відображення модального вікна
 const showCreateModal = ref(false);
+const expandedSupplyId = ref(null);
+
+const toggleSupplyDetails = (id) => {
+  // Якщо натискаємо на ту саму накладну — згортаємо, інакше — розгортаємо нову
+  expandedSupplyId.value = expandedSupplyId.value === id ? null : id;
+};
 
 // 2. Функція ініціалізації форми
 const resetForm = () => {
@@ -4706,20 +4713,74 @@ const submitSupply = async () => {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          <tr v-for="s in supplies" :key="s.id" class="hover:bg-gray-50/50 transition-colors">
-            <td class="p-4">
-              <div class="font-bold text-gray-700">#{{ s.id }}</div>
-              <div class="text-[10px] text-gray-400">{{ formatDate(s.created_at) }}</div>
-            </td>
-            <td class="p-4 font-medium">{{ s.supplier_name || '---' }}</td>
-            <td class="p-4">
-              <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">
-                {{ s.invoice_number || 'б/н' }}
-              </span>
-            </td>
-            <td class="p-4 text-gray-500">{{ s.items?.length || 0 }} од.</td>
-            <td class="p-4 text-right font-bold text-green-600">{{ s.total_cost.toFixed(2) }} ₴</td>
-          </tr>
+          <template v-for="s in supplies" :key="s.id">
+            <!-- Основний рядок (додаємо клік та вказівник курсору) -->
+            <tr 
+              @click="toggleSupplyDetails(s.id)"
+              class="hover:bg-gray-50/50 transition-colors cursor-pointer group"
+              :class="{ 'bg-blue-50/30': expandedSupplyId === s.id }"
+            >
+              <td class="p-4">
+                <div class="flex items-center gap-2">
+                  <!-- Іконка стрілочки для візуалізації -->
+                  <span class="text-[10px] transition-transform" :class="{ 'rotate-90': expandedSupplyId === s.id }">▶</span>
+                  <div>
+                    <div class="font-bold text-gray-700">#{{ s.id }}</div>
+                    <div class="text-[10px] text-gray-400">{{ formatDate(s.created_at) }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-4 font-medium">{{ s.supplier?.name || s.supplier_name || '---' }}</td>
+              <td class="p-4">
+                <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">
+                  {{ s.invoice_number || 'б/н' }}
+                </span>
+              </td>
+              <td class="p-4 text-gray-500">{{ s.items?.length || 0 }} од.</td>
+              <td class="p-4 text-right font-bold text-green-600">{{ s.total_cost.toFixed(2) }} ₴</td>
+            </tr>
+
+            <!-- РОЗГОРНУТА ІНФОРМАЦІЯ (Вміст постачання) -->
+            <tr v-if="expandedSupplyId === s.id" class="bg-gray-50/50">
+              <td colspan="5" class="p-0">
+                <div class="p-6 border-l-4 border-blue-400 ml-4 my-2">
+                  <h4 class="text-xs font-black text-gray-400 uppercase mb-3 tracking-wider">Склад накладної:</h4>
+                  
+                  <div class="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                    <table class="w-full text-xs">
+                      <thead class="bg-gray-100/50 text-gray-500 font-bold">
+                        <tr>
+                          <th class="p-2 text-left">Тип</th>
+                          <th class="p-2 text-left">Найменування</th>
+                          <th class="p-2 text-center">Кількість</th>
+                          <th class="p-2 text-right">Ціна за од.</th>
+                          <th class="p-2 text-right">Сума</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-50">
+                        <tr v-for="item in s.items" :key="item.id" class="hover:bg-gray-50/30">
+                          <td class="p-2 italic text-gray-400">
+                            {{ item.entity_name === 'ingredient' ? '🥦 Сировина' : (item.entity_name === 'consumable' ? '📦 Матеріал' : '🍹 Товар') }}
+                          </td>
+                          <td class="p-2 font-bold text-gray-700">{{ item.entity_name }}</td>
+                          <td class="p-2 text-center">{{ item.quantity }}</td>
+                          <td class="p-2 text-right text-gray-500">{{ item.cost_per_unit.toFixed(2) }} ₴</td>
+                          <td class="p-2 text-right font-bold text-gray-800">
+                            {{ (item.quantity * item.cost_per_unit).toFixed(2) }} ₴
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <!-- Нотатки накладної, якщо є -->
+                  <div v-if="s.notes" class="mt-3 text-xs text-gray-500 italic">
+                    <strong>Коментар:</strong> {{ s.notes }}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
           
           <tr v-if="supplies.length === 0 && !isLoading">
             <td colspan="5" class="p-12 text-center text-gray-400 italic">
@@ -4846,81 +4907,82 @@ const submitSupply = async () => {
         </div>
       </div>
     </div>
-
-  </div>
-
-<!-- МОДАЛЬНЕ ВІКНО: СТВОРЕННЯ ПОСТАЧАЛЬНИКА -->
-<div v-if="showSupplierModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1] flex items-center justify-center p-4">
-  <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all scale-100">
     
-    <!-- Header -->
-    <div class="p-6 border-b border-gray-100 bg-blue-50/50">
-      <h3 class="text-xl font-bold text-gray-800">🏢 Новий постачальник</h3>
-      <p class="text-xs text-gray-500">Додайте контактні дані для бази</p>
-    </div>
+    <!-- МОДАЛЬНЕ ВІКНО: СТВОРЕННЯ ПОСТАЧАЛЬНИКА -->
+    <Teleport to="body">
+      <div v-if="showSupplierModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all scale-100">
+          
+          <!-- Header -->
+          <div class="p-6 border-b border-gray-100 bg-blue-50/50">
+            <h3 class="text-xl font-bold text-gray-800">🏢 Новий постачальник</h3>
+            <p class="text-xs text-gray-500">Додайте контактні дані для бази</p>
+          </div>
 
-    <!-- Form Body -->
-    <div class="p-6 space-y-4">
-      <div>
-        <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Назва / Компанія *</label>
-        <input 
-          v-model="newSupplier.name" 
-          type="text" 
-          placeholder="Напр: ПрАТ 'Молочний Світ'" 
-          class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none transition"
-        >
-      </div>
+          <!-- Form Body -->
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Назва / Компанія *</label>
+              <input 
+                v-model="newSupplier.name" 
+                type="text" 
+                placeholder="Напр: ПрАТ 'Молочний Світ'" 
+                class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none transition"
+              >
+            </div>
 
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Телефон</label>
-          <input 
-            v-model="newSupplier.phone" 
-            type="tel" 
-            placeholder="+380..." 
-            class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
-          >
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Телефон</label>
+                <input 
+                  v-model="newSupplier.phone" 
+                  type="tel" 
+                  placeholder="+380..." 
+                  class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
+                >
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label>
+                <input 
+                  v-model="newSupplier.email" 
+                  type="email" 
+                  placeholder="office@example.com" 
+                  class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
+                >
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Коментар / Нотатки</label>
+              <textarea 
+                v-model="newSupplier.notes" 
+                rows="3" 
+                placeholder="Графік доставки, умови оплати тощо..." 
+                class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none resize-none"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Footer Buttons -->
+          <div class="p-6 border-t border-gray-100 flex gap-3 bg-gray-50/30">
+            <button 
+              @click="showSupplierModal = false" 
+              class="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition"
+            >
+              Скасувати
+            </button>
+            <button 
+              @click="saveNewSupplier"
+              class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition"
+            >
+              Створити
+            </button>
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label>
-          <input 
-            v-model="newSupplier.email" 
-            type="email" 
-            placeholder="office@example.com" 
-            class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
-          >
-        </div>
       </div>
+    </Teleport>
 
-      <div>
-        <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Коментар / Нотатки</label>
-        <textarea 
-          v-model="newSupplier.notes" 
-          rows="3" 
-          placeholder="Графік доставки, умови оплати тощо..." 
-          class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none resize-none"
-        ></textarea>
-      </div>
-    </div>
-
-    <!-- Footer Buttons -->
-    <div class="p-6 border-t border-gray-100 flex gap-3 bg-gray-50/30">
-      <button 
-        @click="showSupplierModal = false" 
-        class="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition"
-      >
-        Скасувати
-      </button>
-      <button 
-        @click="saveNewSupplier"
-        class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition"
-      >
-        Створити
-      </button>
-    </div>
   </div>
-</div>
-  
 </template>
 </file>
 
@@ -8142,6 +8204,14 @@ class SupplyItemCreate(BaseModel):
     quantity: float
     cost_per_unit: float
 
+# 🔥 НОВА СХЕМА ДЛЯ ВІДПОВІДІ (Response)
+class SupplyItemResponse(SupplyItemCreate):
+    id: int
+    entity_name: Optional[str] = None # Це те, чого не вистачало
+
+    class Config:
+        from_attributes = True
+
 class SupplyCreate(BaseModel):
     supplier_id: Optional[int] = None
     supplier_name: Optional[str] = None
@@ -8149,10 +8219,16 @@ class SupplyCreate(BaseModel):
     notes: Optional[str] = None
     items: List[SupplyItemCreate]
 
-class SupplyResponse(SupplyCreate):
+class SupplyResponse(BaseModel):
     id: int
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
     total_cost: float
     created_at: datetime
+    # 🔥 ВИКОРИСТОВУЄМО НОВУ СХЕМУ ТУТ
+    items: List[SupplyItemResponse] 
     supplier: Optional[Supplier] = None
     
     class Config:
@@ -9202,6 +9278,7 @@ import schemas
 import traceback
 from services.inventory_logger import InventoryLogger
 from services.inventory_service import InventoryService # 🔥 НОВЕ: Імпортуємо наш сервіс партій
+from services.product_service import ProductService
 
 class OrderService:
     @staticmethod
@@ -9291,23 +9368,44 @@ class OrderService:
                             for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
+                                    # Розрахунок кількості списання
                                     deduction = 0
                                     if r_item.is_percentage:
-                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
+                                        deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
-                                         deduction = r_item.quantity * item.quantity
+                                        deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    # 🔥 НОВЕ: Перевірка FIFO для Інгредієнта
+                                    # Облік за методом FIFO або WAC
                                     if getattr(ing, 'costing_method', 'wac') == 'fifo':
                                         InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
+                                    # Оновлюємо фізичний залишок інгредієнта
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
+                                    # Логуємо зміну саме ІНГРЕДІЄНТА
                                     InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+
+                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
+                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
+                            # (calculated stock), який тепер доступний для цього варіанту.
+                            
+                            new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
+                            
+                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            InventoryLogger.log(
+                                db,
+                                entity_type="product_variant",
+                                entity_id=variant.id,
+                                entity_name=item_name,
+                                balance_before=balance_before, # Це значення ми взяли на початку циклу
+                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
+                                reason=transaction_reason,
+                                force_change=-item.quantity
+                            )
 
                     # 3. Списання МАТЕРІАЛІВ варіанту
                     for v_cons in variant.consumables:
@@ -9833,9 +9931,17 @@ from services.inventory_logger import InventoryLogger
 class SupplyService:
     @staticmethod
     def create_supply(db: Session, data: schemas.SupplyCreate):
-        # 1. Створюємо шапку накладної
+        # 1. Знаходимо ім'я постачальника, якщо передано тільки ID
+        name_to_save = data.supplier_name
+        if data.supplier_id and not name_to_save:
+            supplier = db.query(models.Supplier).filter(models.Supplier.id == data.supplier_id).first()
+            if supplier:
+                name_to_save = supplier.name
+
+        # 2. Створюємо шапку накладної
         supply = models.Supply(
-            supplier_name=data.supplier_name,
+            supplier_id=data.supplier_id,
+            supplier_name=name_to_save, # 🔥 Тепер ім'я точно буде
             invoice_number=data.invoice_number,
             notes=data.notes,
             total_cost=0
@@ -9856,19 +9962,29 @@ class SupplyService:
             elif item.entity_type == 'consumable':
                 target_obj = db.query(models.Consumable).get(item.entity_id)
             elif item.entity_type == 'variant':
-                target_obj = db.query(models.ProductVariant).get(item.entity_id)
+                # 🔥 Senior Tip: Використовуємо joinedload, щоб відразу отримати назву батьківського товару
+                target_obj = db.query(models.ProductVariant)\
+                    .options(joinedload(models.ProductVariant.product))\
+                    .filter(models.ProductVariant.id == item.entity_id).first()
             
             if not target_obj:
                 raise HTTPException(status_code=404, detail=f"Сутність {item.entity_type} ID={item.entity_id} не знайдена")
 
-            # 3. Створюємо ПАРТІЮ
+            # --- 🔥 ПОКРАЩЕННЯ: Формуємо інформативну назву для історії ---
+            display_name = getattr(target_obj, 'name', 'Unknown')
+            
+            if item.entity_type == 'variant' and hasattr(target_obj, 'product'):
+                # Замість просто "XL" запишемо "Кава Лате (XL)"
+                display_name = f"{target_obj.product.name} ({target_obj.name})"
+
+            # 3. Створюємо ПАРТІЮ (SupplyItem)
             db_item = models.SupplyItem(
                 supply_id=supply.id,
                 entity_type=item.entity_type,
                 entity_id=item.entity_id,
-                entity_name=getattr(target_obj, 'name', 'Unknown'),
+                entity_name=display_name, # Тепер тут буде коректна назва [1]
                 quantity=item.quantity,
-                remaining_quantity=item.quantity, # Вся кількість стає залишком партії
+                remaining_quantity=item.quantity, # Для FIFO/Manual Batch [2]
                 cost_per_unit=item.cost_per_unit,
                 total_cost=line_total
             )

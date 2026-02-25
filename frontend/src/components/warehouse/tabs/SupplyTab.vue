@@ -10,9 +10,14 @@ const warehouse = useWarehouse(); // 🔥 Отримуємо доступ до �
 const { supplies, fetchSupplies, createSupply, isLoading, suppliers, fetchSuppliers, addSupplier } = useSupplies()
 const showSupplierModal = ref(false)
 const newSupplier = ref({ name: '', phone: '', email: '', notes: '' })
-
 // 1. Стан для відображення модального вікна
 const showCreateModal = ref(false);
+const expandedSupplyId = ref(null);
+
+const toggleSupplyDetails = (id) => {
+  // Якщо натискаємо на ту саму накладну — згортаємо, інакше — розгортаємо нову
+  expandedSupplyId.value = expandedSupplyId.value === id ? null : id;
+};
 
 // 2. Функція ініціалізації форми
 const resetForm = () => {
@@ -211,20 +216,74 @@ const submitSupply = async () => {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          <tr v-for="s in supplies" :key="s.id" class="hover:bg-gray-50/50 transition-colors">
-            <td class="p-4">
-              <div class="font-bold text-gray-700">#{{ s.id }}</div>
-              <div class="text-[10px] text-gray-400">{{ formatDate(s.created_at) }}</div>
-            </td>
-            <td class="p-4 font-medium">{{ s.supplier?.name || s.supplier_name || '---' }}</td>
-            <td class="p-4">
-              <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">
-                {{ s.invoice_number || 'б/н' }}
-              </span>
-            </td>
-            <td class="p-4 text-gray-500">{{ s.items?.length || 0 }} од.</td>
-            <td class="p-4 text-right font-bold text-green-600">{{ s.total_cost.toFixed(2) }} ₴</td>
-          </tr>
+          <template v-for="s in supplies" :key="s.id">
+            <!-- Основний рядок (додаємо клік та вказівник курсору) -->
+            <tr 
+              @click="toggleSupplyDetails(s.id)"
+              class="hover:bg-gray-50/50 transition-colors cursor-pointer group"
+              :class="{ 'bg-blue-50/30': expandedSupplyId === s.id }"
+            >
+              <td class="p-4">
+                <div class="flex items-center gap-2">
+                  <!-- Іконка стрілочки для візуалізації -->
+                  <span class="text-[10px] transition-transform" :class="{ 'rotate-90': expandedSupplyId === s.id }">▶</span>
+                  <div>
+                    <div class="font-bold text-gray-700">#{{ s.id }}</div>
+                    <div class="text-[10px] text-gray-400">{{ formatDate(s.created_at) }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-4 font-medium">{{ s.supplier?.name || s.supplier_name || '---' }}</td>
+              <td class="p-4">
+                <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">
+                  {{ s.invoice_number || 'б/н' }}
+                </span>
+              </td>
+              <td class="p-4 text-gray-500">{{ s.items?.length || 0 }} од.</td>
+              <td class="p-4 text-right font-bold text-green-600">{{ s.total_cost.toFixed(2) }} ₴</td>
+            </tr>
+
+            <!-- РОЗГОРНУТА ІНФОРМАЦІЯ (Вміст постачання) -->
+            <tr v-if="expandedSupplyId === s.id" class="bg-gray-50/50">
+              <td colspan="5" class="p-0">
+                <div class="p-6 border-l-4 border-blue-400 ml-4 my-2">
+                  <h4 class="text-xs font-black text-gray-400 uppercase mb-3 tracking-wider">Склад накладної:</h4>
+                  
+                  <div class="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                    <table class="w-full text-xs">
+                      <thead class="bg-gray-100/50 text-gray-500 font-bold">
+                        <tr>
+                          <th class="p-2 text-left">Тип</th>
+                          <th class="p-2 text-left">Найменування</th>
+                          <th class="p-2 text-center">Кількість</th>
+                          <th class="p-2 text-right">Ціна за од.</th>
+                          <th class="p-2 text-right">Сума</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-50">
+                        <tr v-for="item in s.items" :key="item.id" class="hover:bg-gray-50/30">
+                          <td class="p-2 italic text-gray-400">
+                            {{ item.entity_name === 'ingredient' ? '🥦 Сировина' : (item.entity_name === 'consumable' ? '📦 Матеріал' : '🍹 Товар') }}
+                          </td>
+                          <td class="p-2 font-bold text-gray-700">{{ item.entity_name }}</td>
+                          <td class="p-2 text-center">{{ item.quantity }}</td>
+                          <td class="p-2 text-right text-gray-500">{{ item.cost_per_unit.toFixed(2) }} ₴</td>
+                          <td class="p-2 text-right font-bold text-gray-800">
+                            {{ (item.quantity * item.cost_per_unit).toFixed(2) }} ₴
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <!-- Нотатки накладної, якщо є -->
+                  <div v-if="s.notes" class="mt-3 text-xs text-gray-500 italic">
+                    <strong>Коментар:</strong> {{ s.notes }}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
           
           <tr v-if="supplies.length === 0 && !isLoading">
             <td colspan="5" class="p-12 text-center text-gray-400 italic">

@@ -37,19 +37,29 @@ class SupplyService:
             elif item.entity_type == 'consumable':
                 target_obj = db.query(models.Consumable).get(item.entity_id)
             elif item.entity_type == 'variant':
-                target_obj = db.query(models.ProductVariant).get(item.entity_id)
+                # 🔥 Senior Tip: Використовуємо joinedload, щоб відразу отримати назву батьківського товару
+                target_obj = db.query(models.ProductVariant)\
+                    .options(joinedload(models.ProductVariant.product))\
+                    .filter(models.ProductVariant.id == item.entity_id).first()
             
             if not target_obj:
                 raise HTTPException(status_code=404, detail=f"Сутність {item.entity_type} ID={item.entity_id} не знайдена")
 
-            # 3. Створюємо ПАРТІЮ
+            # --- 🔥 ПОКРАЩЕННЯ: Формуємо інформативну назву для історії ---
+            display_name = getattr(target_obj, 'name', 'Unknown')
+            
+            if item.entity_type == 'variant' and hasattr(target_obj, 'product'):
+                # Замість просто "XL" запишемо "Кава Лате (XL)"
+                display_name = f"{target_obj.product.name} ({target_obj.name})"
+
+            # 3. Створюємо ПАРТІЮ (SupplyItem)
             db_item = models.SupplyItem(
                 supply_id=supply.id,
                 entity_type=item.entity_type,
                 entity_id=item.entity_id,
-                entity_name=getattr(target_obj, 'name', 'Unknown'),
+                entity_name=display_name, # Тепер тут буде коректна назва [1]
                 quantity=item.quantity,
-                remaining_quantity=item.quantity, # Вся кількість стає залишком партії
+                remaining_quantity=item.quantity, # Для FIFO/Manual Batch [2]
                 cost_per_unit=item.cost_per_unit,
                 total_cost=line_total
             )

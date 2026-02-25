@@ -320,6 +320,14 @@ class SupplyItemCreate(BaseModel):
     quantity: float
     cost_per_unit: float
 
+# 🔥 НОВА СХЕМА ДЛЯ ВІДПОВІДІ (Response)
+class SupplyItemResponse(SupplyItemCreate):
+    id: int
+    entity_name: Optional[str] = None # Це те, чого не вистачало
+
+    class Config:
+        from_attributes = True
+
 class SupplyCreate(BaseModel):
     supplier_id: Optional[int] = None
     supplier_name: Optional[str] = None
@@ -327,10 +335,16 @@ class SupplyCreate(BaseModel):
     notes: Optional[str] = None
     items: List[SupplyItemCreate]
 
-class SupplyResponse(SupplyCreate):
+class SupplyResponse(BaseModel):
     id: int
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
     total_cost: float
     created_at: datetime
+    # 🔥 ВИКОРИСТОВУЄМО НОВУ СХЕМУ ТУТ
+    items: List[SupplyItemResponse] 
     supplier: Optional[Supplier] = None
     
     class Config:
