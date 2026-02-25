@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 import axios from 'axios'
 import HistoryModal from '../modals/HistoryModal.vue'
+import { useSupplies } from '@/composables/useSupplies'
 
 // Отримуємо дані зі сховища
 const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse()
@@ -10,6 +11,44 @@ const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse(
 const activeTab = ref('ingredients') 
 const search = ref('')
 const loading = ref(false)
+const { fetchAvailableBatches } = useSupplies()
+
+// --- Стан для розгортання партій ---
+const expandedId = ref(null);
+const activeBatches = ref([]);
+const currentMethod = ref('wac');
+const isBatchesLoading = ref(false);
+
+const toggleBatches = async (item) => {
+  const uniqueId = `${item.type}-${item.id}`;
+  
+  // Якщо вже розгорнуто — згортаємо
+  if (expandedId.value === uniqueId) {
+    expandedId.value = null;
+    return;
+  }
+
+  // Розгортаємо та завантажуємо
+  expandedId.value = uniqueId;
+  isBatchesLoading.value = true;
+  activeBatches.value = [];
+
+  try {
+    const data = await fetchAvailableBatches(item.type, item.id);
+    activeBatches.value = data.batches;
+    currentMethod.value = data.costing_method;
+  } finally {
+    isBatchesLoading.value = false;
+  }
+};
+
+// Функція форматування дати
+const formatDate = (dateStr) => {
+  if (!dateStr) return '---';
+  return new Date(dateStr).toLocaleDateString('uk-UA', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+};
 
 // --- ЗМІННІ ДЛЯ РЕДАГУВАННЯ ---
 // Зберігаємо не ID, а унікальний ключ (напр. 'product_5')
@@ -198,53 +237,86 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tr v-for="item in filteredItems" :key="item.unique_key" class="hover:bg-gray-50 group">
-                        
-                        <td class="p-4 font-bold text-gray-700">
-                            {{ item.display_name }}
-                        </td>
-
-                        <td class="p-4 text-center">
-                            <span v-if="item.type === 'ingredient'" class="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">Сировина</span>
-                            <span v-else-if="item.type === 'consumable'" class="bg-teal-100 text-teal-700 px-2 py-1 rounded text-[10px] font-bold">Матеріал</span>
-                            <span v-else-if="item.type === 'product'" class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">Товар</span>
-                            <span v-else-if="item.type === 'product_variant'" class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold">Варіант</span>
-                        </td>
-
-                        <td class="p-4 text-right font-mono font-bold">
-                            <div v-if="editingItemKey === item.unique_key" class="flex items-center justify-end gap-2">
-                                <input 
-                                    v-model.number="editValue" 
-                                    type="number" 
-                                    class="w-20 border rounded p-1 text-right focus:ring-2 ring-blue-500 outline-none"
-                                >
-                                <span class="text-xs text-gray-400">{{ item.unit_symbol }}</span>
-                            </div>
-                            <span v-else :class="{'text-red-500 bg-red-50 px-2 py-1 rounded': item.stock_quantity <= 0, 'text-gray-700': item.stock_quantity > 0}">
-                                {{ item.stock_quantity }} {{ item.unit_symbol }}
+                    <tbody class="divide-y divide-gray-100">
+                    <template v-for="item in filteredItems" :key="item.type + '-' + item.id">
+                        <!-- ОСНОВНИЙ РЯДОК -->
+                        <tr 
+                        @click="toggleBatches(item)"
+                        class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                        :class="{ 'bg-blue-50/30': expandedId === (item.type + '-' + item.id) }"
+                        >
+                        <td class="p-4">
+                            <div class="flex items-center gap-3">
+                            <span class="text-[10px] text-gray-400 transition-transform" 
+                                    :class="{ 'rotate-90 text-blue-500': expandedId === (item.type + '-' + item.id) }">
+                                ▶
                             </span>
+                            <span class="font-bold text-gray-700">{{ item.display_name }}</span>
+                            </div>
                         </td>
+                        <td class="p-4 text-xs text-gray-400 capitalize">
+                            {{ item.type === 'ingredient' ? 'Сировина' : (item.type === 'consumable' ? 'Матеріал' : 'Товар') }}
+                        </td>
+                        <td class="p-4 text-right">
+                            <span class="font-black text-gray-800">{{ item.stock_quantity }}</span>
+                            <span class="ml-1 text-gray-400 text-xs">{{ item.unit_symbol }}</span>
+                        </td>
+                        <td class="p-4 text-right">
+                            <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold">
+                            Історія
+                            </button>
+                        </td>
+                        </tr>
 
-                        <td class="p-4 text-center">
-                            <div v-if="editingItemKey === item.unique_key" class="flex justify-center gap-1">
-                                <button @click="saveEdit(item)" class="bg-green-500 text-white w-7 h-7 rounded hover:bg-green-600 flex items-center justify-center">
-                                    <i class="fas fa-check text-xs"></i>
-                                </button>
-                                <button @click="editingItemKey = null" class="bg-gray-300 text-gray-700 w-7 h-7 rounded hover:bg-gray-400 flex items-center justify-center">
-                                    <i class="fas fa-times text-xs"></i>
-                                </button>
+                        <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
+                        <tr v-if="expandedId === (item.type + '-' + item.id)">
+                        <td colspan="4" class="p-0 bg-gray-50/50">
+                            <div class="p-5 border-l-4 border-blue-500 ml-4 my-2">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Активні партії закупівлі
+                                </h4>
+                                <span :class="currentMethod === 'fifo' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" 
+                                    class="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">
+                                Метод: {{ currentMethod }}
+                                </span>
+                            </div>
+
+                            <div v-if="isBatchesLoading" class="text-xs text-gray-400 italic">Завантаження даних...</div>
+                            
+                            <div v-else-if="activeBatches.length > 0" class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                                <table class="w-full text-[11px]">
+                                <thead class="bg-gray-100 text-gray-500">
+                                    <tr>
+                                    <th class="p-2 text-left">Дата поставки</th>
+                                    <th class="p-2 text-left">Накладна</th>
+                                    <th class="p-2 text-center">Залишок</th>
+                                    <th class="p-2 text-right">Ціна вх.</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <tr v-for="(batch, idx) in activeBatches" :key="batch.id" 
+                                        :class="{ 'bg-red-50/50': currentMethod === 'fifo' && idx === 0 }">
+                                    <td class="p-2 text-gray-600">{{ formatDate(batch.supply_date) }}</td>
+                                    <td class="p-2 font-medium text-blue-600">#{{ batch.invoice_number }}</td>
+                                    <td class="p-2 text-center">
+                                        <!-- 🔥 ПІДСВІЧУВАННЯ FIFO: червоний колір для найстарішої партії -->
+                                        <span :class="{ 'text-red-600 font-black': currentMethod === 'fifo' && idx === 0 }">
+                                        {{ batch.remaining_quantity }}
+                                        </span>
+                                    </td>
+                                    <td class="p-2 text-right text-gray-400">{{ batch.cost_per_unit.toFixed(2) }} ₴</td>
+                                    </tr>
+                                </tbody>
+                                </table>
                             </div>
                             
-                            <div v-else class="flex justify-center gap-2">
-                                <button @click="openHistory(item)" class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition-colors" title="Історія руху">
-                                    <i class="fas fa-history"></i>
-                                </button>
-                                <button @click="startEdit(item)" class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-colors" title="Корегувати залишок">
-                                    <i class="fas fa-pen"></i>
-                                </button>
+                            <div v-else class="text-xs text-gray-400 italic">Немає активних партій. Товар списано повністю.</div>
                             </div>
                         </td>
-                    </tr>
+                        </tr>
+                    </template>
+                    </tbody>
                 </tbody>
             </table>
         </div>

@@ -1,7 +1,7 @@
 # FILE: product_service/routers/customers.py
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from typing import List
 import database, schemas, models
@@ -45,4 +45,8 @@ def delete_customer(id: int, db: Session = Depends(database.get_db)):
 
 @router.get("/{customer_id}/orders/", response_model=List[schemas.OrderRead])
 def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db)):
-    return db.query(models.Order).filter(models.Order.customer_id == customer_id).order_by(models.Order.created_at.desc()).all()
+    return db.query(models.Order)\
+        .options(joinedload(models.Order.items))\
+        .filter(models.Order.customer_id == customer_id)\
+        .order_by(models.Order.created_at.desc())\
+        .all()

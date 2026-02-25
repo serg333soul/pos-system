@@ -41,19 +41,20 @@ const openCreateModal = () => {
 
 const openCreateForm = (type) => {
   console.log("🛠 Відкриваємо форму типу:", type);
-  
   // 1. Скидаємо дані в глобальному сховищі useProducts [2]
   resetForm(); 
-  
   // 2. ЗАКРИВАЄМО вікно вибору
   showTypeModal.value = false;
   
-  // 3. ВІДКРИВАЄМО потрібну форму (використовуємо nextTick для надійності Vue)
-  if (type === 'simple') {
-    showSimpleForm.value = true;
-  } else {
+  if (type === 'variant') {
+    // 🔥 КРИТИЧНО: Встановлюємо прапорець для бізнес-логіки
+    newProduct.value.has_variants = true; 
     showVariantForm.value = true;
+  } else {
+    newProduct.value.has_variants = false;
+    showSimpleForm.value = true;
   }
+
 };
 
 // 2. Обрали тип -> Відкриваємо відповідну форму

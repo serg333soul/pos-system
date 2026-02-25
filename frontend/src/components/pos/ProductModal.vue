@@ -2,22 +2,28 @@
 import { ref, computed, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
 import { useWarehouse } from '@/composables/useWarehouse'
+import { useSupplies } from '@/composables/useSupplies' // 🔥 ДОДАНО: Для роботи з партіями
 
 const props = defineProps({
   isOpen: Boolean,
   product: Object 
 })
 
-const { cartItems, reservedResources } = useCart()
-const warehouse = useWarehouse()
-
 const emit = defineEmits(['close'])
 
-const { addToCart } = useCart()
+const { cartItems, reservedResources, addToCart } = useCart()
+const warehouse = useWarehouse()
+const { fetchAvailableBatches } = useSupplies() // 🔥 ДОДАНО
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
 const selectedProcesses = ref({}) 
+
+// --- 🔥 НОВИЙ СТАН ДЛЯ ПАРТІЙ (MANUAL BATCH) ---
+const isManualBatch = ref(false)
+const availableBatches = ref([])
+const selectedBatchId = ref(null)
+const isLoadingBatches = ref(false)
 
 // --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
@@ -25,6 +31,11 @@ watch(() => props.isOpen, (isOpen) => {
     selectedVariant.value = null
     selectedModifiers.value = {}
     selectedProcesses.value = {} 
+    
+    // 🔥 Скидання ручного режиму при новому відкритті
+    isManualBatch.value = false
+    availableBatches.value = []
+    selectedBatchId.value = null
 
     // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
@@ -52,31 +63,63 @@ watch(() => props.isOpen, (isOpen) => {
   }
 })
 
+// --- 🔥 ЗАВАНТАЖЕННЯ ПАРТІЙ ПРИ УВІМКНЕННІ ТУМБЛЕРА ---
+watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
+    if (!isManual || !props.product) return;
+
+    isLoadingBatches.value = true
+    selectedBatchId.value = null
+
+    // Визначаємо, що саме ми шукаємо (варіант чи простий товар)
+    let entityType = props.product.has_variants ? 'variant' : 'product'
+    let entityId = props.product.has_variants ? currentVariant?.id : props.product.id
+
+    if (entityId) {
+        availableBatches.value = await fetchAvailableBatches(entityType, entityId)
+    } else {
+        availableBatches.value = []
+    }
+    
+    isLoadingBatches.value = false
+})
+
+
 const canAddToCart = computed(() => {
   if (!props.product) return false;
 
+  // 🔥 Якщо увімкнено ручний режим, касир ЗОБОВ'ЯЗАНИЙ вибрати партію
+  if (isManualBatch.value && !selectedBatchId.value) {
+      return false;
+  }
+
   // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
   if (props.product.has_variants) {
-    // 1. Має бути обраний варіант
     if (!selectedVariant.value) return false;
-    // 2. Перевіряємо залишок цього варіанту
+    
+    // Якщо ручний режим - перевіряємо чи є вибрана партія і чи вистачає там 1 шт
+    if (isManualBatch.value && selectedBatchId.value) {
+        const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+        return batch && batch.remaining_quantity >= 1;
+    }
+    
     return getAvailableStock(selectedVariant.value) >= 1;
   }
 
   // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
-  // Якщо ведемо облік (track_stock = true), перевіряємо фізичну кількість [5, 6]
   if (props.product.track_stock) {
-    return (props.product.stock_quantity || 0) >= 1;
+      if (isManualBatch.value && selectedBatchId.value) {
+          const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+          return batch && batch.remaining_quantity >= 1;
+      }
+      return (props.product.stock_quantity || 0) >= 1;
   }
 
-  // Якщо облік не ведеться (track_stock = false), товар завжди доступний
   return true;
 })
 
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
-    // Сценарій 1: Фізичний облік (track_stock = true)
     if (props.product.track_stock) {
         const inCart = cartItems.value
             .filter(i => i.variant_id === variant.id)
@@ -84,16 +127,13 @@ const getAvailableStock = (variant) => {
         return Math.max(0, (variant.stock_quantity || 0) - inCart);
     }
 
-    // Сценарій 2: Напої (рецепти)
     let maxPossible = Infinity;
 
-    // --- ПЕРЕВІРКА ЧЕРЕЗ ТЕХКАРТУ (MasterRecipe) ---
     if (variant.master_recipe_id) {
         const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
         recipe?.items?.forEach(rItem => {
             const inStore = warehouse.ingredients.value.find(i => i.id === rItem.ingredient_id);
             if (inStore) {
-                // Віднімаємо те, що вже заброньовано ВСІМА товарами в кошику
                 const reserved = reservedResources.value.ingredients[rItem.ingredient_id] || 0;
                 const available = Math.max(0, inStore.stock_quantity - reserved);
                 
@@ -109,8 +149,6 @@ const getAvailableStock = (variant) => {
             }
         });
     }
-
-    // (Аналогічно можна додати перевірку для variant.ingredients та variant.consumables)
     
     return maxPossible === Infinity ? 0 : maxPossible;
 }
@@ -137,21 +175,7 @@ const currentPrice = computed(() => {
   return price
 })
 
-// Генерація назви для кошика
-const generateName = () => {
-  let name = props.product.name
-  if (selectedVariant.value) {
-    name += ` (${selectedVariant.value.name})`
-  }
-  const processValues = Object.values(selectedProcesses.value)
-  if (processValues.length > 0) {
-      name += ` [${processValues.join(', ')}]`
-  }
-  return name
-}
-
 const handleConfirm = () => {
-  // Захист: якщо товар з варіантами, але нічого не обрано
   if (props.product.has_variants && !selectedVariant.value) {
     alert("Оберіть варіант товару");
     return;
@@ -160,21 +184,29 @@ const handleConfirm = () => {
   const payload = {
     product_id: props.product.id,
     quantity: 1,
-    // Формуємо модифікатори [7]
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
     
-    // Динамічні поля залежно від типу товару [8, 9]
     variant_id: props.product.has_variants ? selectedVariant.value.id : null,
     name: props.product.has_variants 
             ? `${props.product.name} (${selectedVariant.value.name})` 
             : props.product.name,
     price: props.product.has_variants 
             ? selectedVariant.value.price 
-            : props.product.price
+            : props.product.price,
+            
+    // 🔥 ДОДАНО: Передаємо ID партії в кошик, якщо увімкнено ручний режим
+    batch_id: (isManualBatch.value && selectedBatchId.value) ? selectedBatchId.value : null
   };
 
-  addToCart(payload); // Виклик useCart.js [10]
+  addToCart(payload); 
   emit('close');
+}
+
+// Допоміжна функція форматування дати
+const formatDate = (dateStr) => {
+    if (!dateStr) return 'Невідома дата'
+    const d = new Date(dateStr)
+    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth()+1).toString().padStart(2, '0')}.${d.getFullYear()}`
 }
 
 </script>
@@ -208,22 +240,17 @@ const handleConfirm = () => {
                   @click="getAvailableStock(variant) > 0 ? selectedVariant = variant : null"
                   class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden"
                   :class="[
-                      // Якщо вибрано
                       selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600',
-        
-                      // 🔥 НОВА ЛОГІКА: Якщо залишку немає
                       getAvailableStock(variant) < 1 
                           ? 'opacity-40 cursor-not-allowed grayscale pointer-events-none' 
                           : 'hover:border-gray-300 cursor-pointer'
                   ]"
               >
-                  <!-- Вміст картки варіанту -->
-                  <span class="font-bold">{{ variant.name }}</span>
-                  <span class="text-sm">{{ variant.price }} ₴</span>
+                  <span class="font-bold text-center leading-tight">{{ variant.name }}</span>
+                  <span class="text-sm font-medium">{{ variant.price }} ₴</span>
     
-                  <!-- Мітка залишку -->
                   <div 
-                      class="text-[10px] px-1.5 py-0.5 rounded-full mt-1"
+                      class="text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-bold"
                       :class="getAvailableStock(variant) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
@@ -231,6 +258,40 @@ const handleConfirm = () => {
               </div>
           </div>
         </div>
+
+        <div v-if="product.track_stock || (product.has_variants && selectedVariant && !selectedVariant.master_recipe_id)" 
+             class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <label class="block text-sm font-bold text-blue-900">Спеціальне списання</label>
+                    <p class="text-xs text-blue-700 mt-0.5">Вимкнено = Автоматичний облік (FIFO/WAC)</p>
+                </div>
+                
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" v-model="isManualBatch" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
+            <div v-if="isManualBatch" class="mt-4 animate-fade-in-up">
+                <div v-if="isLoadingBatches" class="text-sm text-blue-600 text-center py-2">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> Завантаження партій...
+                </div>
+                <div v-else-if="availableBatches.length === 0" class="text-sm text-red-600 p-2 bg-red-50 rounded border border-red-100">
+                    Активних партій з залишком не знайдено. Потрібно створити постачання.
+                </div>
+                <div v-else>
+                    <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Оберіть партію складу:</label>
+                    <select v-model="selectedBatchId" class="w-full border-blue-200 bg-white p-2.5 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500">
+                        <option :value="null" disabled>-- Виберіть партію --</option>
+                        <option v-for="batch in availableBatches" :key="batch.batch_id" :value="batch.batch_id">
+                            📦 {{ formatDate(batch.supply_date) }} | Залишок: {{ batch.remaining_quantity }} | Вхідна: {{ batch.cost_per_unit }}₴
+                        </option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
 
         <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
             <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
@@ -281,7 +342,7 @@ const handleConfirm = () => {
         <button 
             @click="handleConfirm"
             :disabled="!canAddToCart"
-            class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed ml-4"
         >
             Додати в кошик
         </button>

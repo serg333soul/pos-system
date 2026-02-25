@@ -27,7 +27,13 @@ def read_units(db: Session = Depends(database.get_db)):
 def create_ingredient(ingredient: schemas.IngredientCreate, db: Session = Depends(database.get_db)):
     exists = db.query(models.Ingredient).filter(models.Ingredient.name == ingredient.name).first()
     if exists: raise HTTPException(status_code=400, detail="Ingredient already exists")
-    new_item = models.Ingredient(**ingredient.dict())
+
+    # Створюємо об'єкт явно, ініціалізуючи залишок нулем
+    new_item = models.Ingredient(
+        **ingredient.dict(),
+        cost_per_unit=0.0, # Встановлюємо початкову ціну в 0
+        stock_quantity=0.0 ) # 🔥 Гарантуємо порожній склад при створенні
+
     db.add(new_item); db.commit(); db.refresh(new_item)
     return new_item
 
@@ -41,26 +47,13 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     if not db_ingredient: raise HTTPException(status_code=404, detail="Ingredient not found")
     
     # 1. Зберігаємо старий баланс
-    old_balance = db_ingredient.stock_quantity
+    #old_balance = db_ingredient.stock_quantity
     
     # 2. Оновлюємо поля
     db_ingredient.name = ingredient_data.name
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
-    
-    # 3. Якщо залишок змінився - пишемо це
-    if ingredient_data.stock_quantity != old_balance:
-        db_ingredient.stock_quantity = ingredient_data.stock_quantity
-        # ЛОГУВАННЯ
-        InventoryLogger.log(
-            db, 
-            entity_type="ingredient", 
-            entity_id=db_ingredient.id, 
-            entity_name=db_ingredient.name, 
-            balance_before=old_balance, 
-            balance_after=db_ingredient.stock_quantity, 
-            reason="manual_correction"
-        )
+    db_ingredient.category_id = ingredient_data.category_id
     
     db.commit(); db.refresh(db_ingredient)
     return db_ingredient

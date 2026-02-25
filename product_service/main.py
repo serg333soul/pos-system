@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import database, models
 
+
 # Імпортуємо наші нові модульні роутери
 from routers import (
     products, 
@@ -13,7 +14,8 @@ from routers import (
     processes, 
     customers, 
     orders,
-    product_rooms
+    product_rooms,
+    supplies
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -40,6 +42,7 @@ app.include_router(recipes.router)
 app.include_router(processes.router)
 app.include_router(customers.router)
 app.include_router(product_rooms.router)
+app.include_router(supplies.router)
 
 @app.get("/")
 def read_root():

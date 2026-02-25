@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 73
-Lines: 8602
-Tokens: ~91025
+Files: 79
+Lines: 9976
+Tokens: ~105065
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -162,6 +162,13 @@ frontend\src\components\common\Sidebar.vue
   └── 📥 Props defined
   └── 📤 Emits defined
   └── ƒ  navigate
+frontend\src\components\crm\CustomerHistoryModal.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): expandedId
+  └── 💾 State (computed): customerStats
+  └── ƒ  toggleDetails
+  └── ƒ  formatDate
 frontend\src\components\crm\Customers.vue
   └── 💾 State (ref): customers
   └── 💾 State (ref): showModal
@@ -195,11 +202,15 @@ frontend\src\components\pos\ProductModal.vue
   └── 💾 State (ref): selectedVariant
   └── 💾 State (ref): selectedModifiers
   └── 💾 State (ref): selectedProcesses
+  └── 💾 State (ref): isManualBatch
+  └── 💾 State (ref): availableBatches
+  └── 💾 State (ref): selectedBatchId
+  └── 💾 State (ref): isLoadingBatches
   └── 💾 State (computed): canAddToCart
   └── ƒ  getAvailableStock
   └── 💾 State (computed): currentPrice
-  └── ƒ  generateName
   └── ƒ  handleConfirm
+  └── ƒ  formatDate
 frontend\src\components\pos\ProductRoomModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -276,6 +287,11 @@ frontend\src\components\warehouse\tabs\StockTab.vue
   └── 💾 State (ref): activeTab
   └── 💾 State (ref): search
   └── 💾 State (ref): loading
+  └── 💾 State (ref): expandedId
+  └── 💾 State (ref): activeBatches
+  └── 💾 State (ref): currentMethod
+  └── 💾 State (ref): isBatchesLoading
+  └── ƒ  formatDate
   └── 💾 State (ref): editingItemKey
   └── 💾 State (ref): editValue
   └── 💾 State (ref): isHistoryOpen
@@ -283,6 +299,21 @@ frontend\src\components\warehouse\tabs\StockTab.vue
   └── ƒ  openHistory
   └── 💾 State (computed): filteredItems
   └── ƒ  startEdit
+frontend\src\components\warehouse\tabs\SupplyTab.vue
+  └── 📤 Emits defined
+  └── 💾 State (ref): showSupplierModal
+  └── 💾 State (ref): newSupplier
+  └── 💾 State (ref): showCreateModal
+  └── 💾 State (ref): expandedSupplyId
+  └── ƒ  toggleSupplyDetails
+  └── ƒ  resetForm
+  └── 💾 State (ref): form
+  └── ƒ  handleSupplierChange
+  └── ƒ  formatDate
+  └── ƒ  addItem
+  └── ƒ  removeItem
+  └── ƒ  getListForType
+  └── 💾 State (computed): totalCost
 frontend\src\components\warehouse\tabs\UnitsTab.vue
   └── 💾 State (ref): newUnit
 frontend\src\components\warehouse\tabs\products\ProductFormSimple.vue
@@ -363,10 +394,19 @@ frontend\src\composables\useProducts.js
 frontend\src\composables\useStatistics.js
   └── 💾 State (ref): orders
   └── 💾 State (ref): loading
+  └── 💾 State (ref): totalOrders
+  └── 💾 State (ref): totalPages
+  └── 💾 State (ref): currentPage
+  └── 💾 State (ref): pageSize
   └── 💾 State (ref): showDetailModal
   └── 💾 State (ref): selectedOrder
   └── ƒ  openDetails
   └── ƒ  closeDetails
+frontend\src\composables\useSupplies.js
+  └── 💾 State (ref): suppliers
+  └── 💾 State (ref): supplies
+  └── 💾 State (ref): isLoading
+  └── 💾 State (ref): error
 frontend\src\composables\useWarehouse.js
   └── 💾 State (ref): products
   └── 💾 State (ref): categories
@@ -427,12 +467,12 @@ product_service\schemas.py
   └── 📄 Schema: IngredientCreate
   └── 📄 Schema: Ingredient
   └── 📦 Class: Config
+  └── 📦 Class: Config
   └── 📄 Schema: ConsumableBase
   └── 🗄️ Model: ConsumableCreate
   └── 🗄️ Model: Consumable
   └── 📦 Class: Config
   └── 📄 Schema: ProductIngredientLink
-  └── 📦 Class: Config
 product_service\routers\categories.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_category
@@ -527,9 +567,24 @@ product_service\routers\recipes.py
   └── ƒ  update_recipe
   └── 🌐 Endpoint: @router.delete
   └── ƒ  delete_recipe
+product_service\routers\supplies.py
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_suppliers
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_supplier
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_supply
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_supplies
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_available_batches
 product_service\services\inventory_logger.py
   └── 📦 Class: InventoryLogger
   └── ƒ  log
+product_service\services\inventory_service.py
+  └── 📦 Class: InventoryService
+  └── ƒ  deduct_fifo
+  └── ƒ  deduct_manual
 product_service\services\order_service.py
   └── 📦 Class: OrderService
   └── ƒ  process_checkout
@@ -540,6 +595,9 @@ product_service\services\product_service.py
   └── ƒ  create_product
   └── ƒ  update_product
   └── ƒ  delete_product
+product_service\services\supply_service.py
+  └── 📦 Class: SupplyService
+  └── ƒ  create_supply
 product_service\tests\conftest.py
   └── ƒ  db_session
   └── ƒ  client
@@ -593,6 +651,7 @@ product_service\tests\test_warehouse.py
                     📄 IngredientSelect.vue
                     📄 Sidebar.vue
                 📂 crm/
+                    📄 CustomerHistoryModal.vue
                     📄 Customers.vue
                     📄 CustomersTable.vue
                 📂 pos/
@@ -616,6 +675,7 @@ product_service\tests\test_warehouse.py
                         📄 RecipesTab.vue
                         📄 RoomsTab.vue
                         📄 StockTab.vue
+                        📄 SupplyTab.vue
                         📄 UnitsTab.vue
                         📂 products/
                             📄 ProductFormSimple.vue
@@ -626,6 +686,7 @@ product_service\tests\test_warehouse.py
                 📄 useCustomers.js
                 📄 useProducts.js
                 📄 useStatistics.js
+                📄 useSupplies.js
                 📄 useWarehouse.js
     📂 order_service/
         📄 Dockerfile
@@ -651,11 +712,14 @@ product_service\tests\test_warehouse.py
             📄 product_rooms.py
             📄 products.py
             📄 recipes.py
+            📄 supplies.py
         📂 services/
             📄 __init__.py
             📄 inventory_logger.py
+            📄 inventory_service.py
             📄 order_service.py
             📄 product_service.py
+            📄 supply_service.py
         📂 tests/
             📄 conftest.py
             📄 test_categories.py
@@ -1423,10 +1487,144 @@ const navigate = (pageId) => {
 </template>
 </file>
 
+<file path="frontend\src\components\crm\CustomerHistoryModal.vue" lang="vue">
+<template>
+  <div v-if="isOpen" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9] flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50/30">
+        <div>
+          <h3 class="text-xl font-bold text-gray-800"> 📖 Історія покупок</h3>
+          <p class="text-sm text-gray-500">{{ customer?.name }}</p>
+        </div>
+        <button @click="$emit('close')" class="p-2 hover:bg-white rounded-full transition text-gray-400 hover:text-gray-600">×</button>
+      </div>
+
+      <!-- Body -->
+      <div class="flex-1 overflow-y-auto p-6">
+
+        <!-- 🔥 НОВИЙ БЛОК СТАТИСТИКИ -->
+        <div v-if="!loading && orders.length > 0" class="grid grid-cols-3 gap-4 mb-8">
+          <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Візитів</p>
+            <p class="text-2xl font-black text-gray-800">{{ customerStats.count }}</p>
+          </div>
+          
+          <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+            <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Середній чек</p>
+            <p class="text-2xl font-black text-blue-700">{{ customerStats.average.toFixed(2) }} ₴</p>
+          </div>
+          
+          <div class="bg-green-50 p-4 rounded-2xl border border-green-100">
+            <p class="text-[10px] font-black text-green-400 uppercase tracking-widest mb-1">Всього витрачено</p>
+            <p class="text-2xl font-black text-green-700">{{ customerStats.total.toFixed(2) }} ₴</p>
+          </div>
+        </div>
+
+        <div v-if="loading" class="text-center py-10 text-gray-400 italic">Завантаження історії...</div>
+        
+        <div v-else-if="orders.length === 0" class="text-center py-10">
+          <div class="text-4xl mb-3">🏷️</div>
+          <p class="text-gray-400">Цей клієнт ще не робив покупок.</p>
+        </div>
+
+        <table v-else class="w-full text-left">
+          <thead class="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+            <tr>
+              <th class="pb-3">Дата / Чек</th>
+              <th class="pb-3">Оплата</th>
+              <th class="pb-3 text-right">Сума</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <template v-for="order in orders" :key="order.id">
+              <!-- Рядок чека -->
+              <tr @click="toggleDetails(order.id)" class="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                <td class="py-4">
+                  <div class="flex items-center gap-2 text-sm">
+                    <span class="text-[10px] transition-transform" :class="{ 'rotate-90': expandedId === order.id }">▶</span>
+                    <span class="font-bold text-gray-700">#{{ order.id }}</span>
+                    <span class="text-gray-400 text-xs">{{ formatDate(order.created_at) }}</span>
+                  </div>
+                </td>
+                <td class="py-4">
+                  <span :class="order.payment_method === 'card' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'" 
+                        class="px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                    {{ order.payment_method === 'card' ? 'Картка' : 'Готівка' }}
+                  </span>
+                </td>
+                <td class="py-4 text-right font-black text-gray-800">{{ order.total_price.toFixed(2) }} ₴</td>
+              </tr>
+
+              <!-- Розгорнуті деталі чека -->
+              <tr v-if="expandedId === order.id">
+                <td colspan="3" class="p-0 bg-gray-50/50">
+                  <div class="p-4 border-l-4 border-blue-400 ml-4 my-2">
+                    <div v-for="item in order.items" :key="item.id" class="flex justify-between text-xs py-1 border-b border-dashed border-gray-200 last:border-0">
+                      <span class="text-gray-600">{{ item.product_name }} <span v-if="item.details" class="text-[10px] text-gray-400">({{ item.details }})</span></span>
+                      <span class="font-medium text-gray-800">{{ item.quantity }} x {{ item.price_at_moment }} ₴</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+
+const props = defineProps(['isOpen', 'customer', 'orders', 'loading']);
+const emit = defineEmits(['close']);
+
+const expandedId = ref(null);
+
+// 🔥 НОВА ЛОГІКА: Розрахунок статистики клієнта
+const customerStats = computed(() => {
+  if (!props.orders || props.orders.length === 0) {
+    return { total: 0, count: 0, average: 0 };
+  }
+  
+  const total = props.orders.reduce((sum, order) => sum + order.total_price, 0);
+  const count = props.orders.length;
+  
+  return {
+    total: total,
+    count: count,
+    average: total / count
+  };
+});
+
+const toggleDetails = (id) => {
+  expandedId.value = expandedId.value === id ? null : id;
+};
+
+const formatDate = (dateStr) => {
+  return new Date(dateStr).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+</script>
+</file>
+
 <file path="frontend\src\components\crm\Customers.vue" lang="vue">
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useCustomers } from '@/composables/useCustomers'
+import CustomerHistoryModal from './CustomerHistoryModal.vue' // 🔥 Імпортуємо нову модалку
+
+const {  
+  loading, 
+  // --- Додаємо поля для історії ---
+  showHistoryModal,
+  historyLoading,
+  currentCustomerHistory,
+  customerOrders,
+  openHistory 
+} = useCustomers();
 
 // --- КОНФІГУРАЦІЯ API ---
 const API_URL = 'http://localhost:8001/customers/'
@@ -1606,23 +1804,31 @@ onMounted(fetchCustomers)
                             {{ c.notes || '-' }}
                         </td>
                         
-                        <td class="p-4 text-center">
-                            <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    @click="openEditModal(c)" 
-                                    class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
-                                    title="Редагувати"
-                                >
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                <button 
-                                    @click="deleteCustomer(c.id)" 
-                                    class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
-                                    title="Видалити"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
+                        <td class="p-4 text-right flex justify-end gap-2">
+                            <!-- 🔥 НОВА КНОПКА: Історія покупок -->
+                            <button 
+                                @click="openHistory(c)" 
+                                class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition transform active:scale-90"
+                                title="Історія покупок"
+                            >
+                                📜
+                            </button>
+
+                            <button 
+                                @click="openEditModal(c)" 
+                                class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
+                                title="Редагувати"
+                            >
+                                ✏️
+                            </button>
+                            
+                            <button 
+                                @click="deleteCustomer(c.id)" 
+                                class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
+                                title="Видалити"
+                            >
+                                🗑️
+                            </button>
                         </td>
                     </tr>
                 </tbody>
@@ -1670,7 +1876,14 @@ onMounted(fetchCustomers)
                 </div>
             </div>
         </div>
-
+        <!-- 🔥 ІНТЕГРАЦІЯ НОВОЇ МОДАЛКИ ІСТОРІЇ -->
+        <CustomerHistoryModal 
+            :is-open="showHistoryModal"
+            :customer="currentCustomerHistory"
+            :orders="customerOrders"
+            :loading="historyLoading"
+            @close="showHistoryModal = false"
+        />
     </div>
 </template>
 </file>
@@ -1993,22 +2206,28 @@ const displayPrice = computed(() => {
 import { ref, computed, watch } from 'vue'
 import { useCart } from '@/composables/useCart'
 import { useWarehouse } from '@/composables/useWarehouse'
+import { useSupplies } from '@/composables/useSupplies' // 🔥 ДОДАНО: Для роботи з партіями
 
 const props = defineProps({
   isOpen: Boolean,
   product: Object 
 })
 
-const { cartItems, reservedResources } = useCart()
-const warehouse = useWarehouse()
-
 const emit = defineEmits(['close'])
 
-const { addToCart } = useCart()
+const { cartItems, reservedResources, addToCart } = useCart()
+const warehouse = useWarehouse()
+const { fetchAvailableBatches } = useSupplies() // 🔥 ДОДАНО
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
 const selectedProcesses = ref({}) 
+
+// --- 🔥 НОВИЙ СТАН ДЛЯ ПАРТІЙ (MANUAL BATCH) ---
+const isManualBatch = ref(false)
+const availableBatches = ref([])
+const selectedBatchId = ref(null)
+const isLoadingBatches = ref(false)
 
 // --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
@@ -2016,6 +2235,11 @@ watch(() => props.isOpen, (isOpen) => {
     selectedVariant.value = null
     selectedModifiers.value = {}
     selectedProcesses.value = {} 
+    
+    // 🔥 Скидання ручного режиму при новому відкритті
+    isManualBatch.value = false
+    availableBatches.value = []
+    selectedBatchId.value = null
 
     // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
@@ -2043,31 +2267,63 @@ watch(() => props.isOpen, (isOpen) => {
   }
 })
 
+// --- 🔥 ЗАВАНТАЖЕННЯ ПАРТІЙ ПРИ УВІМКНЕННІ ТУМБЛЕРА ---
+watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
+    if (!isManual || !props.product) return;
+
+    isLoadingBatches.value = true
+    selectedBatchId.value = null
+
+    // Визначаємо, що саме ми шукаємо (варіант чи простий товар)
+    let entityType = props.product.has_variants ? 'variant' : 'product'
+    let entityId = props.product.has_variants ? currentVariant?.id : props.product.id
+
+    if (entityId) {
+        availableBatches.value = await fetchAvailableBatches(entityType, entityId)
+    } else {
+        availableBatches.value = []
+    }
+    
+    isLoadingBatches.value = false
+})
+
+
 const canAddToCart = computed(() => {
   if (!props.product) return false;
 
+  // 🔥 Якщо увімкнено ручний режим, касир ЗОБОВ'ЯЗАНИЙ вибрати партію
+  if (isManualBatch.value && !selectedBatchId.value) {
+      return false;
+  }
+
   // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
   if (props.product.has_variants) {
-    // 1. Має бути обраний варіант
     if (!selectedVariant.value) return false;
-    // 2. Перевіряємо залишок цього варіанту
+    
+    // Якщо ручний режим - перевіряємо чи є вибрана партія і чи вистачає там 1 шт
+    if (isManualBatch.value && selectedBatchId.value) {
+        const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+        return batch && batch.remaining_quantity >= 1;
+    }
+    
     return getAvailableStock(selectedVariant.value) >= 1;
   }
 
   // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
-  // Якщо ведемо облік (track_stock = true), перевіряємо фізичну кількість [5, 6]
   if (props.product.track_stock) {
-    return (props.product.stock_quantity || 0) >= 1;
+      if (isManualBatch.value && selectedBatchId.value) {
+          const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+          return batch && batch.remaining_quantity >= 1;
+      }
+      return (props.product.stock_quantity || 0) >= 1;
   }
 
-  // Якщо облік не ведеться (track_stock = false), товар завжди доступний
   return true;
 })
 
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
-    // Сценарій 1: Фізичний облік (track_stock = true)
     if (props.product.track_stock) {
         const inCart = cartItems.value
             .filter(i => i.variant_id === variant.id)
@@ -2075,16 +2331,13 @@ const getAvailableStock = (variant) => {
         return Math.max(0, (variant.stock_quantity || 0) - inCart);
     }
 
-    // Сценарій 2: Напої (рецепти)
     let maxPossible = Infinity;
 
-    // --- ПЕРЕВІРКА ЧЕРЕЗ ТЕХКАРТУ (MasterRecipe) ---
     if (variant.master_recipe_id) {
         const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
         recipe?.items?.forEach(rItem => {
             const inStore = warehouse.ingredients.value.find(i => i.id === rItem.ingredient_id);
             if (inStore) {
-                // Віднімаємо те, що вже заброньовано ВСІМА товарами в кошику
                 const reserved = reservedResources.value.ingredients[rItem.ingredient_id] || 0;
                 const available = Math.max(0, inStore.stock_quantity - reserved);
                 
@@ -2100,8 +2353,6 @@ const getAvailableStock = (variant) => {
             }
         });
     }
-
-    // (Аналогічно можна додати перевірку для variant.ingredients та variant.consumables)
     
     return maxPossible === Infinity ? 0 : maxPossible;
 }
@@ -2128,21 +2379,7 @@ const currentPrice = computed(() => {
   return price
 })
 
-// Генерація назви для кошика
-const generateName = () => {
-  let name = props.product.name
-  if (selectedVariant.value) {
-    name += ` (${selectedVariant.value.name})`
-  }
-  const processValues = Object.values(selectedProcesses.value)
-  if (processValues.length > 0) {
-      name += ` [${processValues.join(', ')}]`
-  }
-  return name
-}
-
 const handleConfirm = () => {
-  // Захист: якщо товар з варіантами, але нічого не обрано
   if (props.product.has_variants && !selectedVariant.value) {
     alert("Оберіть варіант товару");
     return;
@@ -2151,21 +2388,29 @@ const handleConfirm = () => {
   const payload = {
     product_id: props.product.id,
     quantity: 1,
-    // Формуємо модифікатори [7]
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
     
-    // Динамічні поля залежно від типу товару [8, 9]
     variant_id: props.product.has_variants ? selectedVariant.value.id : null,
     name: props.product.has_variants 
             ? `${props.product.name} (${selectedVariant.value.name})` 
             : props.product.name,
     price: props.product.has_variants 
             ? selectedVariant.value.price 
-            : props.product.price
+            : props.product.price,
+            
+    // 🔥 ДОДАНО: Передаємо ID партії в кошик, якщо увімкнено ручний режим
+    batch_id: (isManualBatch.value && selectedBatchId.value) ? selectedBatchId.value : null
   };
 
-  addToCart(payload); // Виклик useCart.js [10]
+  addToCart(payload); 
   emit('close');
+}
+
+// Допоміжна функція форматування дати
+const formatDate = (dateStr) => {
+    if (!dateStr) return 'Невідома дата'
+    const d = new Date(dateStr)
+    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth()+1).toString().padStart(2, '0')}.${d.getFullYear()}`
 }
 
 </script>
@@ -2199,22 +2444,17 @@ const handleConfirm = () => {
                   @click="getAvailableStock(variant) > 0 ? selectedVariant = variant : null"
                   class="py-3 px-2 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden"
                   :class="[
-                      // Якщо вибрано
                       selectedVariant?.id === variant.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600',
-        
-                      // 🔥 НОВА ЛОГІКА: Якщо залишку немає
                       getAvailableStock(variant) < 1 
                           ? 'opacity-40 cursor-not-allowed grayscale pointer-events-none' 
                           : 'hover:border-gray-300 cursor-pointer'
                   ]"
               >
-                  <!-- Вміст картки варіанту -->
-                  <span class="font-bold">{{ variant.name }}</span>
-                  <span class="text-sm">{{ variant.price }} ₴</span>
+                  <span class="font-bold text-center leading-tight">{{ variant.name }}</span>
+                  <span class="text-sm font-medium">{{ variant.price }} ₴</span>
     
-                  <!-- Мітка залишку -->
                   <div 
-                      class="text-[10px] px-1.5 py-0.5 rounded-full mt-1"
+                      class="text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-bold"
                       :class="getAvailableStock(variant) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
@@ -2222,6 +2462,40 @@ const handleConfirm = () => {
               </div>
           </div>
         </div>
+
+        <div v-if="product.track_stock || (product.has_variants && selectedVariant && !selectedVariant.master_recipe_id)" 
+             class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <label class="block text-sm font-bold text-blue-900">Спеціальне списання</label>
+                    <p class="text-xs text-blue-700 mt-0.5">Вимкнено = Автоматичний облік (FIFO/WAC)</p>
+                </div>
+                
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" v-model="isManualBatch" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
+            <div v-if="isManualBatch" class="mt-4 animate-fade-in-up">
+                <div v-if="isLoadingBatches" class="text-sm text-blue-600 text-center py-2">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> Завантаження партій...
+                </div>
+                <div v-else-if="availableBatches.length === 0" class="text-sm text-red-600 p-2 bg-red-50 rounded border border-red-100">
+                    Активних партій з залишком не знайдено. Потрібно створити постачання.
+                </div>
+                <div v-else>
+                    <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Оберіть партію складу:</label>
+                    <select v-model="selectedBatchId" class="w-full border-blue-200 bg-white p-2.5 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500">
+                        <option :value="null" disabled>-- Виберіть партію --</option>
+                        <option v-for="batch in availableBatches" :key="batch.batch_id" :value="batch.batch_id">
+                            📦 {{ formatDate(batch.supply_date) }} | Залишок: {{ batch.remaining_quantity }} | Вхідна: {{ batch.cost_per_unit }}₴
+                        </option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
 
         <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
             <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
@@ -2272,7 +2546,7 @@ const handleConfirm = () => {
         <button 
             @click="handleConfirm"
             :disabled="!canAddToCart"
-            class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex-1 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed ml-4"
         >
             Додати в кошик
         </button>
@@ -2579,6 +2853,43 @@ onMounted(() => fetchOrders())
       </button>
     </div>
 
+    <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-4 border border-gray-100">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500 font-bold">Показувати по:</span>
+            <select 
+            v-model="pageSize" 
+            class="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg p-1.5 focus:ring-blue-500 outline-none"
+            >
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+            </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button 
+            @click="currentPage--" 
+            :disabled="currentPage === 1"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ⬅️
+            </button>
+            
+            <span class="text-xs font-bold text-gray-600">
+            Сторінка {{ currentPage }} з {{ totalPages }}
+            </span>
+
+            <button 
+            @click="currentPage++" 
+            :disabled="currentPage === totalPages"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ➡️
+            </button>
+        </div>
+    </div>
+
     <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
 
     <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
@@ -2671,6 +2982,7 @@ const ConsumablesTab = defineAsyncComponent(() => import('./tabs/ConsumablesTab.
 const UnitsTab = defineAsyncComponent(() => import('./tabs/UnitsTab.vue'))
 const CategoriesTab = defineAsyncComponent(() => import('./tabs/CategoriesTab.vue'))
 const RoomsTab = defineAsyncComponent(() => import('./tabs/RoomsTab.vue')) // Додано для вкладки кімнат
+const SupplyTab = defineAsyncComponent(() => import('./tabs/SupplyTab.vue'))
 
 // Змінимо дефолтну вкладку на 'stock'
 const activeTab = ref('stock')
@@ -2686,7 +2998,9 @@ const tabs = {
     consumables: ConsumablesTab,
     units: UnitsTab,
     categories: CategoriesTab,
-    rooms: RoomsTab // <-- Додано для вкладки кімнат
+    rooms: RoomsTab, // <-- Додано для вкладки кімнат
+    supplies: SupplyTab // <-- Додано для вкладки постачання
+
 }
 
 onMounted(() => {
@@ -2704,6 +3018,13 @@ onMounted(() => {
     </div>
 
     <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
+      <button 
+        @click="activeTab = 'supplies'" 
+        :class="activeTab === 'supplies' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'"
+        class="px-4 py-2 text-xs font-bold rounded-lg transition-all"
+      >
+        🚚 Постачання
+      </button>
       <button @click="activeTab='stock'" :class="activeTab==='stock'?'bg-white text-green-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-clipboard-check mr-2"></i>Залишки</button>
       
       <button @click="activeTab='recipes'" :class="activeTab==='recipes'?'bg-white text-orange-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-book-open mr-2"></i>Рецепти</button>
@@ -3116,12 +3437,27 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ціна (₴/од)</label>
-                        <input v-model="newConsumable.cost_per_unit" type="number" step="0.01" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0.00"
+                        >
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
-                        <input v-model="newConsumable.stock_quantity" type="number" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0"
+                        >
                     </div>
+                    <p class="mt-2 text-[10px] text-orange-500 italic">
+                        * Поля заблоковані. Ціна та залишок оновлюються автоматично після проведення "Постачання".
+                    </p>
                 </div>
 
                 <button @click="handleCreate" class="bg-teal-600 hover:bg-teal-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-teal-200 transition mt-2">
@@ -3171,7 +3507,6 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
 
 <file path="frontend\src\components\warehouse\tabs\IngredientsTab.vue" lang="vue">
 <script setup>
-// 👇 ДОДАНО: onMounted (це було пропущено)
 import { ref, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 
@@ -3184,9 +3519,9 @@ const categories = ref([])
 const newIngredient = ref({ 
     name: '', 
     unit_id: '', 
-    cost_per_unit: 0, 
-    stock_quantity: 0, 
-    category_id: null 
+     
+    category_id: null,
+    costing_method: 'wac' // 🔥 ДОДАНО: Метод обліку за замовчуванням
 })
 
 // Функція завантаження категорій з бекенду
@@ -3216,7 +3551,8 @@ const handleCreate = async () => {
             unit_id:'',
             cost_per_unit:0,
             stock_quantity:0,
-            category_id: null
+            category_id: null,
+            costing_method: 'wac' // 🔥 ДОДАНО: Скидання до дефолту
         }
     }
 }
@@ -3226,6 +3562,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
 
 <template>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
             <h3 class="font-bold mb-6 text-gray-700 border-b pb-2">🌱 Новий інгредієнт</h3>
             
@@ -3258,14 +3595,31 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Собівартість (₴/од)</label>
-                        <input v-model="newIngredient.cost_per_unit" type="number" step="0.01" placeholder="0.00" class="border p-2 rounded-lg w-full">
+                    
+                    <div class="flex-1">
+                      <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Поточний залишок</label>
+                      <input 
+                        :value="0" 
+                        disabled 
+                        type="number" 
+                        class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                        placeholder="0"
+                      >
+                      <p class="text-[10px] text-orange-500 mt-1 italic">
+                        * Поповнюється тільки через "Постачання" [10]
+                      </p>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
-                        <input v-model="newIngredient.stock_quantity" type="number" step="0.01" placeholder="0" class="border p-2 rounded-lg w-full">
-                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Метод списання партій</label>
+                    <select v-model="newIngredient.costing_method" class="border p-2 rounded-lg w-full bg-white h-[42px]">
+                        <option value="wac">Середньозважена ціна (WAC)</option>
+                        <option value="fifo">По найстарішій партії (FIFO)</option>
+                    </select>
+                    <p class="text-[10px] text-gray-400 mt-1">
+                        * WAC - для молока, цукру, стаканчиків. FIFO - для кави, дорогої сировини.
+                    </p>
                 </div>
 
                 <button @click="handleCreate" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition mt-2">
@@ -3274,7 +3628,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 h-fit">
             <table class="w-full text-sm text-left">
                 <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
                     <tr>
@@ -3287,9 +3641,13 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                     <tr v-for="i in ingredients" :key="i.id" class="hover:bg-gray-50">
                         <td class="p-4 font-bold text-gray-700">
                             {{ i.name }}
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="flex items-center gap-2 mt-1 flex-wrap">
                                 <span v-if="i.category" class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
                                     {{ i.category.name }}
+                                </span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold" 
+                                      :class="i.costing_method === 'fifo' ? 'bg-purple-50 text-purple-600' : 'bg-green-50 text-green-600'">
+                                    {{ i.costing_method === 'fifo' ? 'FIFO' : 'WAC' }}
                                 </span>
                                 <span class="text-xs text-gray-400 font-normal">
                                     {{ i.cost_per_unit }} ₴/{{ i.unit?.symbol }}
@@ -3308,6 +3666,7 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
                 </tbody>
             </table>
         </div>
+        
     </div>
 </template>
 </file>
@@ -4097,6 +4456,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 import axios from 'axios'
 import HistoryModal from '../modals/HistoryModal.vue'
+import { useSupplies } from '@/composables/useSupplies'
 
 // Отримуємо дані зі сховища
 const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse()
@@ -4104,6 +4464,44 @@ const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse(
 const activeTab = ref('ingredients') 
 const search = ref('')
 const loading = ref(false)
+const { fetchAvailableBatches } = useSupplies()
+
+// --- Стан для розгортання партій ---
+const expandedId = ref(null);
+const activeBatches = ref([]);
+const currentMethod = ref('wac');
+const isBatchesLoading = ref(false);
+
+const toggleBatches = async (item) => {
+  const uniqueId = `${item.type}-${item.id}`;
+  
+  // Якщо вже розгорнуто — згортаємо
+  if (expandedId.value === uniqueId) {
+    expandedId.value = null;
+    return;
+  }
+
+  // Розгортаємо та завантажуємо
+  expandedId.value = uniqueId;
+  isBatchesLoading.value = true;
+  activeBatches.value = [];
+
+  try {
+    const data = await fetchAvailableBatches(item.type, item.id);
+    activeBatches.value = data.batches;
+    currentMethod.value = data.costing_method;
+  } finally {
+    isBatchesLoading.value = false;
+  }
+};
+
+// Функція форматування дати
+const formatDate = (dateStr) => {
+  if (!dateStr) return '---';
+  return new Date(dateStr).toLocaleDateString('uk-UA', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+};
 
 // --- ЗМІННІ ДЛЯ РЕДАГУВАННЯ ---
 // Зберігаємо не ID, а унікальний ключ (напр. 'product_5')
@@ -4292,53 +4690,86 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tr v-for="item in filteredItems" :key="item.unique_key" class="hover:bg-gray-50 group">
-                        
-                        <td class="p-4 font-bold text-gray-700">
-                            {{ item.display_name }}
-                        </td>
-
-                        <td class="p-4 text-center">
-                            <span v-if="item.type === 'ingredient'" class="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">Сировина</span>
-                            <span v-else-if="item.type === 'consumable'" class="bg-teal-100 text-teal-700 px-2 py-1 rounded text-[10px] font-bold">Матеріал</span>
-                            <span v-else-if="item.type === 'product'" class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">Товар</span>
-                            <span v-else-if="item.type === 'product_variant'" class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold">Варіант</span>
-                        </td>
-
-                        <td class="p-4 text-right font-mono font-bold">
-                            <div v-if="editingItemKey === item.unique_key" class="flex items-center justify-end gap-2">
-                                <input 
-                                    v-model.number="editValue" 
-                                    type="number" 
-                                    class="w-20 border rounded p-1 text-right focus:ring-2 ring-blue-500 outline-none"
-                                >
-                                <span class="text-xs text-gray-400">{{ item.unit_symbol }}</span>
-                            </div>
-                            <span v-else :class="{'text-red-500 bg-red-50 px-2 py-1 rounded': item.stock_quantity <= 0, 'text-gray-700': item.stock_quantity > 0}">
-                                {{ item.stock_quantity }} {{ item.unit_symbol }}
+                    <tbody class="divide-y divide-gray-100">
+                    <template v-for="item in filteredItems" :key="item.type + '-' + item.id">
+                        <!-- ОСНОВНИЙ РЯДОК -->
+                        <tr 
+                        @click="toggleBatches(item)"
+                        class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                        :class="{ 'bg-blue-50/30': expandedId === (item.type + '-' + item.id) }"
+                        >
+                        <td class="p-4">
+                            <div class="flex items-center gap-3">
+                            <span class="text-[10px] text-gray-400 transition-transform" 
+                                    :class="{ 'rotate-90 text-blue-500': expandedId === (item.type + '-' + item.id) }">
+                                ▶
                             </span>
+                            <span class="font-bold text-gray-700">{{ item.display_name }}</span>
+                            </div>
                         </td>
+                        <td class="p-4 text-xs text-gray-400 capitalize">
+                            {{ item.type === 'ingredient' ? 'Сировина' : (item.type === 'consumable' ? 'Матеріал' : 'Товар') }}
+                        </td>
+                        <td class="p-4 text-right">
+                            <span class="font-black text-gray-800">{{ item.stock_quantity }}</span>
+                            <span class="ml-1 text-gray-400 text-xs">{{ item.unit_symbol }}</span>
+                        </td>
+                        <td class="p-4 text-right">
+                            <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold">
+                            Історія
+                            </button>
+                        </td>
+                        </tr>
 
-                        <td class="p-4 text-center">
-                            <div v-if="editingItemKey === item.unique_key" class="flex justify-center gap-1">
-                                <button @click="saveEdit(item)" class="bg-green-500 text-white w-7 h-7 rounded hover:bg-green-600 flex items-center justify-center">
-                                    <i class="fas fa-check text-xs"></i>
-                                </button>
-                                <button @click="editingItemKey = null" class="bg-gray-300 text-gray-700 w-7 h-7 rounded hover:bg-gray-400 flex items-center justify-center">
-                                    <i class="fas fa-times text-xs"></i>
-                                </button>
+                        <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
+                        <tr v-if="expandedId === (item.type + '-' + item.id)">
+                        <td colspan="4" class="p-0 bg-gray-50/50">
+                            <div class="p-5 border-l-4 border-blue-500 ml-4 my-2">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Активні партії закупівлі
+                                </h4>
+                                <span :class="currentMethod === 'fifo' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" 
+                                    class="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">
+                                Метод: {{ currentMethod }}
+                                </span>
+                            </div>
+
+                            <div v-if="isBatchesLoading" class="text-xs text-gray-400 italic">Завантаження даних...</div>
+                            
+                            <div v-else-if="activeBatches.length > 0" class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                                <table class="w-full text-[11px]">
+                                <thead class="bg-gray-100 text-gray-500">
+                                    <tr>
+                                    <th class="p-2 text-left">Дата поставки</th>
+                                    <th class="p-2 text-left">Накладна</th>
+                                    <th class="p-2 text-center">Залишок</th>
+                                    <th class="p-2 text-right">Ціна вх.</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <tr v-for="(batch, idx) in activeBatches" :key="batch.id" 
+                                        :class="{ 'bg-red-50/50': currentMethod === 'fifo' && idx === 0 }">
+                                    <td class="p-2 text-gray-600">{{ formatDate(batch.supply_date) }}</td>
+                                    <td class="p-2 font-medium text-blue-600">#{{ batch.invoice_number }}</td>
+                                    <td class="p-2 text-center">
+                                        <!-- 🔥 ПІДСВІЧУВАННЯ FIFO: червоний колір для найстарішої партії -->
+                                        <span :class="{ 'text-red-600 font-black': currentMethod === 'fifo' && idx === 0 }">
+                                        {{ batch.remaining_quantity }}
+                                        </span>
+                                    </td>
+                                    <td class="p-2 text-right text-gray-400">{{ batch.cost_per_unit.toFixed(2) }} ₴</td>
+                                    </tr>
+                                </tbody>
+                                </table>
                             </div>
                             
-                            <div v-else class="flex justify-center gap-2">
-                                <button @click="openHistory(item)" class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition-colors" title="Історія руху">
-                                    <i class="fas fa-history"></i>
-                                </button>
-                                <button @click="startEdit(item)" class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-colors" title="Корегувати залишок">
-                                    <i class="fas fa-pen"></i>
-                                </button>
+                            <div v-else class="text-xs text-gray-400 italic">Немає активних партій. Товар списано повністю.</div>
                             </div>
                         </td>
-                    </tr>
+                        </tr>
+                    </template>
+                    </tbody>
                 </tbody>
             </table>
         </div>
@@ -4350,6 +4781,498 @@ onMounted(() => {
             @close="isHistoryOpen = false" 
         />
     </div>
+</template>
+</file>
+
+<file path="frontend\src\components\warehouse\tabs\SupplyTab.vue" lang="vue">
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useSupplies } from '@/composables/useSupplies'
+import { useWarehouse } from '@/composables/useWarehouse'
+
+// Додаємо emit на випадок, якщо батьківському компоненту треба знати, що постачання збережено
+const emit = defineEmits(['saved'])
+
+const warehouse = useWarehouse(); // 🔥 Отримуємо доступ до складу
+const { supplies, fetchSupplies, createSupply, isLoading, suppliers, fetchSuppliers, addSupplier } = useSupplies()
+const showSupplierModal = ref(false)
+const newSupplier = ref({ name: '', phone: '', email: '', notes: '' })
+// 1. Стан для відображення модального вікна
+const showCreateModal = ref(false);
+const expandedSupplyId = ref(null);
+
+const toggleSupplyDetails = (id) => {
+  // Якщо натискаємо на ту саму накладну — згортаємо, інакше — розгортаємо нову
+  expandedSupplyId.value = expandedSupplyId.value === id ? null : id;
+};
+
+// 2. Функція ініціалізації форми
+const resetForm = () => {
+  form.value = {
+    supplier_name: '',
+    invoice_number: '',
+    notes: '',
+    items: []
+  };
+};
+
+const form = ref({
+  supplier_name: '',
+  invoice_number: '',
+  notes: '',
+  items: [
+    { entity_type: 'ingredient', entity_id: null, quantity: 1, cost_per_unit: 0 }
+  ]
+})
+
+// Завантажуємо історію відразу при монтуванні компонента
+onMounted(async () => {
+  console.log("🚚 Завантаження історії постачань...");
+  await fetchSupplies();
+});
+
+onMounted(() => {
+  fetchSuppliers();
+})
+
+const handleSupplierChange = (e) => {
+  if (e.target.value === 'new') {
+    showSupplierModal.value = true;
+    form.value.supplier_id = null; // Скидаємо вибір у селекті
+  }
+}
+
+const saveNewSupplier = async () => {
+  console.log("🚀 Спроба створення постачальника:", newSupplier.value);
+
+  if (!newSupplier.value.name) {
+    return alert("Назва постачальника обов'язкова!");
+  }
+
+  try {
+    const result = await addSupplier(newSupplier.value);
+    
+    if (result) {
+      console.log("✅ Постачальник створений:", result);
+      // Автоматично вибираємо його в накладній
+      form.value.supplier_id = result.id;
+      // Закриваємо модалку
+      showSupplierModal.value = false;
+      // Очищаємо форму
+      newSupplier.value = { name: '', phone: '', email: '', notes: '' };
+    } else {
+      alert("❌ Не вдалося створити постачальника. Перевірте консоль.");
+    }
+  } catch (err) {
+    console.error("Критична помилка при створенні:", err);
+    alert("❌ Помилка: " + err.message);
+  }
+}
+
+// Допоміжна функція для форматування дати
+const formatDate = (dateStr) => {
+  if (!dateStr) return '---';
+  return new Date(dateStr).toLocaleString('uk-UA');
+};
+
+// 🔥 ОСНОВНА ФУНКЦІЯ ЗБЕРЕЖЕННЯ
+const handleCreateSupply = async () => {
+  // 1. Валідація на фронтенді
+  if (form.value.items.length === 0) {
+    return alert("Додайте хоча б один товар у накладну!");
+  }
+
+  // Перевірка, чи всі поля заповнені
+  const isValid = form.value.items.every(item => item.entity_id && item.quantity > 0 && item.cost_per_unit > 0);
+  if (!isValid) {
+    return alert("Будь ласка, заповніть всі поля: назву, кількість та ціну для кожного рядка.");
+  }
+
+  try {
+    // 2. Підготовка даних (Гарантуємо Integer для бекенду)
+    const payload = {
+      ...form.value,
+      items: form.value.items.map(item => ({
+        entity_type: item.entity_type,
+        entity_id: parseInt(item.entity_id), // 🔥 КРИТИЧНО: перетворюємо в число
+        quantity: parseFloat(item.quantity),
+        cost_per_unit: parseFloat(item.cost_per_unit)
+      }))
+    };
+
+    console.log("📤 Відправка постачання:", payload);
+
+    // 3. Виклик сервісу
+    const result = await createSupply(payload);
+    
+    if (result) {
+      alert(`✅ Постачання #${result.id} успішно проведено!`);
+      // Очищення форми
+      form.value = { supplier_name: '', invoice_number: '', notes: '', items: [] };
+      // Оновлюємо дані складу (залишки), щоб вони підтягнулися на Касу
+      await warehouse.fetchWarehouseData(); 
+    }
+  } catch (err) {
+    // 🔥 Якщо бекенд повернув помилку, ми її побачимо
+    alert("❌ Помилка: " + err.message);
+  }
+};
+
+const addItem = () => {
+  form.value.items.push({ entity_type: 'ingredient', entity_id: null, quantity: 1, cost_per_unit: 0 })
+}
+
+const removeItem = (index) => {
+  form.value.items.splice(index, 1)
+}
+
+// Допоміжна функція для отримання списку залежно від обраного типу
+const getListForType = (type) => {
+  if (type === 'ingredient') return warehouse.ingredients.value;
+  if (type === 'consumable') return warehouse.consumables.value;
+  
+  return [];
+};
+
+const totalCost = computed(() => {
+  return form.value.items.reduce((sum, item) => {
+    return sum + (item.quantity * item.cost_per_unit)
+  }, 0)
+})
+
+const submitSupply = async () => {
+  // Базова валідація
+  const hasInvalidItems = form.value.items.some(i => !i.entity_id || i.quantity <= 0)
+  if (hasInvalidItems) {
+    alert("Перевірте рядки: ID сутності не може бути порожнім, а кількість має бути > 0")
+    return
+  }
+
+  isSubmitting.value = true
+  try {
+    await createSupply(form.value)
+    alert("✅ Постачання успішно збережено!")
+    
+    // 🔥 ВИПРАВЛЕННЯ: Замість router.push() ми просто очищаємо форму для нової накладної
+    form.value = {
+      supplier_name: '',
+      invoice_number: '',
+      notes: '',
+      items: [
+        { entity_type: 'ingredient', entity_id: null, quantity: 1, cost_per_unit: 0 }
+      ]
+    }
+    
+    // Сповіщаємо батьківський компонент (якщо він захоче оновити загальну статистику)
+    emit('saved')
+    
+  } catch (error) {
+    alert("Помилка збереження. Перевірте консоль.")
+  } finally {
+    isSubmitting.value = false
+  }
+}
+</script>
+<template>
+  <div class="p-6">
+    <!-- Заголовок та кнопка створення -->
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">Історія постачань</h2>
+        <p class="text-sm text-gray-500">Усі проведені прихідні накладні</p>
+      </div>
+      
+      <button 
+        @click="showCreateModal = true"
+        class="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-green-100 transition flex items-center gap-2"
+      >
+        <span class="text-xl">+</span> Нове постачання
+      </button>
+    </div>
+
+    <!-- ТАБЛИЦЯ ІСТОРІЇ -->
+    <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+      <table class="w-full text-left border-collapse">
+        <thead class="bg-gray-50 text-gray-400 text-[10px] uppercase font-bold">
+          <tr>
+            <th class="p-4">ID / Дата</th>
+            <th class="p-4">Постачальник</th>
+            <th class="p-4">№ Накладної</th>
+            <th class="p-4">Позицій</th>
+            <th class="p-4 text-right">Сума</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          <template v-for="s in supplies" :key="s.id">
+            <!-- Основний рядок (додаємо клік та вказівник курсору) -->
+            <tr 
+              @click="toggleSupplyDetails(s.id)"
+              class="hover:bg-gray-50/50 transition-colors cursor-pointer group"
+              :class="{ 'bg-blue-50/30': expandedSupplyId === s.id }"
+            >
+              <td class="p-4">
+                <div class="flex items-center gap-2">
+                  <!-- Іконка стрілочки для візуалізації -->
+                  <span class="text-[10px] transition-transform" :class="{ 'rotate-90': expandedSupplyId === s.id }">▶</span>
+                  <div>
+                    <div class="font-bold text-gray-700">#{{ s.id }}</div>
+                    <div class="text-[10px] text-gray-400">{{ formatDate(s.created_at) }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-4 font-medium">{{ s.supplier?.name || s.supplier_name || '---' }}</td>
+              <td class="p-4">
+                <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold">
+                  {{ s.invoice_number || 'б/н' }}
+                </span>
+              </td>
+              <td class="p-4 text-gray-500">{{ s.items?.length || 0 }} од.</td>
+              <td class="p-4 text-right font-bold text-green-600">{{ s.total_cost.toFixed(2) }} ₴</td>
+            </tr>
+
+            <!-- РОЗГОРНУТА ІНФОРМАЦІЯ (Вміст постачання) -->
+            <tr v-if="expandedSupplyId === s.id" class="bg-gray-50/50">
+              <td colspan="5" class="p-0">
+                <div class="p-6 border-l-4 border-blue-400 ml-4 my-2">
+                  <h4 class="text-xs font-black text-gray-400 uppercase mb-3 tracking-wider">Склад накладної:</h4>
+                  
+                  <div class="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                    <table class="w-full text-xs">
+                      <thead class="bg-gray-100/50 text-gray-500 font-bold">
+                        <tr>
+                          <th class="p-2 text-left">Тип</th>
+                          <th class="p-2 text-left">Найменування</th>
+                          <th class="p-2 text-center">Кількість</th>
+                          <th class="p-2 text-right">Ціна за од.</th>
+                          <th class="p-2 text-right">Сума</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-50">
+                        <tr v-for="item in s.items" :key="item.id" class="hover:bg-gray-50/30">
+                          <td class="p-2 italic text-gray-400">
+                            {{ item.entity_name === 'ingredient' ? '🥦 Сировина' : (item.entity_name === 'consumable' ? '📦 Матеріал' : '🍹 Товар') }}
+                          </td>
+                          <td class="p-2 font-bold text-gray-700">{{ item.entity_name }}</td>
+                          <td class="p-2 text-center">{{ item.quantity }}</td>
+                          <td class="p-2 text-right text-gray-500">{{ item.cost_per_unit.toFixed(2) }} ₴</td>
+                          <td class="p-2 text-right font-bold text-gray-800">
+                            {{ (item.quantity * item.cost_per_unit).toFixed(2) }} ₴
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <!-- Нотатки накладної, якщо є -->
+                  <div v-if="s.notes" class="mt-3 text-xs text-gray-500 italic">
+                    <strong>Коментар:</strong> {{ s.notes }}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+          
+          <tr v-if="supplies.length === 0 && !isLoading">
+            <td colspan="5" class="p-12 text-center text-gray-400 italic">
+              Історія постачань порожня. Натисніть "Нове постачання", щоб додати перший прихід.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <div v-if="showCreateModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-3xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-all scale-100">
+        
+        <!-- Header -->
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+              🚚 Прихідна накладна
+            </h3>
+            <p class="text-xs text-gray-500">Заповніть дані про постачальника та перелік товарів</p>
+          </div>
+          <button @click="showCreateModal = false" class="text-gray-400 hover:text-gray-600 p-2 text-2xl">&times;</button>
+        </div>
+
+        <!-- Body (Scrollable) -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Поля накладної -->
+            <div>
+              <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Постачальник</label>
+              <select 
+                v-model="form.supplier_id" 
+                @change="handleSupplierChange"
+                class="w-full border p-3 rounded-xl focus:ring-2 ring-green-100 outline-none"
+              >
+                <option :value="null">-- Оберіть постачальника --</option>
+                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                <option value="new" class="text-green-600 font-bold">+ Створити нового постачальника</option>
+              </select>
+            </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">№ Накладної</label>
+              <input v-model="form.invoice_number" type="text" placeholder="INV-2024-001" class="w-full border p-3 rounded-xl focus:ring-2 ring-green-100 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Коментар</label>
+              <input v-model="form.notes" type="text" placeholder="Додаткова інформація..." class="w-full border p-3 rounded-xl focus:ring-2 ring-green-100 outline-none">
+            </div>
+          </div>
+
+          <!-- Таблиця товарів у накладній -->
+          <div class="border rounded-2xl overflow-hidden mb-4">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 font-bold text-gray-600">
+                <tr>
+                  <th class="p-3 text-left">Тип</th>
+                  <th class="p-3 text-left">Сутність (Інгредієнт/Товар)</th>
+                  <th class="p-3 text-left w-32">Кількість</th>
+                  <th class="p-3 text-left w-40">Ціна за од. (₴)</th>
+                  <th class="p-3 text-right w-40">Сума</th>
+                  <th class="p-3"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr v-for="(item, index) in form.items" :key="index" class="hover:bg-gray-50/30">
+                  <td class="p-3">
+                    <select v-model="item.entity_type" @change="item.entity_id = null" class="w-full border p-2 rounded-xl bg-white">
+                      <option value="ingredient">🥦 Сировина</option>
+                      <option value="consumable">📦 Матеріали</option>
+                      <option value="variant">🍹 Товар/Варіант</option>
+                    </select>
+                  </td>
+                  <td class="p-3">
+                    <!-- Наш динамічний селектор зі списків Warehouse -->
+                    <select v-model="item.entity_id" :disabled="!item.entity_type" class="w-full border p-2 rounded-xl bg-white disabled:bg-gray-50">
+                      <option :value="null">-- Оберіть зі списку --</option>
+                      <option v-for="obj in getListForType(item.entity_type)" :key="obj.id" :value="obj.id">
+                        {{ obj.name || obj.display_name }} {{ obj.sku ? `(${obj.sku})` : '' }}
+                      </option>
+                    </select>
+                  </td>
+                  <td class="p-3">
+                    <input v-model.number="item.quantity" type="number" step="0.001" class="w-full border p-2 rounded-xl text-center">
+                  </td>
+                  <td class="p-3">
+                    <input v-model.number="item.cost_per_unit" type="number" step="0.01" class="w-full border p-2 rounded-xl text-right">
+                  </td>
+                  <td class="p-3 text-right font-bold text-gray-700">
+                    {{ (item.quantity * item.cost_per_unit).toFixed(2) }} ₴
+                  </td>
+                  <td class="p-3 text-center">
+                    <button @click="removeItem(index)" class="text-red-400 hover:text-red-600 p-2">&times;</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <button @click="addItem" class="text-green-600 font-bold text-sm hover:underline flex items-center gap-2 mb-4">
+            + Додати рядок
+          </button>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <div class="text-lg">
+            <span class="text-gray-400">Разом:</span>
+            <span class="ml-2 font-black text-2xl text-gray-800">{{ totalCost.toFixed(2) }} ₴</span>
+          </div>
+          <div class="flex gap-4">
+            <button @click="showCreateModal = false" class="px-6 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition">
+              Скасувати
+            </button>
+            <button 
+              @click="handleCreateSupply"
+              :disabled="isLoading || form.items.length === 0"
+              class="px-8 py-3 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 transition"
+            >
+              {{ isLoading ? 'Збереження...' : '✅ Провести постачання' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- МОДАЛЬНЕ ВІКНО: СТВОРЕННЯ ПОСТАЧАЛЬНИКА -->
+    <Teleport to="body">
+      <div v-if="showSupplierModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all scale-100">
+          
+          <!-- Header -->
+          <div class="p-6 border-b border-gray-100 bg-blue-50/50">
+            <h3 class="text-xl font-bold text-gray-800">🏢 Новий постачальник</h3>
+            <p class="text-xs text-gray-500">Додайте контактні дані для бази</p>
+          </div>
+
+          <!-- Form Body -->
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Назва / Компанія *</label>
+              <input 
+                v-model="newSupplier.name" 
+                type="text" 
+                placeholder="Напр: ПрАТ 'Молочний Світ'" 
+                class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none transition"
+              >
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Телефон</label>
+                <input 
+                  v-model="newSupplier.phone" 
+                  type="tel" 
+                  placeholder="+380..." 
+                  class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
+                >
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label>
+                <input 
+                  v-model="newSupplier.email" 
+                  type="email" 
+                  placeholder="office@example.com" 
+                  class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none"
+                >
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Коментар / Нотатки</label>
+              <textarea 
+                v-model="newSupplier.notes" 
+                rows="3" 
+                placeholder="Графік доставки, умови оплати тощо..." 
+                class="w-full border p-3 rounded-xl focus:ring-2 ring-blue-100 outline-none resize-none"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Footer Buttons -->
+          <div class="p-6 border-t border-gray-100 flex gap-3 bg-gray-50/30">
+            <button 
+              @click="showSupplierModal = false" 
+              class="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition"
+            >
+              Скасувати
+            </button>
+            <button 
+              @click="saveNewSupplier"
+              class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition"
+            >
+              Створити
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+  </div>
 </template>
 </file>
 
@@ -4851,6 +5774,8 @@ const showVariantForm = ref(false)
 // Тимчасова змінна для Спільних Інгредієнтів (локально, щоб не ламати useProducts)
 const tempCommonIngredient = ref({ ingredient_id: "", quantity: 0 })
 
+
+
 // 🔥 Слідкуємо за відкриттям варіанту на редагування
 watch(() => variantBuilder.value, (newVal) => {
     // Якщо це редагування існуючого варіанту (є ID) і у нього є рецепт
@@ -4915,6 +5840,12 @@ const handleSaveProduct = async () => {
     // 1. Викликаємо основну логіку збереження з useProducts.js
     const success = await saveProduct();
     
+    // Якщо товар має варіанти, він ЗАВЖДИ повинен рахувати залишки за рецептами варіантів.
+    // Тому ми примусово ставимо track_stock у false.
+    if (newProduct.value.has_variants) {
+    newProduct.value.track_stock = false;
+    }
+
     // 2. Якщо сервер відповів успішно (success === true)
     if (success) {
         // Повідомляємо батьківський компонент, що дані оновлено
@@ -5031,23 +5962,7 @@ const toggleProcessGroup = (id) => {
                             </div>
                         </div>
 
-                        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
-                            <input 
-                                id="manual-track-stock"
-                                type="checkbox" 
-                                v-model="newProduct.track_stock"
-                                class="mt-1 w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
-                            >
-                            <div>
-                                <label for="manual-track-stock" class="block font-bold text-gray-800 cursor-pointer select-none">
-                                    Вести загальний облік залишків (Track Stock)
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">
-                                    Увімкніть це, якщо хочете бути впевнені, що списання працюватиме глобально.
-                                    (Зазвичай для товарів з варіантами це вимкнено, але ви можете увімкнути вручну).
-                                </p>
-                            </div>
-                        </div>
+                        
                     </div>
 
                     <div v-if="activeTab === 'variants'" class="space-y-6 animate-slide-up">
@@ -5405,19 +6320,20 @@ const openCreateModal = () => {
 
 const openCreateForm = (type) => {
   console.log("🛠 Відкриваємо форму типу:", type);
-  
   // 1. Скидаємо дані в глобальному сховищі useProducts [2]
   resetForm(); 
-  
   // 2. ЗАКРИВАЄМО вікно вибору
   showTypeModal.value = false;
   
-  // 3. ВІДКРИВАЄМО потрібну форму (використовуємо nextTick для надійності Vue)
-  if (type === 'simple') {
-    showSimpleForm.value = true;
-  } else {
+  if (type === 'variant') {
+    // 🔥 КРИТИЧНО: Встановлюємо прапорець для бізнес-логіки
+    newProduct.value.has_variants = true; 
     showVariantForm.value = true;
+  } else {
+    newProduct.value.has_variants = false;
+    showSimpleForm.value = true;
   }
+
 };
 
 // 2. Обрали тип -> Відкриваємо відповідну форму
@@ -6199,12 +7115,18 @@ export function useProducts() {
 </file>
 
 <file path="frontend\src\composables\useStatistics.js" lang="js">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export function useStatistics() {
   const orders = ref([])
   const loading = ref(true)
+  const totalOrders = ref(0)
+  const totalPages = ref(1)
   
+  // 🔥 Параметри пагінації
+  const currentPage = ref(1)
+  const pageSize = ref(20) // Скільки завантажувати відразу
+
   // Для модального вікна деталей
   const showDetailModal = ref(false)
   const selectedOrder = ref(null)
@@ -6212,9 +7134,12 @@ export function useStatistics() {
   const fetchOrders = async () => {
     loading.value = true
     try {
-      const res = await fetch('/api/orders/')
+      const res = await fetch(`/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`)
       if (res.ok) {
-        orders.value = await res.json()
+        const data = await res.json()
+        orders.value = data.items
+        totalOrders.value = data.total
+        totalPages.value = data.pages
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -6222,6 +7147,11 @@ export function useStatistics() {
       loading.value = false
     }
   }
+
+  // Слідкуємо за зміною сторінки або ліміту
+  watch([currentPage, pageSize], () => {
+    fetchOrders()
+  })
 
   const openDetails = (order) => {
     selectedOrder.value = order
@@ -6236,12 +7166,116 @@ export function useStatistics() {
   return {
     orders,
     loading,
+    totalOrders, 
+    totalPages,
+    currentPage, 
+    pageSize,
     showDetailModal,
     selectedOrder,
     fetchOrders,
     openDetails,
     closeDetails
   }
+}
+</file>
+
+<file path="frontend\src\composables\useSupplies.js" lang="js">
+import { ref } from 'vue'
+
+export function useSupplies() {
+    const suppliers = ref([])
+    const supplies = ref([])
+    const isLoading = ref(false)
+    const error = ref(null)
+    
+    const fetchSuppliers = async () => {
+    try {
+        const res = await fetch('/api/supplies/suppliers/');
+        if (res.ok) suppliers.value = await res.json();
+    } catch (err) { console.error(err); }
+    };
+
+    const addSupplier = async (data) => {
+        const res = await fetch('/api/supplies/suppliers/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        if (res.ok) {
+            await fetchSuppliers();
+            return await res.json();
+        }
+        const errorData = await res.json();
+        console.error("Server error:", errorData);
+        return null;
+        }
+
+    // Отримання історії постачань
+    const fetchSupplies = async () => {
+        isLoading.value = true
+        try {
+            const response = await fetch('/api/supplies/')
+            if (!response.ok) throw new Error('Помилка завантаження постачань')
+            supplies.value = await response.json()
+        } catch (err) {
+            error.value = err.message
+            console.error(err)
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    // Відправка нової накладної
+    const createSupply = async (supplyData) => {
+        isLoading.value = true
+        try {
+            const response = await fetch('/api/supplies/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(supplyData)
+            })
+            
+            if (!response.ok) {
+                const errData = await response.json()
+                throw new Error(errData.detail || 'Помилка створення постачання')
+            }
+            
+            return await response.json()
+        } catch (err) {
+            error.value = err.message
+            console.error(err)
+            throw err
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    // Отримання доступних партій (знадобиться пізніше для Каси)
+    const fetchAvailableBatches = async (entityType, entityId) => {
+        try {
+            // Формуємо URL з параметрами запиту
+            const response = await fetch(`/api/supplies/batches/?entity_type=${entityType}&entity_id=${entityId}`)
+            if (!response.ok) throw new Error('Помилка завантаження партій')
+            return await response.json()
+        } catch (err) {
+            console.error("Помилка завантаження партій", err)
+            return { costing_method: 'wac', batches: [] }
+        }
+    }
+
+    return {
+        suppliers,
+        supplies,
+        isLoading,
+        error,
+        fetchSuppliers,
+        fetchSupplies,
+        createSupply,
+        addSupplier,
+        fetchAvailableBatches
+    }
 }
 </file>
 
@@ -6786,6 +7820,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import database, models
 
+
 # Імпортуємо наші нові модульні роутери
 from routers import (
     products, 
@@ -6795,7 +7830,8 @@ from routers import (
     processes, 
     customers, 
     orders,
-    product_rooms
+    product_rooms,
+    supplies
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -6822,6 +7858,7 @@ app.include_router(recipes.router)
 app.include_router(processes.router)
 app.include_router(customers.router)
 app.include_router(product_rooms.router)
+app.include_router(supplies.router)
 
 @app.get("/")
 def read_root():
@@ -6871,6 +7908,7 @@ class Ingredient(Base):
     stock_quantity = Column(Float, default=0.0)
     unit_id = Column(Integer, ForeignKey("units.id"))
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    costing_method = Column(String, default='wac')
     
     unit = relationship("Unit")
     category = relationship("Category")
@@ -6885,6 +7923,7 @@ class Consumable(Base):
     
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
+    costing_method = Column(String, default='wac')
     
     category = relationship("Category")
     unit = relationship("Unit")
@@ -7094,6 +8133,49 @@ class Customer(Base):
     email = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- ПОСТАЧАННЯ ТА ПАРТІЇ ---
+
+class Supply(Base):
+    __tablename__ = "supplies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    total_cost = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True) # Нове поле
+    supplier_name = Column(String, nullable=True) # Залишаємо для історії (snapshot)
+    
+    items = relationship("SupplyItem", back_populates="supply", cascade="all, delete-orphan")
+    supplier = relationship("Supplier")
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True) # Твій "коментар"
+    created_at = Column(DateTime, default=datetime.utcnow)
+class SupplyItem(Base):
+    __tablename__ = "supply_items"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    supply_id = Column(Integer, ForeignKey("supplies.id"))
+    
+    entity_type = Column(String)  # 'ingredient', 'consumable', 'simple_product'
+    entity_id = Column(Integer)
+    entity_name = Column(String) 
+    
+    quantity = Column(Float)      # Скільки приїхало початково
+    remaining_quantity = Column(Float, default=0.0) # Залишок для FIFO та Manual Batch
+    
+    cost_per_unit = Column(Float) # Ціна закупівлі одиниці в ЦІЙ партії
+    total_cost = Column(Float)    # Загальна вартість рядка
+    
+    supply = relationship("Supply", back_populates="items")
+    
 </file>
 
 <file path="product_service\requirements.txt" lang="txt">
@@ -7137,21 +8219,24 @@ class UnitCreate(BaseModel):
 
 class IngredientCreate(BaseModel):
     name: str
-    cost_per_unit: float
-    stock_quantity: float
+    #cost_per_unit: float
+    costing_method: str = "wac"
     unit_id: int
     category_id: Optional[int] = None 
 
 class Ingredient(BaseModel):
     id: int
     name: str
-    cost_per_unit: float
+    
     stock_quantity: float
     unit_id: Optional[int] = None
     unit: Optional[Unit] = None
     category_id: Optional[int] = None
     category: Optional[Category] = None
+    costing_method: str
     class Config: from_attributes = True
+    class Config:
+        extra = 'ignore' # Ігноруємо зайві поля з фронтенду (наприклад, cost_per_unit при створенні)
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
@@ -7409,6 +8494,61 @@ class ProductRoomRead(BaseModel):
 class ProductRoomCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+class SupplierCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class Supplier(SupplierCreate):
+    id: int
+    class Config: from_attributes = True
+
+class SupplyItemCreate(BaseModel):
+    entity_type: str
+    entity_id: int
+    quantity: float
+    cost_per_unit: float
+
+# 🔥 НОВА СХЕМА ДЛЯ ВІДПОВІДІ (Response)
+class SupplyItemResponse(SupplyItemCreate):
+    id: int
+    entity_name: Optional[str] = None # Це те, чого не вистачало
+
+    class Config:
+        from_attributes = True
+
+class SupplyCreate(BaseModel):
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+    items: List[SupplyItemCreate]
+
+class SupplyResponse(BaseModel):
+    id: int
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+    total_cost: float
+    created_at: datetime
+    # 🔥 ВИКОРИСТОВУЄМО НОВУ СХЕМУ ТУТ
+    items: List[SupplyItemResponse] 
+    supplier: Optional[Supplier] = None
+    
+    class Config:
+        from_attributes = True
+
+class OrderPaginationResponse(BaseModel):
+    total: int
+    items: List[OrderRead]
+    page: int
+    pages: int
+
+    class Config:
+        from_attributes = True
 </file>
 
 <file path="product_service\routers\__init__.py" lang="py">
@@ -7484,7 +8624,7 @@ def delete_category(category_id: int, db: Session = Depends(database.get_db)):
 # FILE: product_service/routers/customers.py
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from typing import List
 import database, schemas, models
@@ -7528,7 +8668,11 @@ def delete_customer(id: int, db: Session = Depends(database.get_db)):
 
 @router.get("/{customer_id}/orders/", response_model=List[schemas.OrderRead])
 def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db)):
-    return db.query(models.Order).filter(models.Order.customer_id == customer_id).order_by(models.Order.created_at.desc()).all()
+    return db.query(models.Order)\
+        .options(joinedload(models.Order.items))\
+        .filter(models.Order.customer_id == customer_id)\
+        .order_by(models.Order.created_at.desc())\
+        .all()
 </file>
 
 <file path="product_service\routers\inventory.py" lang="py">
@@ -7561,7 +8705,13 @@ def read_units(db: Session = Depends(database.get_db)):
 def create_ingredient(ingredient: schemas.IngredientCreate, db: Session = Depends(database.get_db)):
     exists = db.query(models.Ingredient).filter(models.Ingredient.name == ingredient.name).first()
     if exists: raise HTTPException(status_code=400, detail="Ingredient already exists")
-    new_item = models.Ingredient(**ingredient.dict())
+
+    # Створюємо об'єкт явно, ініціалізуючи залишок нулем
+    new_item = models.Ingredient(
+        **ingredient.dict(),
+        cost_per_unit=0.0, # Встановлюємо початкову ціну в 0
+        stock_quantity=0.0 ) # 🔥 Гарантуємо порожній склад при створенні
+
     db.add(new_item); db.commit(); db.refresh(new_item)
     return new_item
 
@@ -7575,26 +8725,13 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     if not db_ingredient: raise HTTPException(status_code=404, detail="Ingredient not found")
     
     # 1. Зберігаємо старий баланс
-    old_balance = db_ingredient.stock_quantity
+    #old_balance = db_ingredient.stock_quantity
     
     # 2. Оновлюємо поля
     db_ingredient.name = ingredient_data.name
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
-    
-    # 3. Якщо залишок змінився - пишемо це
-    if ingredient_data.stock_quantity != old_balance:
-        db_ingredient.stock_quantity = ingredient_data.stock_quantity
-        # ЛОГУВАННЯ
-        InventoryLogger.log(
-            db, 
-            entity_type="ingredient", 
-            entity_id=db_ingredient.id, 
-            entity_name=db_ingredient.name, 
-            balance_before=old_balance, 
-            balance_after=db_ingredient.stock_quantity, 
-            reason="manual_correction"
-        )
+    db_ingredient.category_id = ingredient_data.category_id
     
     db.commit(); db.refresh(db_ingredient)
     return db_ingredient
@@ -7702,9 +8839,30 @@ def checkout(order_data: schemas.OrderCreate, db: Session = Depends(database.get
         "total_price": new_order.total_price
     }
 
-@router.get("/", response_model=List[schemas.OrderRead])
-def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
-    return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
+@router.get("/", response_model=schemas.OrderPaginationResponse)
+def get_orders(
+    page: int = Query(1, ge=1), 
+    limit: int = Query(20, ge=1, le=100), 
+    db: Session = Depends(database.get_db)
+):
+    skip = (page - 1) * limit
+    
+    # Отримуємо загальну кількість замовлень для розрахунку сторінок
+    total_orders = db.query(models.Order).count()
+    
+    # Отримуємо замовлення для поточної сторінки
+    orders = db.query(models.Order)\
+        .order_by(models.Order.created_at.desc())\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+    
+    return {
+        "total": total_orders,
+        "items": orders,
+        "page": page,
+        "pages": (total_orders + limit - 1) // limit # Округлення вгору
+    }
 </file>
 
 <file path="product_service\routers\processes.py" lang="py">
@@ -8267,6 +9425,96 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     return {"status": "deleted"}
 </file>
 
+<file path="product_service\routers\supplies.py" lang="py">
+# FILE: product_service/routers/supplies.py
+
+from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy.orm import Session, joinedload # Для оптимизации загрузки связанных данных
+from typing import List
+import models
+import schemas
+import database
+from services.supply_service import SupplyService
+
+router = APIRouter(
+    prefix="/supplies",
+    tags=["Supplies"]
+)
+
+@router.get("/suppliers/", response_model=List[schemas.Supplier])
+def get_suppliers(db: Session = Depends(database.get_db)):
+    return db.query(models.Supplier).order_by(models.Supplier.name).all()
+
+@router.post("/suppliers/", response_model=schemas.Supplier)
+def create_supplier(data: schemas.SupplierCreate, db: Session = Depends(database.get_db)):
+    db_supplier = models.Supplier(**data.dict())
+    db.add(db_supplier)
+    db.commit()
+    db.refresh(db_supplier)
+    return db_supplier
+
+@router.post("/", response_model=schemas.SupplyResponse)
+def create_supply(data: schemas.SupplyCreate, db: Session = Depends(database.get_db)):
+    """
+    Створює нове постачання (накладну), формує партії та перераховує собівартість.
+    """
+    return SupplyService.create_supply(db, data)
+
+@router.get("/", response_model=List[schemas.SupplyResponse])
+def get_supplies(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    # 🔥 Використовуємо joinedload для миттєвого завантаження позицій накладної
+    return db.query(models.Supply)\
+        .options(
+            joinedload(models.Supply.items),
+            joinedload(models.Supply.supplier) # Також завантажуємо об'єкт постачальника
+        )\
+        .order_by(models.Supply.created_at.desc())\
+        .offset(skip).limit(limit).all()
+
+@router.get("/batches/")
+def get_available_batches(
+    entity_type: str = Query(..., description="Тип: ingredient, consumable, variant, product"),
+    entity_id: int = Query(..., description="ID конкретного товару/інгредієнта"),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Повертає список активних партій з деталями накладної та методом списання.
+    """
+    # 1. Отримуємо активні партії (залишок > 0) з підвантаженням даних про постачання [1, 2]
+    batches = db.query(models.SupplyItem)\
+        .options(joinedload(models.SupplyItem.supply))\
+        .filter(
+            models.SupplyItem.entity_type == entity_type,
+            models.SupplyItem.entity_id == entity_id,
+            models.SupplyItem.remaining_quantity > 0
+        ).order_by(models.SupplyItem.id.asc()).all() # FIFO: найстаріші спочатку [3]
+
+    # 2. Визначаємо метод списання (WAC/FIFO) для даної сутності [4, 5]
+    costing_method = 'wac'
+    if entity_type == 'ingredient':
+        obj = db.query(models.Ingredient).filter(models.Ingredient.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+    elif entity_type == 'consumable':
+        obj = db.query(models.Consumable).filter(models.Consumable.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+
+    # 3. Формуємо розширену відповідь для фронтенду
+    return {
+        "costing_method": costing_method,
+        "batches": [
+            {
+                "id": b.id,
+                "supply_id": b.supply_id,
+                "invoice_number": b.supply.invoice_number if b.supply else "б/н", # Номер накладної [6]
+                "supply_date": b.supply.created_at if b.supply else None,
+                "quantity_initial": b.quantity,
+                "remaining_quantity": b.remaining_quantity,
+                "cost_per_unit": b.cost_per_unit
+            } for b in batches
+        ]
+    }
+</file>
+
 <file path="product_service\services\__init__.py" lang="py">
 
 </file>
@@ -8305,6 +9553,73 @@ class InventoryLogger:
             print(f"⚠️ Помилка логування складу: {e}")
 </file>
 
+<file path="product_service\services\inventory_service.py" lang="py">
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+import models
+
+class InventoryService:
+    
+    @staticmethod
+    def deduct_fifo(db: Session, entity_type: str, entity_id: int, quantity_needed: float) -> float:
+        """
+        Списує товар за методом FIFO (найстаріші партії перші) і повертає ТОЧНУ собівартість списаного.
+        """
+        if quantity_needed <= 0:
+            return 0.0
+
+        # Шукаємо партії з залишком, сортуємо за ID (що еквівалентно хронології)
+        batches = db.query(models.SupplyItem).filter(
+            models.SupplyItem.entity_type == entity_type,
+            models.SupplyItem.entity_id == entity_id,
+            models.SupplyItem.remaining_quantity > 0
+        ).order_by(models.SupplyItem.id.asc()).with_for_update().all()
+
+        total_cost_of_deducted = 0.0
+        qty_left_to_deduct = quantity_needed
+
+        for batch in batches:
+            if qty_left_to_deduct <= 0:
+                break
+            
+            take_from_batch = min(batch.remaining_quantity, qty_left_to_deduct)
+            total_cost_of_deducted += take_from_batch * batch.cost_per_unit
+            
+            batch.remaining_quantity -= take_from_batch
+            qty_left_to_deduct -= take_from_batch
+            db.add(batch)
+
+        # Якщо товару не вистачило в партіях (наприклад, продали в мінус)
+        if qty_left_to_deduct > 0:
+             last_price = batches[-1].cost_per_unit if batches else 0.0
+             total_cost_of_deducted += qty_left_to_deduct * last_price
+
+        return total_cost_of_deducted
+
+    @staticmethod
+    def deduct_manual(db: Session, batch_id: int, quantity_needed: float) -> float:
+        """
+        Списує товар із конкретно обраної партії.
+        """
+        batch = db.query(models.SupplyItem).filter(
+            models.SupplyItem.id == batch_id
+        ).with_for_update().first()
+        
+        if not batch:
+            raise HTTPException(status_code=404, detail="Партію не знайдено")
+            
+        if batch.remaining_quantity < quantity_needed:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Недостатньо залишку в обраній партії (є {batch.remaining_quantity}, треба {quantity_needed})"
+            )
+            
+        batch.remaining_quantity -= quantity_needed
+        db.add(batch)
+        
+        return quantity_needed * batch.cost_per_unit
+</file>
+
 <file path="product_service\services\order_service.py" lang="py">
 # FILE: product_service/services/order_service.py
 
@@ -8315,6 +9630,8 @@ import models
 import schemas
 import traceback
 from services.inventory_logger import InventoryLogger
+from services.inventory_service import InventoryService # 🔥 НОВЕ: Імпортуємо наш сервіс партій
+from services.product_service import ProductService
 
 class OrderService:
     @staticmethod
@@ -8351,7 +9668,7 @@ class OrderService:
                 item_name = product.name
                 details_list = []
 
-                # --- ЛОГІКА ВАРІАНТІВ (ВИПРАВЛЕНО) ---
+                # --- ЛОГІКА ВАРІАНТІВ ---
                 if item.variant_id:
                     variant = db.query(models.ProductVariant).filter(
                         models.ProductVariant.id == item.variant_id
@@ -8361,59 +9678,41 @@ class OrderService:
                         raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
                     item_name = f"{product.name} ({variant.name})"
-                    
+                    price = float(variant.price) 
+
                     # 1. Фіксуємо баланс "ДО" (для історії)
                     balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     
-                    # Визначаємо, чи треба фізично віднімати цифру залишку
+                    # Визначаємо, чи треба фізично віднімати цифру залишку самого варіанту
                     should_deduct_physical = (variant.stock_quantity is not None) and (not variant.master_recipe_id)
+                    
                     if should_deduct_physical:
+                        if variant.stock_quantity < item.quantity:
+                            raise HTTPException(status_code=400, detail=f"Недостатньо залишку: {variant.name}")
+                        
+                        # 🔥 НОВЕ: Гібридний облік для варіанту (Manual або FIFO)
+                        # Якщо з фронтенду прийшов конкретний batch_id - списуємо з нього
+                        if getattr(item, 'batch_id', None):
+                            InventoryService.deduct_manual(db, item.batch_id, item.quantity)
+                        # Інакше перевіряємо, чи ввімкнено FIFO для цього варіанту
+                        elif getattr(variant, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
+                        
+                        # Завжди зменшуємо загальний залишок
                         variant.stock_quantity -= item.quantity
 
-                    # 3. ЛОГУВАННЯ (ЗАВЖДИ!)
-                    # Ми винесли це за межі 'if should_deduct_physical'.
-                    # Тепер історія пишеться навіть для товарів з рецептами.
+                    # 3. ЛОГУВАННЯ ВАРІАНТУ (ЗАВЖДИ!)
                     balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
-
-                    # 🔥 ФІКС: Логуємо ЗАВЖДИ, використовуючи правильний тип і явну зміну
                     InventoryLogger.log(
                         db,
-                        entity_type="product_variant", # Узгоджуємо з роутером історії [4]
+                        entity_type="product_variant",
                         entity_id=variant.id,
                         entity_name=item_name,
                         balance_before=balance_before,
                         balance_after=balance_after,
                         reason=transaction_reason,
-                        force_change=-item.quantity # 🔥 Передаємо від'ємну кількість продажу
+                        force_change=-item.quantity 
                     )
-
-                    #if variant.stock_quantity is not None and should_deduct_static:
-                    #    current_stock = variant.stock_quantity
-                    #    # (перевірка на ліміт і списання)
-                    #    variant.stock_quantity -= item.quantity
-                        # (логування InventoryLogger)
-
-                    # 1. Списання залишку ВАРІАНТУ (Та запис в історію!)
-                    # 🔥 FIX: Списуємо, якщо у варіанту задано кількість (не None), незалежно від налаштувань батька
-                    #if variant.stock_quantity is not None and not variant.master_recipe_id:
-                    #    current_stock = variant.stock_quantity
-                    #    
-                    #    if current_stock < item.quantity:
-                    #        raise HTTPException(status_code=400, detail=f"Недостатньо залишку для варіанту: {variant.name}")
-                        
-                    #    variant.stock_quantity = current_stock - item.quantity
-                    #    db.add(variant)
-
-                        # Логування списання варіанту
-                    #    InventoryLogger.log(
-                    #        db, 
-                    #        "variant", 
-                    #        variant.id, 
-                    #        item_name, 
-                    #        current_stock, 
-                    #        variant.stock_quantity, 
-                    #        transaction_reason
-                    #    )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -8423,18 +9722,44 @@ class OrderService:
                             for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
+                                    # Розрахунок кількості списання
                                     deduction = 0
                                     if r_item.is_percentage:
-                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
+                                        deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
-                                         deduction = r_item.quantity * item.quantity
+                                        deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    
+                                    # Облік за методом FIFO або WAC
+                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
+                                    # Оновлюємо фізичний залишок інгредієнта
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
+                                    # Логуємо зміну саме ІНГРЕДІЄНТА
                                     InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+
+                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
+                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
+                            # (calculated stock), який тепер доступний для цього варіанту.
+                            
+                            new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
+                            
+                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            InventoryLogger.log(
+                                db,
+                                entity_type="product_variant",
+                                entity_id=variant.id,
+                                entity_name=item_name,
+                                balance_before=balance_before, # Це значення ми взяли на початку циклу
+                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
+                                reason=transaction_reason,
+                                force_change=-item.quantity
+                            )
 
                     # 3. Списання МАТЕРІАЛІВ варіанту
                     for v_cons in variant.consumables:
@@ -8443,6 +9768,10 @@ class OrderService:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
+                            # 🔥 НОВЕ: Перевірка FIFO для Матеріалу
+                            if getattr(cons, 'costing_method', 'wac') == 'fifo':
+                                InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
                             db.add(cons)
@@ -8450,27 +9779,27 @@ class OrderService:
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
-                    # 1. Списання залишку ПРОСТОГО товару (Та запис в історію!)
                     if product.track_stock:
                         current_stock = product.stock_quantity if product.stock_quantity is not None else 0.0
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
                         
+                        # 🔥 НОВЕ: Гібридний облік для простого товару
+                        if getattr(item, 'batch_id', None):
+                            InventoryService.deduct_manual(db, item.batch_id, item.quantity)
+                        elif getattr(product, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'product', product.id, item.quantity)
+
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
 
                         # Логування списання простого товару
                         InventoryLogger.log(
-                            db, 
-                            "product", 
-                            product.id, 
-                            product.name, 
-                            current_stock, 
-                            product.stock_quantity, 
-                            transaction_reason
+                            db, "product", product.id, product.name, 
+                            current_stock, product.stock_quantity, transaction_reason
                         )
 
-                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe) - Аналогічно додаємо FIFO
                     if product.master_recipe_id:
                         recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
                         if recipe:
@@ -8485,6 +9814,11 @@ class OrderService:
                                          deduction = r_item.quantity * item.quantity
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
+                                    
+                                    # 🔥 НОВЕ: FIFO
+                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
@@ -8499,6 +9833,10 @@ class OrderService:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
+                        # 🔥 НОВЕ: FIFO
+                        if getattr(ing, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
                         db.add(ing)
@@ -8511,6 +9849,10 @@ class OrderService:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
+                        # 🔥 НОВЕ: FIFO
+                        if getattr(cons, 'costing_method', 'wac') == 'fifo':
+                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
                         db.add(cons)
@@ -8524,6 +9866,10 @@ class OrderService:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
+                            # 🔥 НОВЕ: FIFO
+                            if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
+                                InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
+
                             if mod_ing.stock_quantity is None: mod_ing.stock_quantity = 0.0
                             mod_ing.stock_quantity -= deduction
                             db.add(mod_ing)
@@ -8928,6 +10274,116 @@ class ProductService:
             print(f"❌ Помилка при видаленні товару: {e}")
             # Якщо товар є в замовленнях, база все одно може заблокувати видалення
             raise HTTPException(status_code=400, detail="Неможливо видалити товар, бо він фігурує в історії продажів")
+</file>
+
+<file path="product_service\services\supply_service.py" lang="py">
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+import models, schemas
+from services.inventory_logger import InventoryLogger
+
+class SupplyService:
+    @staticmethod
+    def create_supply(db: Session, data: schemas.SupplyCreate):
+        # 1. Знаходимо ім'я постачальника, якщо передано тільки ID
+        name_to_save = data.supplier_name
+        if data.supplier_id and not name_to_save:
+            supplier = db.query(models.Supplier).filter(models.Supplier.id == data.supplier_id).first()
+            if supplier:
+                name_to_save = supplier.name
+
+        # 2. Створюємо шапку накладної
+        supply = models.Supply(
+            supplier_id=data.supplier_id,
+            supplier_name=name_to_save, # 🔥 Тепер ім'я точно буде
+            invoice_number=data.invoice_number,
+            notes=data.notes,
+            total_cost=0
+        )
+        db.add(supply)
+        db.flush() # Отримуємо supply.id
+
+        total_supply_cost = 0.0
+
+        for item in data.items:
+            line_total = item.quantity * item.cost_per_unit
+            total_supply_cost += line_total
+            
+            # 2. Знаходимо сутність (куди додаємо залишок)
+            target_obj = None
+            if item.entity_type == 'ingredient':
+                target_obj = db.query(models.Ingredient).get(item.entity_id)
+            elif item.entity_type == 'consumable':
+                target_obj = db.query(models.Consumable).get(item.entity_id)
+            elif item.entity_type == 'variant':
+                # 🔥 Senior Tip: Використовуємо joinedload, щоб відразу отримати назву батьківського товару
+                target_obj = db.query(models.ProductVariant)\
+                    .options(joinedload(models.ProductVariant.product))\
+                    .filter(models.ProductVariant.id == item.entity_id).first()
+            
+            if not target_obj:
+                raise HTTPException(status_code=404, detail=f"Сутність {item.entity_type} ID={item.entity_id} не знайдена")
+
+            # --- 🔥 ПОКРАЩЕННЯ: Формуємо інформативну назву для історії ---
+            display_name = getattr(target_obj, 'name', 'Unknown')
+            
+            if item.entity_type == 'variant' and hasattr(target_obj, 'product'):
+                # Замість просто "XL" запишемо "Кава Лате (XL)"
+                display_name = f"{target_obj.product.name} ({target_obj.name})"
+
+            # 3. Створюємо ПАРТІЮ (SupplyItem)
+            db_item = models.SupplyItem(
+                supply_id=supply.id,
+                entity_type=item.entity_type,
+                entity_id=item.entity_id,
+                entity_name=display_name, # Тепер тут буде коректна назва [1]
+                quantity=item.quantity,
+                remaining_quantity=item.quantity, # Для FIFO/Manual Batch [2]
+                cost_per_unit=item.cost_per_unit,
+                total_cost=line_total
+            )
+            db.add(db_item)
+
+            # 4. Перераховуємо середньозважену ціну (WAC) або оновлюємо ціну за останньою закупівлею (FIFO)
+            if hasattr(target_obj, 'costing_method') and hasattr(target_obj, 'cost_per_unit'):
+                method = getattr(target_obj, 'costing_method', 'wac')
+    
+                if method == 'fifo':
+                    # Для FIFO в основній картці відображаємо ціну ОСТАННЬОЇ закупівлі
+                    # (Це дає розуміння актуальної ринкової ціни)
+                    target_obj.cost_per_unit = item.cost_per_unit
+                else:
+                    # Для WAC використовуємо формулу середньозваженої ціни
+                    current_qty = target_obj.stock_quantity or 0.0
+                    current_cost = target_obj.cost_per_unit or 0.0
+        
+                    if current_qty <= 0:
+                        target_obj.cost_per_unit = item.cost_per_unit
+                    else:
+                        old_total = current_qty * current_cost
+                        new_total = item.quantity * item.cost_per_unit
+                        target_obj.cost_per_unit = round((old_total + new_total) / (current_qty + item.quantity), 2)
+            
+            # 5. Оновлюємо фізичний залишок на картці товару
+            old_balance = target_obj.stock_quantity if target_obj.stock_quantity is not None else 0.0
+            target_obj.stock_quantity = old_balance + item.quantity
+            
+            # 6. Записуємо в історію
+            InventoryLogger.log(
+                db=db,
+                entity_type=item.entity_type,
+                entity_id=item.entity_id,
+                entity_name=db_item.entity_name,
+                balance_before=old_balance,      # Передаємо старий залишок
+                balance_after=target_obj.stock_quantity, # Новий залишок
+                reason=f"Постачання #{supply.id}",
+                force_change=item.quantity       # Вказуємо зміну (плюсове значення) [1, 3]
+            )
+
+        supply.total_cost = total_supply_cost
+        db.commit()
+        db.refresh(supply)
+        return supply
 </file>
 
 <file path="product_service\tests\conftest.py" lang="py">
