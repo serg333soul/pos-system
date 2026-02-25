@@ -349,3 +349,12 @@ class SupplyResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class OrderPaginationResponse(BaseModel):
+    total: int
+    items: List[OrderRead]
+    page: int
+    pages: int
+
+    class Config:
+        from_attributes = True

@@ -33,6 +33,43 @@ onMounted(() => fetchOrders())
       </button>
     </div>
 
+    <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-4 border border-gray-100">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500 font-bold">Показувати по:</span>
+            <select 
+            v-model="pageSize" 
+            class="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg p-1.5 focus:ring-blue-500 outline-none"
+            >
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+            </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button 
+            @click="currentPage--" 
+            :disabled="currentPage === 1"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ⬅️
+            </button>
+            
+            <span class="text-xs font-bold text-gray-600">
+            Сторінка {{ currentPage }} з {{ totalPages }}
+            </span>
+
+            <button 
+            @click="currentPage++" 
+            :disabled="currentPage === totalPages"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ➡️
+            </button>
+        </div>
+    </div>
+
     <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
 
     <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">

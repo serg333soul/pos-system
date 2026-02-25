@@ -1,6 +1,18 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useCustomers } from '@/composables/useCustomers'
+import CustomerHistoryModal from './CustomerHistoryModal.vue' // 🔥 Імпортуємо нову модалку
+
+const {  
+  loading, 
+  // --- Додаємо поля для історії ---
+  showHistoryModal,
+  historyLoading,
+  currentCustomerHistory,
+  customerOrders,
+  openHistory 
+} = useCustomers();
 
 // --- КОНФІГУРАЦІЯ API ---
 const API_URL = 'http://localhost:8001/customers/'
@@ -180,23 +192,31 @@ onMounted(fetchCustomers)
                             {{ c.notes || '-' }}
                         </td>
                         
-                        <td class="p-4 text-center">
-                            <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    @click="openEditModal(c)" 
-                                    class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
-                                    title="Редагувати"
-                                >
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                <button 
-                                    @click="deleteCustomer(c.id)" 
-                                    class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
-                                    title="Видалити"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
+                        <td class="p-4 text-right flex justify-end gap-2">
+                            <!-- 🔥 НОВА КНОПКА: Історія покупок -->
+                            <button 
+                                @click="openHistory(c)" 
+                                class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition transform active:scale-90"
+                                title="Історія покупок"
+                            >
+                                📜
+                            </button>
+
+                            <button 
+                                @click="openEditModal(c)" 
+                                class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
+                                title="Редагувати"
+                            >
+                                ✏️
+                            </button>
+                            
+                            <button 
+                                @click="deleteCustomer(c.id)" 
+                                class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
+                                title="Видалити"
+                            >
+                                🗑️
+                            </button>
                         </td>
                     </tr>
                 </tbody>
@@ -244,6 +264,13 @@ onMounted(fetchCustomers)
                 </div>
             </div>
         </div>
-
+        <!-- 🔥 ІНТЕГРАЦІЯ НОВОЇ МОДАЛКИ ІСТОРІЇ -->
+        <CustomerHistoryModal 
+            :is-open="showHistoryModal"
+            :customer="currentCustomerHistory"
+            :orders="customerOrders"
+            :loading="historyLoading"
+            @close="showHistoryModal = false"
+        />
     </div>
 </template>

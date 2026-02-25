@@ -76,11 +76,10 @@ export function useSupplies() {
             // Формуємо URL з параметрами запиту
             const response = await fetch(`/api/supplies/batches/?entity_type=${entityType}&entity_id=${entityId}`)
             if (!response.ok) throw new Error('Помилка завантаження партій')
-            
             return await response.json()
         } catch (err) {
             console.error("Помилка завантаження партій", err)
-            return []
+            return { costing_method: 'wac', batches: [] }
         }
     }
 

@@ -84,12 +84,27 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ціна (₴/од)</label>
-                        <input v-model="newConsumable.cost_per_unit" type="number" step="0.01" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0.00"
+                        >
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
-                        <input v-model="newConsumable.stock_quantity" type="number" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0"
+                        >
                     </div>
+                    <p class="mt-2 text-[10px] text-orange-500 italic">
+                        * Поля заблоковані. Ціна та залишок оновлюються автоматично після проведення "Постачання".
+                    </p>
                 </div>
 
                 <button @click="handleCreate" class="bg-teal-600 hover:bg-teal-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-teal-200 transition mt-2">

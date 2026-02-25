@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 78
-Lines: 9642
-Tokens: ~101759
+Files: 79
+Lines: 9976
+Tokens: ~105065
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -162,6 +162,13 @@ frontend\src\components\common\Sidebar.vue
   └── 📥 Props defined
   └── 📤 Emits defined
   └── ƒ  navigate
+frontend\src\components\crm\CustomerHistoryModal.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): expandedId
+  └── 💾 State (computed): customerStats
+  └── ƒ  toggleDetails
+  └── ƒ  formatDate
 frontend\src\components\crm\Customers.vue
   └── 💾 State (ref): customers
   └── 💾 State (ref): showModal
@@ -280,6 +287,11 @@ frontend\src\components\warehouse\tabs\StockTab.vue
   └── 💾 State (ref): activeTab
   └── 💾 State (ref): search
   └── 💾 State (ref): loading
+  └── 💾 State (ref): expandedId
+  └── 💾 State (ref): activeBatches
+  └── 💾 State (ref): currentMethod
+  └── 💾 State (ref): isBatchesLoading
+  └── ƒ  formatDate
   └── 💾 State (ref): editingItemKey
   └── 💾 State (ref): editValue
   └── 💾 State (ref): isHistoryOpen
@@ -382,6 +394,10 @@ frontend\src\composables\useProducts.js
 frontend\src\composables\useStatistics.js
   └── 💾 State (ref): orders
   └── 💾 State (ref): loading
+  └── 💾 State (ref): totalOrders
+  └── 💾 State (ref): totalPages
+  └── 💾 State (ref): currentPage
+  └── 💾 State (ref): pageSize
   └── 💾 State (ref): showDetailModal
   └── 💾 State (ref): selectedOrder
   └── ƒ  openDetails
@@ -635,6 +651,7 @@ product_service\tests\test_warehouse.py
                     📄 IngredientSelect.vue
                     📄 Sidebar.vue
                 📂 crm/
+                    📄 CustomerHistoryModal.vue
                     📄 Customers.vue
                     📄 CustomersTable.vue
                 📂 pos/
@@ -1470,10 +1487,144 @@ const navigate = (pageId) => {
 </template>
 </file>
 
+<file path="frontend\src\components\crm\CustomerHistoryModal.vue" lang="vue">
+<template>
+  <div v-if="isOpen" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9] flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50/30">
+        <div>
+          <h3 class="text-xl font-bold text-gray-800"> 📖 Історія покупок</h3>
+          <p class="text-sm text-gray-500">{{ customer?.name }}</p>
+        </div>
+        <button @click="$emit('close')" class="p-2 hover:bg-white rounded-full transition text-gray-400 hover:text-gray-600">×</button>
+      </div>
+
+      <!-- Body -->
+      <div class="flex-1 overflow-y-auto p-6">
+
+        <!-- 🔥 НОВИЙ БЛОК СТАТИСТИКИ -->
+        <div v-if="!loading && orders.length > 0" class="grid grid-cols-3 gap-4 mb-8">
+          <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Візитів</p>
+            <p class="text-2xl font-black text-gray-800">{{ customerStats.count }}</p>
+          </div>
+          
+          <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+            <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Середній чек</p>
+            <p class="text-2xl font-black text-blue-700">{{ customerStats.average.toFixed(2) }} ₴</p>
+          </div>
+          
+          <div class="bg-green-50 p-4 rounded-2xl border border-green-100">
+            <p class="text-[10px] font-black text-green-400 uppercase tracking-widest mb-1">Всього витрачено</p>
+            <p class="text-2xl font-black text-green-700">{{ customerStats.total.toFixed(2) }} ₴</p>
+          </div>
+        </div>
+
+        <div v-if="loading" class="text-center py-10 text-gray-400 italic">Завантаження історії...</div>
+        
+        <div v-else-if="orders.length === 0" class="text-center py-10">
+          <div class="text-4xl mb-3">🏷️</div>
+          <p class="text-gray-400">Цей клієнт ще не робив покупок.</p>
+        </div>
+
+        <table v-else class="w-full text-left">
+          <thead class="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+            <tr>
+              <th class="pb-3">Дата / Чек</th>
+              <th class="pb-3">Оплата</th>
+              <th class="pb-3 text-right">Сума</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <template v-for="order in orders" :key="order.id">
+              <!-- Рядок чека -->
+              <tr @click="toggleDetails(order.id)" class="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                <td class="py-4">
+                  <div class="flex items-center gap-2 text-sm">
+                    <span class="text-[10px] transition-transform" :class="{ 'rotate-90': expandedId === order.id }">▶</span>
+                    <span class="font-bold text-gray-700">#{{ order.id }}</span>
+                    <span class="text-gray-400 text-xs">{{ formatDate(order.created_at) }}</span>
+                  </div>
+                </td>
+                <td class="py-4">
+                  <span :class="order.payment_method === 'card' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'" 
+                        class="px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                    {{ order.payment_method === 'card' ? 'Картка' : 'Готівка' }}
+                  </span>
+                </td>
+                <td class="py-4 text-right font-black text-gray-800">{{ order.total_price.toFixed(2) }} ₴</td>
+              </tr>
+
+              <!-- Розгорнуті деталі чека -->
+              <tr v-if="expandedId === order.id">
+                <td colspan="3" class="p-0 bg-gray-50/50">
+                  <div class="p-4 border-l-4 border-blue-400 ml-4 my-2">
+                    <div v-for="item in order.items" :key="item.id" class="flex justify-between text-xs py-1 border-b border-dashed border-gray-200 last:border-0">
+                      <span class="text-gray-600">{{ item.product_name }} <span v-if="item.details" class="text-[10px] text-gray-400">({{ item.details }})</span></span>
+                      <span class="font-medium text-gray-800">{{ item.quantity }} x {{ item.price_at_moment }} ₴</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+
+const props = defineProps(['isOpen', 'customer', 'orders', 'loading']);
+const emit = defineEmits(['close']);
+
+const expandedId = ref(null);
+
+// 🔥 НОВА ЛОГІКА: Розрахунок статистики клієнта
+const customerStats = computed(() => {
+  if (!props.orders || props.orders.length === 0) {
+    return { total: 0, count: 0, average: 0 };
+  }
+  
+  const total = props.orders.reduce((sum, order) => sum + order.total_price, 0);
+  const count = props.orders.length;
+  
+  return {
+    total: total,
+    count: count,
+    average: total / count
+  };
+});
+
+const toggleDetails = (id) => {
+  expandedId.value = expandedId.value === id ? null : id;
+};
+
+const formatDate = (dateStr) => {
+  return new Date(dateStr).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+</script>
+</file>
+
 <file path="frontend\src\components\crm\Customers.vue" lang="vue">
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useCustomers } from '@/composables/useCustomers'
+import CustomerHistoryModal from './CustomerHistoryModal.vue' // 🔥 Імпортуємо нову модалку
+
+const {  
+  loading, 
+  // --- Додаємо поля для історії ---
+  showHistoryModal,
+  historyLoading,
+  currentCustomerHistory,
+  customerOrders,
+  openHistory 
+} = useCustomers();
 
 // --- КОНФІГУРАЦІЯ API ---
 const API_URL = 'http://localhost:8001/customers/'
@@ -1653,23 +1804,31 @@ onMounted(fetchCustomers)
                             {{ c.notes || '-' }}
                         </td>
                         
-                        <td class="p-4 text-center">
-                            <div class="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    @click="openEditModal(c)" 
-                                    class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
-                                    title="Редагувати"
-                                >
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                <button 
-                                    @click="deleteCustomer(c.id)" 
-                                    class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
-                                    title="Видалити"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
+                        <td class="p-4 text-right flex justify-end gap-2">
+                            <!-- 🔥 НОВА КНОПКА: Історія покупок -->
+                            <button 
+                                @click="openHistory(c)" 
+                                class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition transform active:scale-90"
+                                title="Історія покупок"
+                            >
+                                📜
+                            </button>
+
+                            <button 
+                                @click="openEditModal(c)" 
+                                class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition"
+                                title="Редагувати"
+                            >
+                                ✏️
+                            </button>
+                            
+                            <button 
+                                @click="deleteCustomer(c.id)" 
+                                class="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition"
+                                title="Видалити"
+                            >
+                                🗑️
+                            </button>
                         </td>
                     </tr>
                 </tbody>
@@ -1717,7 +1876,14 @@ onMounted(fetchCustomers)
                 </div>
             </div>
         </div>
-
+        <!-- 🔥 ІНТЕГРАЦІЯ НОВОЇ МОДАЛКИ ІСТОРІЇ -->
+        <CustomerHistoryModal 
+            :is-open="showHistoryModal"
+            :customer="currentCustomerHistory"
+            :orders="customerOrders"
+            :loading="historyLoading"
+            @close="showHistoryModal = false"
+        />
     </div>
 </template>
 </file>
@@ -2687,6 +2853,43 @@ onMounted(() => fetchOrders())
       </button>
     </div>
 
+    <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-4 border border-gray-100">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500 font-bold">Показувати по:</span>
+            <select 
+            v-model="pageSize" 
+            class="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg p-1.5 focus:ring-blue-500 outline-none"
+            >
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+            </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button 
+            @click="currentPage--" 
+            :disabled="currentPage === 1"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ⬅️
+            </button>
+            
+            <span class="text-xs font-bold text-gray-600">
+            Сторінка {{ currentPage }} з {{ totalPages }}
+            </span>
+
+            <button 
+            @click="currentPage++" 
+            :disabled="currentPage === totalPages"
+            class="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+            ➡️
+            </button>
+        </div>
+    </div>
+
     <SalesTable :orders="orders" :loading="loading" @view-details="openDetails" />
 
     <div v-if="showDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
@@ -3234,12 +3437,27 @@ const handleDelete = (id) => deleteItem(`/api/consumables/${id}`)
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ціна (₴/од)</label>
-                        <input v-model="newConsumable.cost_per_unit" type="number" step="0.01" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0.00"
+                        >
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Поч. залишок</label>
-                        <input v-model="newConsumable.stock_quantity" type="number" class="border p-2 rounded-lg w-full">
+                        <input 
+                            :value="0"
+                            disabled
+                            type="number" 
+                            class="w-full bg-gray-100 border border-gray-200 text-gray-400 p-2 rounded-xl cursor-not-allowed"
+                            placeholder="0"
+                        >
                     </div>
+                    <p class="mt-2 text-[10px] text-orange-500 italic">
+                        * Поля заблоковані. Ціна та залишок оновлюються автоматично після проведення "Постачання".
+                    </p>
                 </div>
 
                 <button @click="handleCreate" class="bg-teal-600 hover:bg-teal-700 text-white w-full py-3 rounded-xl font-bold shadow-lg shadow-teal-200 transition mt-2">
@@ -4238,6 +4456,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 import axios from 'axios'
 import HistoryModal from '../modals/HistoryModal.vue'
+import { useSupplies } from '@/composables/useSupplies'
 
 // Отримуємо дані зі сховища
 const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse()
@@ -4245,6 +4464,44 @@ const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse(
 const activeTab = ref('ingredients') 
 const search = ref('')
 const loading = ref(false)
+const { fetchAvailableBatches } = useSupplies()
+
+// --- Стан для розгортання партій ---
+const expandedId = ref(null);
+const activeBatches = ref([]);
+const currentMethod = ref('wac');
+const isBatchesLoading = ref(false);
+
+const toggleBatches = async (item) => {
+  const uniqueId = `${item.type}-${item.id}`;
+  
+  // Якщо вже розгорнуто — згортаємо
+  if (expandedId.value === uniqueId) {
+    expandedId.value = null;
+    return;
+  }
+
+  // Розгортаємо та завантажуємо
+  expandedId.value = uniqueId;
+  isBatchesLoading.value = true;
+  activeBatches.value = [];
+
+  try {
+    const data = await fetchAvailableBatches(item.type, item.id);
+    activeBatches.value = data.batches;
+    currentMethod.value = data.costing_method;
+  } finally {
+    isBatchesLoading.value = false;
+  }
+};
+
+// Функція форматування дати
+const formatDate = (dateStr) => {
+  if (!dateStr) return '---';
+  return new Date(dateStr).toLocaleDateString('uk-UA', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+};
 
 // --- ЗМІННІ ДЛЯ РЕДАГУВАННЯ ---
 // Зберігаємо не ID, а унікальний ключ (напр. 'product_5')
@@ -4433,53 +4690,86 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tr v-for="item in filteredItems" :key="item.unique_key" class="hover:bg-gray-50 group">
-                        
-                        <td class="p-4 font-bold text-gray-700">
-                            {{ item.display_name }}
-                        </td>
-
-                        <td class="p-4 text-center">
-                            <span v-if="item.type === 'ingredient'" class="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">Сировина</span>
-                            <span v-else-if="item.type === 'consumable'" class="bg-teal-100 text-teal-700 px-2 py-1 rounded text-[10px] font-bold">Матеріал</span>
-                            <span v-else-if="item.type === 'product'" class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">Товар</span>
-                            <span v-else-if="item.type === 'product_variant'" class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold">Варіант</span>
-                        </td>
-
-                        <td class="p-4 text-right font-mono font-bold">
-                            <div v-if="editingItemKey === item.unique_key" class="flex items-center justify-end gap-2">
-                                <input 
-                                    v-model.number="editValue" 
-                                    type="number" 
-                                    class="w-20 border rounded p-1 text-right focus:ring-2 ring-blue-500 outline-none"
-                                >
-                                <span class="text-xs text-gray-400">{{ item.unit_symbol }}</span>
-                            </div>
-                            <span v-else :class="{'text-red-500 bg-red-50 px-2 py-1 rounded': item.stock_quantity <= 0, 'text-gray-700': item.stock_quantity > 0}">
-                                {{ item.stock_quantity }} {{ item.unit_symbol }}
+                    <tbody class="divide-y divide-gray-100">
+                    <template v-for="item in filteredItems" :key="item.type + '-' + item.id">
+                        <!-- ОСНОВНИЙ РЯДОК -->
+                        <tr 
+                        @click="toggleBatches(item)"
+                        class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                        :class="{ 'bg-blue-50/30': expandedId === (item.type + '-' + item.id) }"
+                        >
+                        <td class="p-4">
+                            <div class="flex items-center gap-3">
+                            <span class="text-[10px] text-gray-400 transition-transform" 
+                                    :class="{ 'rotate-90 text-blue-500': expandedId === (item.type + '-' + item.id) }">
+                                ▶
                             </span>
+                            <span class="font-bold text-gray-700">{{ item.display_name }}</span>
+                            </div>
                         </td>
+                        <td class="p-4 text-xs text-gray-400 capitalize">
+                            {{ item.type === 'ingredient' ? 'Сировина' : (item.type === 'consumable' ? 'Матеріал' : 'Товар') }}
+                        </td>
+                        <td class="p-4 text-right">
+                            <span class="font-black text-gray-800">{{ item.stock_quantity }}</span>
+                            <span class="ml-1 text-gray-400 text-xs">{{ item.unit_symbol }}</span>
+                        </td>
+                        <td class="p-4 text-right">
+                            <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold">
+                            Історія
+                            </button>
+                        </td>
+                        </tr>
 
-                        <td class="p-4 text-center">
-                            <div v-if="editingItemKey === item.unique_key" class="flex justify-center gap-1">
-                                <button @click="saveEdit(item)" class="bg-green-500 text-white w-7 h-7 rounded hover:bg-green-600 flex items-center justify-center">
-                                    <i class="fas fa-check text-xs"></i>
-                                </button>
-                                <button @click="editingItemKey = null" class="bg-gray-300 text-gray-700 w-7 h-7 rounded hover:bg-gray-400 flex items-center justify-center">
-                                    <i class="fas fa-times text-xs"></i>
-                                </button>
+                        <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
+                        <tr v-if="expandedId === (item.type + '-' + item.id)">
+                        <td colspan="4" class="p-0 bg-gray-50/50">
+                            <div class="p-5 border-l-4 border-blue-500 ml-4 my-2">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Активні партії закупівлі
+                                </h4>
+                                <span :class="currentMethod === 'fifo' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" 
+                                    class="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">
+                                Метод: {{ currentMethod }}
+                                </span>
+                            </div>
+
+                            <div v-if="isBatchesLoading" class="text-xs text-gray-400 italic">Завантаження даних...</div>
+                            
+                            <div v-else-if="activeBatches.length > 0" class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                                <table class="w-full text-[11px]">
+                                <thead class="bg-gray-100 text-gray-500">
+                                    <tr>
+                                    <th class="p-2 text-left">Дата поставки</th>
+                                    <th class="p-2 text-left">Накладна</th>
+                                    <th class="p-2 text-center">Залишок</th>
+                                    <th class="p-2 text-right">Ціна вх.</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <tr v-for="(batch, idx) in activeBatches" :key="batch.id" 
+                                        :class="{ 'bg-red-50/50': currentMethod === 'fifo' && idx === 0 }">
+                                    <td class="p-2 text-gray-600">{{ formatDate(batch.supply_date) }}</td>
+                                    <td class="p-2 font-medium text-blue-600">#{{ batch.invoice_number }}</td>
+                                    <td class="p-2 text-center">
+                                        <!-- 🔥 ПІДСВІЧУВАННЯ FIFO: червоний колір для найстарішої партії -->
+                                        <span :class="{ 'text-red-600 font-black': currentMethod === 'fifo' && idx === 0 }">
+                                        {{ batch.remaining_quantity }}
+                                        </span>
+                                    </td>
+                                    <td class="p-2 text-right text-gray-400">{{ batch.cost_per_unit.toFixed(2) }} ₴</td>
+                                    </tr>
+                                </tbody>
+                                </table>
                             </div>
                             
-                            <div v-else class="flex justify-center gap-2">
-                                <button @click="openHistory(item)" class="text-purple-400 hover:text-purple-600 p-2 rounded hover:bg-purple-50 transition-colors" title="Історія руху">
-                                    <i class="fas fa-history"></i>
-                                </button>
-                                <button @click="startEdit(item)" class="text-blue-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-colors" title="Корегувати залишок">
-                                    <i class="fas fa-pen"></i>
-                                </button>
+                            <div v-else class="text-xs text-gray-400 italic">Немає активних партій. Товар списано повністю.</div>
                             </div>
                         </td>
-                    </tr>
+                        </tr>
+                    </template>
+                    </tbody>
                 </tbody>
             </table>
         </div>
@@ -6825,12 +7115,18 @@ export function useProducts() {
 </file>
 
 <file path="frontend\src\composables\useStatistics.js" lang="js">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export function useStatistics() {
   const orders = ref([])
   const loading = ref(true)
+  const totalOrders = ref(0)
+  const totalPages = ref(1)
   
+  // 🔥 Параметри пагінації
+  const currentPage = ref(1)
+  const pageSize = ref(20) // Скільки завантажувати відразу
+
   // Для модального вікна деталей
   const showDetailModal = ref(false)
   const selectedOrder = ref(null)
@@ -6838,9 +7134,12 @@ export function useStatistics() {
   const fetchOrders = async () => {
     loading.value = true
     try {
-      const res = await fetch('/api/orders/')
+      const res = await fetch(`/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`)
       if (res.ok) {
-        orders.value = await res.json()
+        const data = await res.json()
+        orders.value = data.items
+        totalOrders.value = data.total
+        totalPages.value = data.pages
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -6848,6 +7147,11 @@ export function useStatistics() {
       loading.value = false
     }
   }
+
+  // Слідкуємо за зміною сторінки або ліміту
+  watch([currentPage, pageSize], () => {
+    fetchOrders()
+  })
 
   const openDetails = (order) => {
     selectedOrder.value = order
@@ -6862,6 +7166,10 @@ export function useStatistics() {
   return {
     orders,
     loading,
+    totalOrders, 
+    totalPages,
+    currentPage, 
+    pageSize,
     showDetailModal,
     selectedOrder,
     fetchOrders,
@@ -6950,11 +7258,10 @@ export function useSupplies() {
             // Формуємо URL з параметрами запиту
             const response = await fetch(`/api/supplies/batches/?entity_type=${entityType}&entity_id=${entityId}`)
             if (!response.ok) throw new Error('Помилка завантаження партій')
-            
             return await response.json()
         } catch (err) {
             console.error("Помилка завантаження партій", err)
-            return []
+            return { costing_method: 'wac', batches: [] }
         }
     }
 
@@ -8233,6 +8540,15 @@ class SupplyResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class OrderPaginationResponse(BaseModel):
+    total: int
+    items: List[OrderRead]
+    page: int
+    pages: int
+
+    class Config:
+        from_attributes = True
 </file>
 
 <file path="product_service\routers\__init__.py" lang="py">
@@ -8308,7 +8624,7 @@ def delete_category(category_id: int, db: Session = Depends(database.get_db)):
 # FILE: product_service/routers/customers.py
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from typing import List
 import database, schemas, models
@@ -8352,7 +8668,11 @@ def delete_customer(id: int, db: Session = Depends(database.get_db)):
 
 @router.get("/{customer_id}/orders/", response_model=List[schemas.OrderRead])
 def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db)):
-    return db.query(models.Order).filter(models.Order.customer_id == customer_id).order_by(models.Order.created_at.desc()).all()
+    return db.query(models.Order)\
+        .options(joinedload(models.Order.items))\
+        .filter(models.Order.customer_id == customer_id)\
+        .order_by(models.Order.created_at.desc())\
+        .all()
 </file>
 
 <file path="product_service\routers\inventory.py" lang="py">
@@ -8519,9 +8839,30 @@ def checkout(order_data: schemas.OrderCreate, db: Session = Depends(database.get
         "total_price": new_order.total_price
     }
 
-@router.get("/", response_model=List[schemas.OrderRead])
-def get_orders(skip: int = 0, limit: int = 50, db: Session = Depends(database.get_db)):
-    return db.query(models.Order).order_by(models.Order.created_at.desc()).offset(skip).limit(limit).all()
+@router.get("/", response_model=schemas.OrderPaginationResponse)
+def get_orders(
+    page: int = Query(1, ge=1), 
+    limit: int = Query(20, ge=1, le=100), 
+    db: Session = Depends(database.get_db)
+):
+    skip = (page - 1) * limit
+    
+    # Отримуємо загальну кількість замовлень для розрахунку сторінок
+    total_orders = db.query(models.Order).count()
+    
+    # Отримуємо замовлення для поточної сторінки
+    orders = db.query(models.Order)\
+        .order_by(models.Order.created_at.desc())\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+    
+    return {
+        "total": total_orders,
+        "items": orders,
+        "page": page,
+        "pages": (total_orders + limit - 1) // limit # Округлення вгору
+    }
 </file>
 
 <file path="product_service\routers\processes.py" lang="py">
@@ -9137,29 +9478,41 @@ def get_available_batches(
     db: Session = Depends(database.get_db)
 ):
     """
-    Повертає список активних партій (де залишок > 0) для конкретного товару.
-    Використовується на касі для Ручного вибору партії (Manual Batch).
+    Повертає список активних партій з деталями накладної та методом списання.
     """
-    batches = db.query(models.SupplyItem).filter(
-        models.SupplyItem.entity_type == entity_type,
-        models.SupplyItem.entity_id == entity_id,
-        models.SupplyItem.remaining_quantity > 0
-    ).order_by(models.SupplyItem.id.asc()).all()
-    
-    # Формуємо зручну відповідь для фронтенду
-    result = []
-    for b in batches:
-        supply_date = b.supply.created_at if b.supply else None
-        result.append({
-            "batch_id": b.id,
-            "supply_id": b.supply_id,
-            "quantity_initial": b.quantity,
-            "remaining_quantity": b.remaining_quantity,
-            "cost_per_unit": b.cost_per_unit,
-            "supply_date": supply_date
-        })
-        
-    return result
+    # 1. Отримуємо активні партії (залишок > 0) з підвантаженням даних про постачання [1, 2]
+    batches = db.query(models.SupplyItem)\
+        .options(joinedload(models.SupplyItem.supply))\
+        .filter(
+            models.SupplyItem.entity_type == entity_type,
+            models.SupplyItem.entity_id == entity_id,
+            models.SupplyItem.remaining_quantity > 0
+        ).order_by(models.SupplyItem.id.asc()).all() # FIFO: найстаріші спочатку [3]
+
+    # 2. Визначаємо метод списання (WAC/FIFO) для даної сутності [4, 5]
+    costing_method = 'wac'
+    if entity_type == 'ingredient':
+        obj = db.query(models.Ingredient).filter(models.Ingredient.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+    elif entity_type == 'consumable':
+        obj = db.query(models.Consumable).filter(models.Consumable.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+
+    # 3. Формуємо розширену відповідь для фронтенду
+    return {
+        "costing_method": costing_method,
+        "batches": [
+            {
+                "id": b.id,
+                "supply_id": b.supply_id,
+                "invoice_number": b.supply.invoice_number if b.supply else "б/н", # Номер накладної [6]
+                "supply_date": b.supply.created_at if b.supply else None,
+                "quantity_initial": b.quantity,
+                "remaining_quantity": b.remaining_quantity,
+                "cost_per_unit": b.cost_per_unit
+            } for b in batches
+        ]
+    }
 </file>
 
 <file path="product_service\services\__init__.py" lang="py">
@@ -9325,7 +9678,8 @@ class OrderService:
                         raise HTTPException(status_code=404, detail=f"Variant {item.variant_id} not found")
                     
                     item_name = f"{product.name} ({variant.name})"
-                    
+                    price = float(variant.price) 
+
                     # 1. Фіксуємо баланс "ДО" (для історії)
                     balance_before = variant.stock_quantity if variant.stock_quantity is not None else 0.0
                     

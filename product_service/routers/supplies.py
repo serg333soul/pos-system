@@ -50,26 +50,38 @@ def get_available_batches(
     db: Session = Depends(database.get_db)
 ):
     """
-    Повертає список активних партій (де залишок > 0) для конкретного товару.
-    Використовується на касі для Ручного вибору партії (Manual Batch).
+    Повертає список активних партій з деталями накладної та методом списання.
     """
-    batches = db.query(models.SupplyItem).filter(
-        models.SupplyItem.entity_type == entity_type,
-        models.SupplyItem.entity_id == entity_id,
-        models.SupplyItem.remaining_quantity > 0
-    ).order_by(models.SupplyItem.id.asc()).all()
-    
-    # Формуємо зручну відповідь для фронтенду
-    result = []
-    for b in batches:
-        supply_date = b.supply.created_at if b.supply else None
-        result.append({
-            "batch_id": b.id,
-            "supply_id": b.supply_id,
-            "quantity_initial": b.quantity,
-            "remaining_quantity": b.remaining_quantity,
-            "cost_per_unit": b.cost_per_unit,
-            "supply_date": supply_date
-        })
-        
-    return result
+    # 1. Отримуємо активні партії (залишок > 0) з підвантаженням даних про постачання [1, 2]
+    batches = db.query(models.SupplyItem)\
+        .options(joinedload(models.SupplyItem.supply))\
+        .filter(
+            models.SupplyItem.entity_type == entity_type,
+            models.SupplyItem.entity_id == entity_id,
+            models.SupplyItem.remaining_quantity > 0
+        ).order_by(models.SupplyItem.id.asc()).all() # FIFO: найстаріші спочатку [3]
+
+    # 2. Визначаємо метод списання (WAC/FIFO) для даної сутності [4, 5]
+    costing_method = 'wac'
+    if entity_type == 'ingredient':
+        obj = db.query(models.Ingredient).filter(models.Ingredient.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+    elif entity_type == 'consumable':
+        obj = db.query(models.Consumable).filter(models.Consumable.id == entity_id).first()
+        costing_method = getattr(obj, 'costing_method', 'wac')
+
+    # 3. Формуємо розширену відповідь для фронтенду
+    return {
+        "costing_method": costing_method,
+        "batches": [
+            {
+                "id": b.id,
+                "supply_id": b.supply_id,
+                "invoice_number": b.supply.invoice_number if b.supply else "б/н", # Номер накладної [6]
+                "supply_date": b.supply.created_at if b.supply else None,
+                "quantity_initial": b.quantity,
+                "remaining_quantity": b.remaining_quantity,
+                "cost_per_unit": b.cost_per_unit
+            } for b in batches
+        ]
+    }

@@ -1,9 +1,15 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export function useStatistics() {
   const orders = ref([])
   const loading = ref(true)
+  const totalOrders = ref(0)
+  const totalPages = ref(1)
   
+  // 🔥 Параметри пагінації
+  const currentPage = ref(1)
+  const pageSize = ref(20) // Скільки завантажувати відразу
+
   // Для модального вікна деталей
   const showDetailModal = ref(false)
   const selectedOrder = ref(null)
@@ -11,9 +17,12 @@ export function useStatistics() {
   const fetchOrders = async () => {
     loading.value = true
     try {
-      const res = await fetch('/api/orders/')
+      const res = await fetch(`/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`)
       if (res.ok) {
-        orders.value = await res.json()
+        const data = await res.json()
+        orders.value = data.items
+        totalOrders.value = data.total
+        totalPages.value = data.pages
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -21,6 +30,11 @@ export function useStatistics() {
       loading.value = false
     }
   }
+
+  // Слідкуємо за зміною сторінки або ліміту
+  watch([currentPage, pageSize], () => {
+    fetchOrders()
+  })
 
   const openDetails = (order) => {
     selectedOrder.value = order
@@ -35,6 +49,10 @@ export function useStatistics() {
   return {
     orders,
     loading,
+    totalOrders, 
+    totalPages,
+    currentPage, 
+    pageSize,
     showDetailModal,
     selectedOrder,
     fetchOrders,
