@@ -1,6 +1,8 @@
+from services.inventory_logger import InventoryLogger
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import models
+import schemas
 
 class InventoryService:
     
@@ -62,3 +64,78 @@ class InventoryService:
         db.add(batch)
         
         return quantity_needed * batch.cost_per_unit
+    
+    @staticmethod
+    def adjust_inventory(db: Session, request: schemas.InventoryAdjustRequest):
+        # 1. Знаходимо сутність
+        target_obj = None
+        if request.entity_type == 'ingredient':
+            target_obj = db.query(models.Ingredient).get(request.entity_id)
+        elif request.entity_type == 'consumable':
+            target_obj = db.query(models.Consumable).get(request.entity_id)
+        elif request.entity_type == 'product_variant':
+            target_obj = db.query(models.ProductVariant).get(request.entity_id)
+        elif request.entity_type == 'product':
+            target_obj = db.query(models.Product).get(request.entity_id)
+            
+        if not target_obj:
+            raise HTTPException(status_code=404, detail="Сутність не знайдена")
+            
+        # Рахуємо різницю
+        current_qty = target_obj.stock_quantity if target_obj.stock_quantity is not None else 0.0
+        difference = request.actual_quantity - current_qty
+        
+        if difference == 0:
+            return {"status": "ok", "message": "Немає змін для збереження"}
+            
+        transaction_reason = f"Коригування: {request.reason}"
+        
+        # 2. Обробка за КОНКРЕТНОЮ ПАРТІЄЮ (Ручний вибір для FIFO)
+        if request.batch_id:
+            batch = db.query(models.SupplyItem).filter(models.SupplyItem.id == request.batch_id).with_for_update().first()
+            if not batch:
+                raise HTTPException(status_code=404, detail="Партія не знайдена")
+                
+            if difference < 0:
+                # Нестача: списуємо з вибраної партії
+                deduct_amount = abs(difference)
+                if batch.remaining_quantity < deduct_amount:
+                    raise HTTPException(status_code=400, detail="У вибраній партії недостатньо залишку для такого списання")
+                batch.remaining_quantity -= deduct_amount
+            else:
+                # Лишок: додаємо знайдений товар у вибрану партію
+                batch.remaining_quantity += difference
+                batch.quantity += difference # Оновлюємо початкову кількість партії
+            db.add(batch)
+            
+        # 3. Обробка БЕЗ партії (WAC або автоматичне FIFO)
+        else:
+            if difference < 0:
+                deduct_amount = abs(difference)
+                # Якщо товар на FIFO, а партію не вибрали вручну - списуємо по стандартному FIFO
+                if getattr(target_obj, 'costing_method', 'wac') == 'fifo':
+                    InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
+            # Якщо це Лишок і WAC, ми просто змінюємо загальний баланс без створення нової партії (спрощений підхід)
+
+        # 4. Оновлюємо загальний залишок сутності
+        target_obj.stock_quantity = request.actual_quantity
+        db.add(target_obj)
+        
+        # 5. Логування в Історію
+        InventoryLogger.log(
+            db=db,
+            entity_type=request.entity_type,
+            entity_id=request.entity_id,
+            entity_name=getattr(target_obj, 'name', 'Unknown'),
+            balance_before=current_qty,
+            balance_after=request.actual_quantity,
+            reason=transaction_reason,
+            force_change=difference
+        )
+        
+        db.commit()
+        return {
+            "status": "success", 
+            "difference": difference, 
+            "new_quantity": request.actual_quantity
+        }

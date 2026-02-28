@@ -25,6 +25,7 @@ const showTypeModal = ref(false)   // Маленьке вікно вибору �
 const showSimpleForm = ref(false)  // Велика форма простого товару
 const showVariantForm = ref(false) // Велика форма варіантів
 const isEditing = ref(false)
+const serverCalculatedCost = ref(0)
 
 onMounted(async () => {
     await Promise.all([fetchWarehouseData(), fetchProducts()])

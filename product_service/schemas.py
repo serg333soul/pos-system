@@ -36,6 +36,7 @@ class IngredientCreate(BaseModel):
 class Ingredient(BaseModel):
     id: int
     name: str
+    cost_per_unit: float
     
     stock_quantity: float
     unit_id: Optional[int] = None
@@ -45,13 +46,15 @@ class Ingredient(BaseModel):
     costing_method: str
     class Config: from_attributes = True
     class Config:
+        from_attributes = True
         extra = 'ignore' # Ігноруємо зайві поля з фронтенду (наприклад, cost_per_unit при створенні)
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
-    stock_quantity: int
+    stock_quantity: float
+    costing_method: str = "wac"
 
 class ConsumableCreate(ConsumableBase):
     category_id: Optional[int] = None 
@@ -358,3 +361,10 @@ class OrderPaginationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InventoryAdjustRequest(BaseModel):
+    entity_type: str  # 'ingredient', 'consumable', 'product', 'product_variant'
+    entity_id: int
+    actual_quantity: float  # Фактичний залишок, який ввів менеджер
+    reason: str             # Причина коригування
+    batch_id: Optional[int] = None  # ID партії (опціонально, якщо це FIFO)
