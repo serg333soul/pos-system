@@ -187,6 +187,7 @@ class Variant(VariantCreate):
     # Тут використовуємо Read схеми, які тепер мають поле 'name'
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
+    master_recipe: Optional[MasterRecipe] = None
     cost_price: float = 0.0
     margin: float = 0.0
     class Config: from_attributes = True

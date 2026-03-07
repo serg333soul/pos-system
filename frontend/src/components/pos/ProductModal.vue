@@ -255,6 +255,12 @@ const formatDate = (dateStr) => {
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
                   </div>
+                  <div v-if="variant.master_recipe" class="text-[9px] text-black-900 font-bold uppercase tracking-tighter text-center line-clamp-1 px-1">
+                    <i class="fas fa-scroll mr-0.5 opacity-50"></i> {{ variant.master_recipe.name }}
+                  </div>
+                  <div v-else class="text-[9px] text-gray-300 font-medium italic">
+                    Без рецепту
+                  </div>
               </div>
           </div>
         </div>

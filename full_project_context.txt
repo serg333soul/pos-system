@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 81
-Lines: 10487
-Tokens: ~110709
+Lines: 10504
+Tokens: ~110956
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -651,6 +651,7 @@ product_service\tests\test_warehouse.py
     📂 .github/
         📂 workflows/
             📄 deploy.yml
+    📂 .tmp.driveupload/
     📂 frontend/
         📄 Dockerfile
         📄 README.md
@@ -2479,6 +2480,12 @@ const formatDate = (dateStr) => {
                       :class="getAvailableStock(variant) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
+                  </div>
+                  <div v-if="variant.master_recipe" class="text-[9px] text-black-900 font-bold uppercase tracking-tighter text-center line-clamp-1 px-1">
+                    <i class="fas fa-scroll mr-0.5 opacity-50"></i> {{ variant.master_recipe.name }}
+                  </div>
+                  <div v-else class="text-[9px] text-gray-300 font-medium italic">
+                    Без рецепту
                   </div>
               </div>
           </div>
@@ -8799,6 +8806,7 @@ class Variant(VariantCreate):
     # Тут використовуємо Read схеми, які тепер мають поле 'name'
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
+    master_recipe: Optional[MasterRecipe] = None
     cost_price: float = 0.0
     margin: float = 0.0
     class Config: from_attributes = True
@@ -9569,6 +9577,11 @@ def read_products(db: Session = Depends(database.get_db)):
         joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
         # Завантажуємо варіанти -> їхні інгредієнти -> об'єкт інгредієнта [7, 8]
         joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        # 🔥 НОВИЙ ЛАНЦЮЖОК: Варіанти -> Рецепт -> Позиції рецепту -> Назва інгредієнта
+        joinedload(models.Product.variants)
+            .joinedload(models.ProductVariant.master_recipe)
+            .joinedload(models.MasterRecipe.items)
+            .joinedload(models.MasterRecipeItem.ingredient),
         # Завантажуємо матеріали та інгредієнти для простого товару [9, 10]
         joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
         joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
@@ -9594,6 +9607,11 @@ def read_products(db: Session = Depends(database.get_db)):
             if v.stock_quantity is None: v.stock_quantity = 0.0
             if v.price is None: v.price = 0.0
             if v.output_weight is None: v.output_weight = 0.0
+
+            if v.master_recipe:
+                for item in v.master_recipe.items:
+                    if item.ingredient:
+                        item.ingredient_name = item.ingredient.name # Заповнюємо для схеми
 
             if v.master_recipe_id and not p.track_stock:
                 try:
