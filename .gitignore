@@ -9,3 +9,5 @@ full_project_context.txt
 node_modules/
 dist/
 postgres_data/
+# Google Drive sync files
+.tmp.driveupload/
