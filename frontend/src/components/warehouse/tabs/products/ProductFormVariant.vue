@@ -38,7 +38,7 @@ const {
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
     removeProductConsumable, addProductConsumable, tempProductConsumable,
-    calculatedStock, fetchCalculatedStock, generateSKU
+    calculatedStock, fetchCalculatedStock, generateSKU, variantCalculatedCost
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -437,11 +437,41 @@ const toggleProcessGroup = (id) => {
                         </div>
 
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ціна (₴) <span class="text-red-500">*</span></label>
-                                <input v-model.number="variantBuilder.price" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+                            <div class="grid grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">Ціна продажу (₴) *</label>
+                                    <input 
+                                    v-model.number="variantBuilder.price"
+                                    type="number"
+                                    class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
+                                    >
+                                </div>
+                                
+                                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <p class="text-[10px] font-black text-gray-400 uppercase">Собівартість (Auto)</p>
+                                    <p class="text-lg font-black text-blue-600">
+                                    {{ (variantCalculatedCost || 0).toFixed(2) }} ₴
+                                    </p>
+                                </div>
                             </div>
+                            <!-- Блок Маржі -->
+                            <div v-if="variantBuilder.price > 0" class="mt-3 p-3 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                                <div>
+                                    <p class="text-[10px] font-black text-green-600 uppercase">Маржа (Прибуток)</p>
+                                    <p class="text-xl font-black text-green-700">
+                                    {{ ((variantBuilder.price || 0) - (variantCalculatedCost || 0)).toFixed(2) }} ₴
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[10px] font-black text-green-600 uppercase">Рентабельність</p>
+                                    <p class="text-lg font-bold text-green-700">
+                                    {{ Math.round(((variantBuilder.price - variantCalculatedCost) / variantBuilder.price) * 100) }}%
+                                    </p>
+                                </div>
+                            </div>
+
                             
+
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
                                     Поточний залишок
@@ -450,38 +480,54 @@ const toggleProcessGroup = (id) => {
                                     </span>
                                 </label>
     
-                                <div class="relative">
-                                    <input 
-                                        
-                                        :value="variantBuilder.master_recipe_id ? (calculatedStock !== null ? calculatedStock : 0) : variantBuilder.stock_quantity"
-                                        
-                                        @input="!variantBuilder.master_recipe_id && (variantBuilder.stock_quantity = $event.target.value)"
-    
-                                        type="number" 
-                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors"
-                                        :class="{
-                                            'bg-gray-100 text-gray-500 cursor-not-allowed': variantBuilder.master_recipe_id,
-                                            'bg-yellow-50': !variantBuilder.master_recipe_id
-                                        }"
-                                        :disabled="!!variantBuilder.master_recipe_id"
-                                        placeholder="0"
-                                    >   
-        
-                                    <div v-if="variantBuilder.master_recipe_id" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                                        <p class="mt-1 text-xs text-gray-500">
-                                            Система перевірила склад: інгредієнтів вистачає на 
-                                            <span class="font-bold text-purple-600">
-                                                {{ calculatedStock !== null ? calculatedStock : '...' }}
-                                            </span> порцій.
-                                        </p>
-                                        <i class="fas fa-calculator text-gray-400"></i>
+                                <!-- Секція автоматичного розрахунку залишків -->
+                                <div class="mt-6 space-y-3">
+                                    <div class="flex items-center justify-between px-1">
+                                        <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                        Доступність для продажу
+                                        </label>
+                                        <span v-if="variantBuilder.master_recipe_id" 
+                                            class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-[9px] font-bold text-green-600 uppercase">
+                                        Live-Stock 🟢
+                                        </span>
                                     </div>
+
+                                    <!-- Блок розрахунку -->
+                                    <div v-if="variantBuilder.master_recipe_id" 
+                                        class="bg-purple-50 border border-purple-100 rounded-2xl p-5 flex items-center shadow-sm transition-all hover:shadow-md">
+                                        <div class="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-200 mr-4">
+                                        <i class="fas fa-calculator text-lg"></i>
+                                        </div>
+                                        
+                                        <div>
+                                        <p class="text-[10px] font-bold text-purple-400 uppercase tracking-tight">Розраховано за техкартою</p>
+                                        <div class="flex items-baseline gap-2">
+                                            <span class="text-2xl font-black text-purple-900">
+                                            {{ calculatedStock !== null ? calculatedStock : '...' }}
+                                            </span>
+                                            <span class="text-xs font-bold text-purple-500 uppercase">порцій доступно</span>
+                                        </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Стан, якщо техкарту не обрано -->
+                                    <div v-else class="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-5 flex items-center">
+                                        <div class="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 mr-4">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        </div>
+                                        <div>
+                                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Облік вимкнено</p>
+                                        <p class="text-xs text-gray-500 font-medium">Оберіть техкарту для авто-розрахунку залишків</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Технічна підказка -->
+                                    <p class="text-[10px] text-gray-400 italic px-1 leading-relaxed">
+                                        * Цей показник базується на «вузькому місці» вашого складу. Якщо закінчиться молоко або стаканчики — кількість порцій автоматично зменшиться [2, 3].
+                                    </p>
                                 </div>
     
-                                <p v-if="variantBuilder.master_recipe_id" class="text-xs text-gray-400 mt-1">
-                                    Система перевірила склад: інгредієнтів вистачає на 
-                                    <strong class="text-gray-700">{{ calculatedStock !== null ? calculatedStock : '...' }}</strong> порцій.
-                                </p>
+                                
                             </div>
 
                         </div>

@@ -17,12 +17,18 @@ export function useStatistics() {
   const fetchOrders = async () => {
     loading.value = true
     try {
-      const res = await fetch(`/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`)
+      const url = `/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`
+      console.log("🚀 Запит до API:", url) // Додай для дебагу в консолі
+
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         orders.value = data.items
         totalOrders.value = data.total
         totalPages.value = data.pages
+      } else {
+      // Якщо тут 422 - значить лапки все ще не ті
+      console.error("❌ Помилка бекенда:", res.status);
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -32,9 +38,10 @@ export function useStatistics() {
   }
 
   // Слідкуємо за зміною сторінки або ліміту
-  watch([currentPage, pageSize], () => {
-    fetchOrders()
-  })
+  watch([currentPage, pageSize], (newValues) => {
+    console.log("👀 Вочер спрацював! Нові значення [page, limit]:", newValues);
+    fetchOrders();
+  }, { immediate: true })
 
   const openDetails = (order) => {
     selectedOrder.value = order

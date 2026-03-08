@@ -112,6 +112,34 @@ export function useWarehouse() {
     }
   }
 
+  // --- ШВИДКЕ КОРИГУВАННЯ ЗАЛИШКІВ (ІНВЕНТАРИЗАЦІЯ) ---
+  const adjustItemStock = async (payload) => {
+      try {
+          const response = await fetch('/api/adjustments/', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+          })
+
+          if (!response.ok) {
+              const errData = await response.json()
+              throw new Error(errData.detail || 'Помилка коригування залишку')
+          }
+
+          const result = await response.json()
+            
+          // 🔥 Автоматично оновлюємо всі дані складу, щоб нова цифра з'явилася на екрані
+          await fetchWarehouseData() 
+            
+          return { success: true, data: result }
+      } catch (err) {
+          console.error("Помилка при коригуванні:", err)
+          return { success: false, error: err.message }
+      }
+  }
+
   return {
     // Експортуємо products
     products, productRooms, categories, units, ingredients, consumables, processGroups, recipes, loading,
@@ -119,6 +147,6 @@ export function useWarehouse() {
     fetchWarehouseData, 
     // Залишаємо стару назву як аліас про всяк випадок
     fetchData: fetchWarehouseData,
-    createItem, deleteItem, updateItem
+    createItem, deleteItem, updateItem, adjustItemStock
   }
 }

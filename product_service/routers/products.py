@@ -85,6 +85,11 @@ def read_products(db: Session = Depends(database.get_db)):
         joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
         # Завантажуємо варіанти -> їхні інгредієнти -> об'єкт інгредієнта [7, 8]
         joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        # 🔥 НОВИЙ ЛАНЦЮЖОК: Варіанти -> Рецепт -> Позиції рецепту -> Назва інгредієнта
+        joinedload(models.Product.variants)
+            .joinedload(models.ProductVariant.master_recipe)
+            .joinedload(models.MasterRecipe.items)
+            .joinedload(models.MasterRecipeItem.ingredient),
         # Завантажуємо матеріали та інгредієнти для простого товару [9, 10]
         joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
         joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
@@ -110,6 +115,11 @@ def read_products(db: Session = Depends(database.get_db)):
             if v.stock_quantity is None: v.stock_quantity = 0.0
             if v.price is None: v.price = 0.0
             if v.output_weight is None: v.output_weight = 0.0
+
+            if v.master_recipe:
+                for item in v.master_recipe.items:
+                    if item.ingredient:
+                        item.ingredient_name = item.ingredient.name # Заповнюємо для схеми
 
             if v.master_recipe_id and not p.track_stock:
                 try:

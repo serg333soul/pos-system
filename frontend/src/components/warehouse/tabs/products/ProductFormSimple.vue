@@ -34,8 +34,16 @@ const selectedRecipe = computed(() => {
 })
 
 const getIngredientPrice = (id) => {
+    if (!ingredients.value) return 0
+    // Шукаємо інгредієнт у глобальному списку складу
     const ing = ingredients.value.find(i => i.id === id)
-    return ing ? ing.cost_per_unit : 0
+    if (!ing) {
+        console.warn(`⚠️ Інгредієнт з ID ${id} не знайдено в складі`);
+    return 0
+    }
+
+    // Повертаємо ціну, яку ми щойно додали в схему бекенда
+    return Number(ing.cost_per_unit) || 0
 }
 
 const getConsumablePrice = (id) => {

@@ -54,8 +54,10 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
     db_ingredient.category_id = ingredient_data.category_id
+    db_ingredient.costing_method = ingredient_data.costing_method
     
-    db.commit(); db.refresh(db_ingredient)
+    db.commit() 
+    db.refresh(db_ingredient)
     return db_ingredient
 
 @router.delete("/ingredients/{ingredient_id}")

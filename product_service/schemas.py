@@ -36,6 +36,7 @@ class IngredientCreate(BaseModel):
 class Ingredient(BaseModel):
     id: int
     name: str
+    cost_per_unit: float
     
     stock_quantity: float
     unit_id: Optional[int] = None
@@ -45,13 +46,15 @@ class Ingredient(BaseModel):
     costing_method: str
     class Config: from_attributes = True
     class Config:
+        from_attributes = True
         extra = 'ignore' # Ігноруємо зайві поля з фронтенду (наприклад, cost_per_unit при створенні)
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
-    stock_quantity: int
+    stock_quantity: float
+    costing_method: str = "wac"
 
 class ConsumableCreate(ConsumableBase):
     category_id: Optional[int] = None 
@@ -184,6 +187,7 @@ class Variant(VariantCreate):
     # Тут використовуємо Read схеми, які тепер мають поле 'name'
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
+    master_recipe: Optional[MasterRecipe] = None
     cost_price: float = 0.0
     margin: float = 0.0
     class Config: from_attributes = True
@@ -253,18 +257,24 @@ class SoldItemModifier(BaseModel):
     modifier_id: int
     class Config: extra = 'ignore' # На всяк випадок
 
+# 🔥 НОВА СХЕМА: Інструкція від касира про заміну матеріалу
+class ConsumableOverride(BaseModel):
+    original_id: int           # ID матеріалу, який мав би списатися за замовчуванням
+    new_id: Optional[int] = None # ID нового матеріалу (Якщо None/null - значить касир натиснув "Видалити / Своя чашка")
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-
+    # 🔥 НОВЕ: Масив усіх замін пакування, які зробив касир у вікні товару
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
     customer_id: Optional[int] = None
+    
     class Config: extra = 'ignore'
-
+    
 class CustomerCreate(BaseModel):
     name: str
     phone: str
@@ -279,6 +289,7 @@ class OrderItemRead(BaseModel):
     quantity: int
     price_at_moment: float
     details: Optional[str] = None
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
     class Config: from_attributes = True
 
 class OrderRead(BaseModel):
@@ -358,3 +369,10 @@ class OrderPaginationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InventoryAdjustRequest(BaseModel):
+    entity_type: str  # 'ingredient', 'consumable', 'product', 'product_variant'
+    entity_id: int
+    actual_quantity: float  # Фактичний залишок, який ввів менеджер
+    reason: str             # Причина коригування
+    batch_id: Optional[int] = None  # ID партії (опціонально, якщо це FIFO)

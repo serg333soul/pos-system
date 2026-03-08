@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
@@ -237,6 +237,7 @@ class OrderItem(Base):
     quantity = Column(Integer)
     price_at_moment = Column(Float)
     details = Column(String, nullable=True) 
+    consumable_overrides = Column(JSON, nullable=True, default=list)
     order = relationship("Order", back_populates="items")
 
 # --- ІСТОРІЯ РУХУ ТОВАРІВ (TRANSACTIONS) ---

@@ -4,6 +4,7 @@ import { useWarehouse } from '@/composables/useWarehouse'
 import axios from 'axios'
 import HistoryModal from '../modals/HistoryModal.vue'
 import { useSupplies } from '@/composables/useSupplies'
+import AdjustmentModal from '@/components/warehouse/modals/AdjustmentModal.vue'
 
 // Отримуємо дані зі сховища
 const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse()
@@ -18,6 +19,25 @@ const expandedId = ref(null);
 const activeBatches = ref([]);
 const currentMethod = ref('wac');
 const isBatchesLoading = ref(false);
+
+// Стан для модалки коригування
+const isAdjustModalOpen = ref(false)
+const selectedItemForAdjust = ref(null)
+
+const openAdjustModal = (item) => {
+    if (!item) return; // 🛡 Захист від порожніх викликів
+    const detectedType = item.costing_method !== undefined ? 'ingredient' : 'consumable'
+    console.log("🛠 Відкриваю вікно для:", item?.display_name || item?.name)
+
+    selectedItemForAdjust.value = { 
+        ...item, 
+        type: detectedType // Беремо існуючий або визначаємо за непрямими ознаками
+    }
+  
+    isAdjustModalOpen.value = true;
+    console.log("📍 Спроба відкрити модалку для:", selectedItemForAdjust.value.name, "Тип:", selectedItemForAdjust.value.type)
+
+}
 
 const toggleBatches = async (item) => {
   const uniqueId = `${item.type}-${item.id}`;
@@ -266,6 +286,14 @@ onMounted(() => {
                             Історія
                             </button>
                         </td>
+
+                        <td class="p-4 text-center flex justify-center gap-2">
+                            <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 px-2 transition" title="Коригування залишку">
+                                <i class="fas fa-balance-scale"></i>
+                            </button>
+                            
+                        </td>
+
                         </tr>
 
                         <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
@@ -327,5 +355,14 @@ onMounted(() => {
             :item="historyItem" 
             @close="isHistoryOpen = false" 
         />
+        
     </div>
+    <AdjustmentModal 
+            v-if="isAdjustModalOpen && selectedItemForAdjust" 
+            :is-open="isAdjustModalOpen"
+            :item="selectedItemForAdjust"
+            :entity-type="selectedItemForAdjust?.type" 
+            @close="isAdjustModalOpen = false"
+            @saved="fetchWarehouseData" 
+    />
 </template>

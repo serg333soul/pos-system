@@ -3,10 +3,15 @@ import { onMounted } from 'vue'
 import { useStatistics } from '@/composables/useStatistics'
 import SalesTable from './SalesTable.vue'
 
+// 🔥 ВАЖЛИВО: Ми НЕ створюємо нові ref, а дістаємо їх із useStatistics
 const { 
-  orders, loading, 
-  showDetailModal, selectedOrder, 
-  fetchOrders, openDetails, closeDetails 
+  orders, 
+  loading, 
+  totalPages, 
+  currentPage, 
+  pageSize, 
+  fetchOrders, 
+  openDetails 
 } = useStatistics()
 
 // Helper for date formatting (duplicate need for modal, can be util)
@@ -17,7 +22,12 @@ const formatDate = (dateString) => {
   })
 }
 
-onMounted(() => fetchOrders())
+// Примусовий виклик при завантаженні для перестраховки
+onMounted(() => {
+  console.log("📍 Компонент Statistics монтується");
+  fetchOrders();
+})
+
 </script>
 
 <template>
@@ -37,7 +47,7 @@ onMounted(() => fetchOrders())
         <div class="flex items-center gap-3">
             <span class="text-xs text-gray-500 font-bold">Показувати по:</span>
             <select 
-            v-model="pageSize" 
+            v-model.number="pageSize" 
             class="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg p-1.5 focus:ring-blue-500 outline-none"
             >
             <option :value="10">10</option>

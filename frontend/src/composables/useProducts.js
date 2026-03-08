@@ -40,6 +40,7 @@ export function useProducts() {
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
     const calculatedStock = ref(null) // Змінна для збереження результату
+    const variantCalculatedCost = ref(0) // Для збереження розрахункової собівартості варіанту
     
     const fetchCalculatedStock = async (productId, variantId) => {
         calculatedStock.value = null;
@@ -57,6 +58,39 @@ export function useProducts() {
         }
     }
     
+    const fetchVariantCost = async () => {
+        // Формуємо об'єкт для калькулятора [6, 7]
+        const payload = {
+            master_recipe_id: variantBuilder.value.master_recipe_id,
+            output_weight: variantBuilder.value.output_weight || 0,
+            ingredients: variantBuilder.value.ingredients,
+            consumables: variantBuilder.value.consumables
+        };
+
+        try {
+            const res = await axios.post('/api/products/calculate-cost', payload);
+            variantCalculatedCost.value = res.data.total_cost;
+            
+            // Оновлюємо дані в самому білдері для збереження
+            variantBuilder.value.cost_price = res.data.total_cost;
+        } catch (err) {
+            console.error("Помилка розрахунку собівартості варіанту", err);
+        }
+    }
+
+    watch(
+        () => [
+            variantBuilder.value.master_recipe_id, 
+            variantBuilder.value.output_weight,
+            variantBuilder.value.ingredients,
+            variantBuilder.value.consumables
+        ],
+        () => {
+            fetchVariantCost();
+        },
+        { deep: true }
+    )
+
     const generateSKU = () => {
         // Перевіряємо, чи є базова інформація для генерації
         const productName = newProduct.value.name || 'PROD';
@@ -278,6 +312,7 @@ export function useProducts() {
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
         addIngredientToVariant, removeIngredientFromVariant,
-        calculatedStock, fetchCalculatedStock, generateSKU
+        calculatedStock, variantCalculatedCost,fetchVariantCost,
+        fetchCalculatedStock, generateSKU
     }
 }

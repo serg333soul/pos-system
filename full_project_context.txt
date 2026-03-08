@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 79
-Lines: 9976
-Tokens: ~105065
+Files: 81
+Lines: 10715
+Tokens: ~113643
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -202,15 +202,16 @@ frontend\src\components\pos\ProductModal.vue
   └── 💾 State (ref): selectedVariant
   └── 💾 State (ref): selectedModifiers
   └── 💾 State (ref): selectedProcesses
+  └── 💾 State (ref): consumableSelections
   └── 💾 State (ref): isManualBatch
   └── 💾 State (ref): availableBatches
   └── 💾 State (ref): selectedBatchId
   └── 💾 State (ref): isLoadingBatches
+  └── 💾 State (computed): safeConsumables
   └── 💾 State (computed): canAddToCart
   └── ƒ  getAvailableStock
   └── 💾 State (computed): currentPrice
   └── ƒ  handleConfirm
-  └── ƒ  formatDate
 frontend\src\components\pos\ProductRoomModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -229,6 +230,20 @@ frontend\src\components\stats\Statistics.vue
   └── ƒ  formatDate
 frontend\src\components\warehouse\Warehouse.vue
   └── 💾 State (ref): activeTab
+frontend\src\components\warehouse\modals\AdjustmentModal.vue
+  └── 📥 Props defined
+  └── 📤 Emits defined
+  └── 💾 State (ref): actualQuantity
+  └── 💾 State (ref): reason
+  └── 💾 State (ref): comment
+  └── 💾 State (ref): batchId
+  └── 💾 State (ref): availableBatches
+  └── 💾 State (ref): isLoading
+  └── 💾 State (ref): isSubmitting
+  └── 💾 State (computed): currentQuantity
+  └── 💾 State (computed): difference
+  └── 💾 State (computed): isFifo
+  └── ƒ  formatDate
 frontend\src\components\warehouse\modals\HistoryModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -291,14 +306,14 @@ frontend\src\components\warehouse\tabs\StockTab.vue
   └── 💾 State (ref): activeBatches
   └── 💾 State (ref): currentMethod
   └── 💾 State (ref): isBatchesLoading
+  └── 💾 State (ref): isAdjustModalOpen
+  └── 💾 State (ref): selectedItemForAdjust
+  └── ƒ  openAdjustModal
   └── ƒ  formatDate
   └── 💾 State (ref): editingItemKey
   └── 💾 State (ref): editValue
   └── 💾 State (ref): isHistoryOpen
   └── 💾 State (ref): historyItem
-  └── ƒ  openHistory
-  └── 💾 State (computed): filteredItems
-  └── ƒ  startEdit
 frontend\src\components\warehouse\tabs\SupplyTab.vue
   └── 📤 Emits defined
   └── 💾 State (ref): showSupplierModal
@@ -346,6 +361,7 @@ frontend\src\components\warehouse\tabs\products\ProductsTab.vue
   └── 💾 State (ref): showSimpleForm
   └── 💾 State (ref): showVariantForm
   └── 💾 State (ref): isEditing
+  └── 💾 State (ref): serverCalculatedCost
   └── ƒ  openCreateModal
   └── ƒ  openCreateForm
   └── ƒ  selectType
@@ -387,10 +403,10 @@ frontend\src\composables\useProducts.js
   └── 💾 State (ref): tempVariantIngredient
   └── 💾 State (ref): variantBuilder
   └── 💾 State (ref): calculatedStock
+  └── 💾 State (ref): variantCalculatedCost
   └── ƒ  generateSKU
   └── ƒ  resetForm
   └── ƒ  prepareEdit
-  └── ƒ  saveVariant
 frontend\src\composables\useStatistics.js
   └── 💾 State (ref): orders
   └── 💾 State (ref): loading
@@ -473,6 +489,9 @@ product_service\schemas.py
   └── 🗄️ Model: Consumable
   └── 📦 Class: Config
   └── 📄 Schema: ProductIngredientLink
+product_service\routers\adjustments.py
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  adjust_stock
 product_service\routers\categories.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_category
@@ -585,6 +604,7 @@ product_service\services\inventory_service.py
   └── 📦 Class: InventoryService
   └── ƒ  deduct_fifo
   └── ƒ  deduct_manual
+  └── ƒ  adjust_inventory
 product_service\services\order_service.py
   └── 📦 Class: OrderService
   └── ƒ  process_checkout
@@ -632,6 +652,7 @@ product_service\tests\test_warehouse.py
     📂 .github/
         📂 workflows/
             📄 deploy.yml
+    📂 .tmp.driveupload/
     📂 frontend/
         📄 Dockerfile
         📄 README.md
@@ -665,6 +686,7 @@ product_service\tests\test_warehouse.py
                 📂 warehouse/
                     📄 Warehouse.vue
                     📂 modals/
+                        📄 AdjustmentModal.vue
                         📄 HistoryModal.vue
                     📂 tabs/
                         📄 CategoriesTab.vue
@@ -704,6 +726,7 @@ product_service\tests\test_warehouse.py
         📄 schemas.py
         📂 routers/
             📄 __init__.py
+            📄 adjustments.py
             📄 categories.py
             📄 customers.py
             📄 inventory.py
@@ -2221,7 +2244,9 @@ const { fetchAvailableBatches } = useSupplies() // 🔥 ДОДАНО
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
-const selectedProcesses = ref({}) 
+const selectedProcesses = ref({})
+
+const consumableSelections = ref({}) // Формат: { original_id: selected_id } 
 
 // --- 🔥 НОВИЙ СТАН ДЛЯ ПАРТІЙ (MANUAL BATCH) ---
 const isManualBatch = ref(false)
@@ -2229,9 +2254,11 @@ const availableBatches = ref([])
 const selectedBatchId = ref(null)
 const isLoadingBatches = ref(false)
 
+
 // --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen && props.product) {
+
     selectedVariant.value = null
     selectedModifiers.value = {}
     selectedProcesses.value = {} 
@@ -2240,6 +2267,16 @@ watch(() => props.isOpen, (isOpen) => {
     isManualBatch.value = false
     availableBatches.value = []
     selectedBatchId.value = null
+
+    // 🔥 Очищаємо вибір пакування
+    consumableSelections.value = {}
+
+    // Якщо товар без варіантів - відразу виставляємо його матеріали за замовчуванням
+    if (!props.product.has_variants && props.product.consumables) {
+         props.product.consumables.forEach(c => {
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
 
     // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
@@ -2287,43 +2324,61 @@ watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
     isLoadingBatches.value = false
 })
 
+// 🔥 НОВИЙ WATCH: Коли касир перемикає варіант (напр. з S на L), 
+// ми підтягуємо стандартне пакування саме для цього варіанту
+watch(selectedVariant, (newVal) => {
+    if (newVal && newVal.consumables) {
+         consumableSelections.value = {}
+         newVal.consumables.forEach(c => {
+             // За замовчуванням обраний "рідний" матеріал
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
+})
+
+// 🔥 БЕЗПЕЧНЕ ОТРИМАННЯ МАТЕРІАЛІВ ЗІ СКЛАДУ
+const safeConsumables = computed(() => {
+    // Перевіряємо обидва варіанти: з .value і без, щоб гарантовано отримати масив
+    const arr = warehouse.consumables?.value || warehouse.consumables || [];
+    return Array.isArray(arr) ? arr : [];
+});
 
 const canAddToCart = computed(() => {
   if (!props.product) return false;
 
-  // 🔥 Якщо увімкнено ручний режим, касир ЗОБОВ'ЯЗАНИЙ вибрати партію
+  // 1. Ручний вибір партії обов'язковий (якщо тумблер увімкнено)
   if (isManualBatch.value && !selectedBatchId.value) {
       return false;
   }
 
-  // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
-  if (props.product.has_variants) {
-    if (!selectedVariant.value) return false;
-    
-    // Якщо ручний режим - перевіряємо чи є вибрана партія і чи вистачає там 1 шт
-    if (isManualBatch.value && selectedBatchId.value) {
-        const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-        return batch && batch.remaining_quantity >= 1;
-    }
-    
-    return getAvailableStock(selectedVariant.value) >= 1;
+  // 2. Якщо товар з варіантами - обов'язково треба обрати варіант
+  if (props.product.has_variants && !selectedVariant.value) {
+      return false;
   }
 
-  // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
+  // 3. Перевірка залишків, якщо увімкнено ручну партію
+  if (isManualBatch.value && selectedBatchId.value) {
+      const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+      return batch && batch.remaining_quantity >= 1;
+  }
+
+  // 4. Перевірка залишків для автоматичного режиму (FIFO/WAC)
+  if (props.product.has_variants) {
+      return getAvailableStock(selectedVariant.value) >= 1;
+  } 
+  
   if (props.product.track_stock) {
-      if (isManualBatch.value && selectedBatchId.value) {
-          const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-          return batch && batch.remaining_quantity >= 1;
-      }
       return (props.product.stock_quantity || 0) >= 1;
   }
 
+  // Якщо товар без залишків (послуга тощо) - дозволяємо продавати
   return true;
 })
 
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
+    // 1. Якщо товар має фізичний залишок (готовий на полиці)
     if (props.product.track_stock) {
         const inCart = cartItems.value
             .filter(i => i.variant_id === variant.id)
@@ -2333,6 +2388,7 @@ const getAvailableStock = (variant) => {
 
     let maxPossible = Infinity;
 
+    // 2. Перевірка залишків по РЕЦЕПТУ (Зерно, вода, молоко тощо)
     if (variant.master_recipe_id) {
         const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
         recipe?.items?.forEach(rItem => {
@@ -2350,10 +2406,52 @@ const getAvailableStock = (variant) => {
                     const possible = Math.floor(available / qtyPerOne);
                     if (possible < maxPossible) maxPossible = possible;
                 }
+            } else {
+                maxPossible = 0; // Якщо інгредієнта взагалі немає на складі
             }
         });
     }
-    
+
+    // 3. 🔥 НОВЕ: Перевірка залишків по ПАКУВАННЮ (Consumables)
+    // Якщо пакувань менше ніж сировини, доступна кількість зменшиться
+    if (variant.consumables && variant.consumables.length > 0) {
+        variant.consumables.forEach(vCons => {
+            const inStoreCons = warehouse.consumables?.value?.find(c => c.id === vCons.consumable_id) || 
+                                warehouse.consumables?.find?.(c => c.id === vCons.consumable_id); // Залежить від того як у вас працює useWarehouse
+            
+            if (inStoreCons) {
+                const reserved = reservedResources.value?.consumables?.[vCons.consumable_id] || 0;
+                const available = Math.max(0, inStoreCons.stock_quantity - reserved);
+                
+                if (vCons.quantity > 0) {
+                    const possible = Math.floor(available / vCons.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0; // Пакування не знайдено на складі
+            }
+        });
+    }
+
+    // 4. 🔥 НОВЕ: Перевірка залишків по ДОДАТКОВИХ ІНГРЕДІЄНТАХ варіанту (якщо є)
+    if (variant.ingredients && variant.ingredients.length > 0) {
+        variant.ingredients.forEach(vIng => {
+            const inStoreIng = warehouse.ingredients?.value?.find(i => i.id === vIng.ingredient_id);
+            if (inStoreIng) {
+                const reserved = reservedResources.value?.ingredients?.[vIng.ingredient_id] || 0;
+                const available = Math.max(0, inStoreIng.stock_quantity - reserved);
+                
+                if (vIng.quantity > 0) {
+                    const possible = Math.floor(available / vIng.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0;
+            }
+        });
+    }
+
+    // Якщо нічого не рахувалося, значить ліміту немає (або помилка)
     return maxPossible === Infinity ? 0 : maxPossible;
 }
 
@@ -2385,11 +2483,30 @@ const handleConfirm = () => {
     return;
   }
 
+  // 1. Формуємо масив замін пакування
+  const overrides = []
+  const baseConsumables = selectedVariant.value ? selectedVariant.value.consumables : props.product.consumables
+    
+  if (baseConsumables) {
+      baseConsumables.forEach(c => {
+          const originalId = c.consumable_id
+          const selectedId = consumableSelections.value[originalId]
+          
+          // Якщо касир вибрав щось інше (замінив або обрав "0" для своєї чашки)
+          if (selectedId !== originalId) {
+              overrides.push({
+                  original_id: originalId,
+                  new_id: selectedId === 0 ? null : selectedId
+              })
+          }
+      })
+  }
+
   const payload = {
     product_id: props.product.id,
     quantity: 1,
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    
+    consumable_overrides: overrides, // 🔥 ДОДАЄМО НАШ МАСИВ
     variant_id: props.product.has_variants ? selectedVariant.value.id : null,
     name: props.product.has_variants 
             ? `${props.product.name} (${selectedVariant.value.name})` 
@@ -2459,8 +2576,43 @@ const formatDate = (dateStr) => {
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
                   </div>
+                  <div v-if="variant.master_recipe" class="text-[9px] text-black-900 font-bold uppercase tracking-tighter text-center line-clamp-1 px-1">
+                    <i class="fas fa-scroll mr-0.5 opacity-50"></i> {{ variant.master_recipe.name }}
+                  </div>
+                  <div v-else class="text-[9px] text-gray-300 font-medium italic">
+                    Без рецепту
+                  </div>
               </div>
           </div>
+          <div v-if="(selectedVariant?.consumables?.length > 0) || (!product.has_variants && product?.consumables?.length > 0)" 
+            class="p-5 border-t border-gray-100 bg-orange-50/30">
+            <h4 class="text-xs font-bold text-orange-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <i class="fas fa-box-open"></i> Склад пакування
+            </h4>
+            <div class="space-y-2">
+                <div v-for="c in (selectedVariant ? selectedVariant.consumables : product.consumables)" 
+                    :key="c.consumable_id" 
+                    class="flex justify-between items-center bg-white border border-orange-100 p-2.5 rounded-xl shadow-sm">
+                    
+                    <span class="text-sm font-medium text-gray-700 ml-2">
+                        {{ c.name || c.consumable_name }} <span class="text-gray-400 text-xs ml-1">(x{{ c.quantity }})</span>
+                    </span>
+                    
+                    <select v-model="consumableSelections[c.consumable_id]" 
+                            class="p-2 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 bg-gray-50 max-w-[200px] cursor-pointer transition">
+                        <option :value="0" class="text-red-500 font-bold">🚫 Своя тара (Скасувати)</option>
+                        <option :value="c.consumable_id">🟢 Стандартне</option>
+                        <option disabled>──────────</option>
+                        <option v-for="ac in safeConsumables.filter(item => item.id !== c.consumable_id)" 
+                                :key="ac.id" 
+                                :value="ac.id">
+                            🔄 Замінити на: {{ ac.name }}
+                        </option>
+                    </select>
+
+                </div>
+            </div>
+        </div>
         </div>
 
         <div v-if="product.track_stock || (product.has_variants && selectedVariant && !selectedVariant.master_recipe_id)" 
@@ -2823,10 +2975,15 @@ import { onMounted } from 'vue'
 import { useStatistics } from '@/composables/useStatistics'
 import SalesTable from './SalesTable.vue'
 
+// 🔥 ВАЖЛИВО: Ми НЕ створюємо нові ref, а дістаємо їх із useStatistics
 const { 
-  orders, loading, 
-  showDetailModal, selectedOrder, 
-  fetchOrders, openDetails, closeDetails 
+  orders, 
+  loading, 
+  totalPages, 
+  currentPage, 
+  pageSize, 
+  fetchOrders, 
+  openDetails 
 } = useStatistics()
 
 // Helper for date formatting (duplicate need for modal, can be util)
@@ -2837,7 +2994,12 @@ const formatDate = (dateString) => {
   })
 }
 
-onMounted(() => fetchOrders())
+// Примусовий виклик при завантаженні для перестраховки
+onMounted(() => {
+  console.log("📍 Компонент Statistics монтується");
+  fetchOrders();
+})
+
 </script>
 
 <template>
@@ -2857,7 +3019,7 @@ onMounted(() => fetchOrders())
         <div class="flex items-center gap-3">
             <span class="text-xs text-gray-500 font-bold">Показувати по:</span>
             <select 
-            v-model="pageSize" 
+            v-model.number="pageSize" 
             class="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg p-1.5 focus:ring-blue-500 outline-none"
             >
             <option :value="10">10</option>
@@ -3043,6 +3205,232 @@ onMounted(() => {
     
   </div>
 </template>
+</file>
+
+<file path="frontend\src\components\warehouse\modals\AdjustmentModal.vue" lang="vue">
+<script setup>
+import { ref, computed, watch, onMounted } from 'vue'
+import { useWarehouse } from '@/composables/useWarehouse'
+import { useSupplies } from '@/composables/useSupplies'
+
+const props = defineProps({
+    isOpen: Boolean,
+    item: Object,       // Об'єкт товару/інгредієнта
+    entityType: String  // 'ingredient', 'consumable', 'product_variant', 'product'
+})
+
+const emit = defineEmits(['close', 'adjusted'])
+
+const { adjustItemStock } = useWarehouse()
+const { fetchAvailableBatches } = useSupplies()
+
+// Стан форми
+const actualQuantity = ref(0)
+const reason = ref('')
+const comment = ref('')
+const batchId = ref(null)
+
+const availableBatches = ref([])
+const isLoading = ref(false)
+const isSubmitting = ref(false)
+
+// Типові причини
+const reasons = [
+    "Псування / Брак",
+    "Розбито / Пролито",
+    "Помилка інвентаризації",
+    "Знайдений лишок",
+    "Крадіжка",
+    "Списання на потреби закладу",
+    "Інше"
+]
+
+// Обчислення різниці
+const currentQuantity = computed(() => {
+  // 🛡 Захищаємо від відсутності item або одиниці виміру
+  return props.item?.stock_quantity ?? 0;
+})
+
+const difference = computed(() => {
+    return Number((actualQuantity.value - currentQuantity.value).toFixed(3))
+})
+
+const isFifo = computed(() => {
+  return props.item?.costing_method === 'fifo';
+})
+
+// Завантаження даних при відкритті
+watch(() => props.isOpen, async (isOpen) => {
+    if (isOpen && props.item) {
+        // Скидаємо форму до значень системи
+        actualQuantity.value = currentQuantity.value
+        reason.value = ''
+        comment.value = ''
+        batchId.value = null
+        availableBatches.value = []
+
+        // Якщо це FIFO, одразу вантажимо активні партії
+        if (isFifo.value) {
+            isLoading.value = true
+            availableBatches.value = await fetchAvailableBatches(props.entityType, props.item.id)
+            isLoading.value = false
+        }
+    }
+})
+
+// Збереження
+const handleSave = async () => {
+    // 🛡 ЗАХИСТ: Якщо об'єкт не прокинувся, не даємо впасти скрипту
+    if (!props.item || !props.item.id) {
+        console.error("❌ Помилка: спроба зберегти коригування для undefined товару");
+        return;
+    }
+
+    if (difference.value === 0) return alert("Немає змін для збереження. Фактичний залишок дорівнює системному.")
+    if (!reason.value) return alert("Оберіть причину коригування!")
+    
+    // Якщо FIFO і це НЕСТАЧА (< 0) - вимагаємо вибрати партію
+    if (isFifo.value && difference.value < 0 && !batchId.value) {
+        return alert("Для товару FIFO обов'язково оберіть партію, з якої списується нестача!")
+    }
+
+    const fullReason = comment.value ? `${reason.value} - ${comment.value}` : reason.value
+
+    isSubmitting.value = true
+    const payload = {
+        entity_type: props.item.type || 'ingredient', 
+        entity_id: props.item.id,
+        actual_quantity: actualQuantity.value,
+        reason: reason.value,
+        batch_id: isFifo.value ? batchId.value : null
+    }
+
+    const result = await adjustItemStock(payload)
+    isSubmitting.value = false
+
+    if (result.success) {
+        emit('adjusted')
+        emit('close')
+    } else {
+        alert("Помилка збереження: " + result.error)
+    }
+}
+
+// Допоміжна функція форматування дати
+const formatDate = (dateStr) => {
+    if (!dateStr) return '---'
+    const d = new Date(dateStr)
+    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth()+1).toString().padStart(2, '0')}.${d.getFullYear()}`
+}
+
+onMounted(() => {
+  console.log("🏠 Модалка змонтована з item:", props.item?.id, "Type:", props.entityType);
+  if (isFifo.value) {
+    fetchAvailableBatches(); // Переконайся, що ця функція не зависає
+  }
+})
+
+</script>
+
+<template>
+    <Teleport to="body">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+                
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="text-xl font-black text-gray-800">
+                        {{ item?.display_name || item?.name || 'Завантаження...' }}
+                        </h3>
+                        <p class="text-xs text-gray-400 font-bold uppercase tracking-wider">
+                        ⚖️ Коригування залишку
+                        </p>
+                    </div>
+                    <button @click="emit('close')" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="p-6 space-y-6">
+                    <div class="flex justify-between items-center bg-blue-50/50 border border-blue-100 p-4 rounded-xl">
+                        <div>
+                            <div class="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Метод обліку</div>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full uppercase" 
+                                  :class="isFifo ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'">
+                                {{ isFifo ? 'FIFO (По партіях)' : 'WAC (Середня ціна)' }}
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Системний залишок</div>
+                            <div class="text-xl font-mono font-bold text-gray-700">{{ currentQuantity }} {{ item?.unit?.symbol || 'од.' }}</div>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Фактичний залишок (на полиці)</label>
+                        <input 
+                            v-model.number="actualQuantity" 
+                            type="number" 
+                            step="0.01" 
+                            class="w-full border-2 border-gray-200 p-4 rounded-xl text-2xl font-mono text-center focus:border-blue-500 focus:ring-0 transition outline-none"
+                        >
+                        <div v-if="difference !== 0" class="absolute -bottom-6 left-0 right-0 text-center text-sm font-bold animate-fade-in"
+                             :class="difference > 0 ? 'text-green-600' : 'text-red-500'">
+                            Різниця: {{ difference > 0 ? '+' : '' }}{{ difference }} {{ item?.unit?.symbol || 'од.' }}
+                            ({{ difference > 0 ? 'Лишок' : 'Нестача' }})
+                        </div>
+                    </div>
+
+                    <div v-if="isFifo && difference < 0" class="bg-red-50 p-4 rounded-xl border border-red-100 animate-fade-in mt-8">
+                        <label class="block text-xs font-bold text-red-800 uppercase mb-2">З якої партії списати нестачу?</label>
+                        <div v-if="isLoading" class="text-xs text-red-600"><i class="fas fa-spinner fa-spin mr-1"></i> Завантаження...</div>
+                        <div v-else-if="availableBatches.length === 0" class="text-xs text-red-600">Немає активних партій! Створіть постачання.</div>
+                        <select v-else v-model="batchId" class="w-full p-2.5 rounded-lg border border-red-200 bg-white text-sm outline-none focus:ring-2 focus:ring-red-200">
+                            <option :value="null" disabled>-- Оберіть партію --</option>
+                            <option v-for="b in availableBatches" :key="b.batch_id" :value="b.batch_id">
+                                Партія від {{ formatDate(b.supply_date) }} (Залишок: {{ b.remaining_quantity }})
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-4 pt-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Причина *</label>
+                            <select v-model="reason" class="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white outline-none">
+                                <option value="" disabled>-- Оберіть причину --</option>
+                                <option v-for="r in reasons" :key="r" :value="r">{{ r }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Деталі (Опціонально)</label>
+                            <input v-model="comment" type="text" placeholder="Хто розбив, де знайшли і т.д." class="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
+                    <button @click="emit('close')" class="flex-1 py-3 font-bold text-gray-500 hover:bg-gray-200 rounded-xl transition">
+                        Скасувати
+                    </button>
+                    <button 
+                        @click="handleSave" 
+                        :disabled="isSubmitting || difference === 0 || !reason"
+                        class="flex-1 py-3 font-bold text-white rounded-xl shadow-lg transition"
+                        :class="isSubmitting || difference === 0 || !reason ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'"
+                    >
+                        {{ isSubmitting ? 'Збереження...' : 'Підтвердити' }}
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </Teleport>
+</template>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+</style>
 </file>
 
 <file path="frontend\src\components\warehouse\modals\HistoryModal.vue" lang="vue">
@@ -4457,6 +4845,7 @@ import { useWarehouse } from '@/composables/useWarehouse'
 import axios from 'axios'
 import HistoryModal from '../modals/HistoryModal.vue'
 import { useSupplies } from '@/composables/useSupplies'
+import AdjustmentModal from '@/components/warehouse/modals/AdjustmentModal.vue'
 
 // Отримуємо дані зі сховища
 const { ingredients, consumables, products, fetchWarehouseData } = useWarehouse()
@@ -4471,6 +4860,25 @@ const expandedId = ref(null);
 const activeBatches = ref([]);
 const currentMethod = ref('wac');
 const isBatchesLoading = ref(false);
+
+// Стан для модалки коригування
+const isAdjustModalOpen = ref(false)
+const selectedItemForAdjust = ref(null)
+
+const openAdjustModal = (item) => {
+    if (!item) return; // 🛡 Захист від порожніх викликів
+    const detectedType = item.costing_method !== undefined ? 'ingredient' : 'consumable'
+    console.log("🛠 Відкриваю вікно для:", item?.display_name || item?.name)
+
+    selectedItemForAdjust.value = { 
+        ...item, 
+        type: detectedType // Беремо існуючий або визначаємо за непрямими ознаками
+    }
+  
+    isAdjustModalOpen.value = true;
+    console.log("📍 Спроба відкрити модалку для:", selectedItemForAdjust.value.name, "Тип:", selectedItemForAdjust.value.type)
+
+}
 
 const toggleBatches = async (item) => {
   const uniqueId = `${item.type}-${item.id}`;
@@ -4719,6 +5127,14 @@ onMounted(() => {
                             Історія
                             </button>
                         </td>
+
+                        <td class="p-4 text-center flex justify-center gap-2">
+                            <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 px-2 transition" title="Коригування залишку">
+                                <i class="fas fa-balance-scale"></i>
+                            </button>
+                            
+                        </td>
+
                         </tr>
 
                         <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
@@ -4780,7 +5196,16 @@ onMounted(() => {
             :item="historyItem" 
             @close="isHistoryOpen = false" 
         />
+        
     </div>
+    <AdjustmentModal 
+            v-if="isAdjustModalOpen && selectedItemForAdjust" 
+            :is-open="isAdjustModalOpen"
+            :item="selectedItemForAdjust"
+            :entity-type="selectedItemForAdjust?.type" 
+            @close="isAdjustModalOpen = false"
+            @saved="fetchWarehouseData" 
+    />
 </template>
 </file>
 
@@ -5353,8 +5778,16 @@ const selectedRecipe = computed(() => {
 })
 
 const getIngredientPrice = (id) => {
+    if (!ingredients.value) return 0
+    // Шукаємо інгредієнт у глобальному списку складу
     const ing = ingredients.value.find(i => i.id === id)
-    return ing ? ing.cost_per_unit : 0
+    if (!ing) {
+        console.warn(`⚠️ Інгредієнт з ID ${id} не знайдено в складі`);
+    return 0
+    }
+
+    // Повертаємо ціну, яку ми щойно додали в схему бекенда
+    return Number(ing.cost_per_unit) || 0
 }
 
 const getConsumablePrice = (id) => {
@@ -5764,7 +6197,7 @@ const {
     tempVariantConsumable, tempVariantIngredient,
     // Методи для спільних матеріалів
     removeProductConsumable, addProductConsumable, tempProductConsumable,
-    calculatedStock, fetchCalculatedStock, generateSKU
+    calculatedStock, fetchCalculatedStock, generateSKU, variantCalculatedCost
 } = useProducts()
 
 // --- ЛОКАЛЬНИЙ СТАН ---
@@ -6163,11 +6596,41 @@ const toggleProcessGroup = (id) => {
                         </div>
 
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ціна (₴) <span class="text-red-500">*</span></label>
-                                <input v-model.number="variantBuilder.price" type="number" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+                            <div class="grid grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">Ціна продажу (₴) *</label>
+                                    <input 
+                                    v-model.number="variantBuilder.price"
+                                    type="number"
+                                    class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
+                                    >
+                                </div>
+                                
+                                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <p class="text-[10px] font-black text-gray-400 uppercase">Собівартість (Auto)</p>
+                                    <p class="text-lg font-black text-blue-600">
+                                    {{ (variantCalculatedCost || 0).toFixed(2) }} ₴
+                                    </p>
+                                </div>
                             </div>
+                            <!-- Блок Маржі -->
+                            <div v-if="variantBuilder.price > 0" class="mt-3 p-3 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                                <div>
+                                    <p class="text-[10px] font-black text-green-600 uppercase">Маржа (Прибуток)</p>
+                                    <p class="text-xl font-black text-green-700">
+                                    {{ ((variantBuilder.price || 0) - (variantCalculatedCost || 0)).toFixed(2) }} ₴
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[10px] font-black text-green-600 uppercase">Рентабельність</p>
+                                    <p class="text-lg font-bold text-green-700">
+                                    {{ Math.round(((variantBuilder.price - variantCalculatedCost) / variantBuilder.price) * 100) }}%
+                                    </p>
+                                </div>
+                            </div>
+
                             
+
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
                                     Поточний залишок
@@ -6176,38 +6639,54 @@ const toggleProcessGroup = (id) => {
                                     </span>
                                 </label>
     
-                                <div class="relative">
-                                    <input 
-                                        
-                                        :value="variantBuilder.master_recipe_id ? (calculatedStock !== null ? calculatedStock : 0) : variantBuilder.stock_quantity"
-                                        
-                                        @input="!variantBuilder.master_recipe_id && (variantBuilder.stock_quantity = $event.target.value)"
-    
-                                        type="number" 
-                                        class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-colors"
-                                        :class="{
-                                            'bg-gray-100 text-gray-500 cursor-not-allowed': variantBuilder.master_recipe_id,
-                                            'bg-yellow-50': !variantBuilder.master_recipe_id
-                                        }"
-                                        :disabled="!!variantBuilder.master_recipe_id"
-                                        placeholder="0"
-                                    >   
-        
-                                    <div v-if="variantBuilder.master_recipe_id" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                                        <p class="mt-1 text-xs text-gray-500">
-                                            Система перевірила склад: інгредієнтів вистачає на 
-                                            <span class="font-bold text-purple-600">
-                                                {{ calculatedStock !== null ? calculatedStock : '...' }}
-                                            </span> порцій.
-                                        </p>
-                                        <i class="fas fa-calculator text-gray-400"></i>
+                                <!-- Секція автоматичного розрахунку залишків -->
+                                <div class="mt-6 space-y-3">
+                                    <div class="flex items-center justify-between px-1">
+                                        <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                        Доступність для продажу
+                                        </label>
+                                        <span v-if="variantBuilder.master_recipe_id" 
+                                            class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-[9px] font-bold text-green-600 uppercase">
+                                        Live-Stock 🟢
+                                        </span>
                                     </div>
+
+                                    <!-- Блок розрахунку -->
+                                    <div v-if="variantBuilder.master_recipe_id" 
+                                        class="bg-purple-50 border border-purple-100 rounded-2xl p-5 flex items-center shadow-sm transition-all hover:shadow-md">
+                                        <div class="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-200 mr-4">
+                                        <i class="fas fa-calculator text-lg"></i>
+                                        </div>
+                                        
+                                        <div>
+                                        <p class="text-[10px] font-bold text-purple-400 uppercase tracking-tight">Розраховано за техкартою</p>
+                                        <div class="flex items-baseline gap-2">
+                                            <span class="text-2xl font-black text-purple-900">
+                                            {{ calculatedStock !== null ? calculatedStock : '...' }}
+                                            </span>
+                                            <span class="text-xs font-bold text-purple-500 uppercase">порцій доступно</span>
+                                        </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Стан, якщо техкарту не обрано -->
+                                    <div v-else class="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-5 flex items-center">
+                                        <div class="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 mr-4">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        </div>
+                                        <div>
+                                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Облік вимкнено</p>
+                                        <p class="text-xs text-gray-500 font-medium">Оберіть техкарту для авто-розрахунку залишків</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Технічна підказка -->
+                                    <p class="text-[10px] text-gray-400 italic px-1 leading-relaxed">
+                                        * Цей показник базується на «вузькому місці» вашого складу. Якщо закінчиться молоко або стаканчики — кількість порцій автоматично зменшиться [2, 3].
+                                    </p>
                                 </div>
     
-                                <p v-if="variantBuilder.master_recipe_id" class="text-xs text-gray-400 mt-1">
-                                    Система перевірила склад: інгредієнтів вистачає на 
-                                    <strong class="text-gray-700">{{ calculatedStock !== null ? calculatedStock : '...' }}</strong> порцій.
-                                </p>
+                                
                             </div>
 
                         </div>
@@ -6304,6 +6783,7 @@ const showTypeModal = ref(false)   // Маленьке вікно вибору �
 const showSimpleForm = ref(false)  // Велика форма простого товару
 const showVariantForm = ref(false) // Велика форма варіантів
 const isEditing = ref(false)
+const serverCalculatedCost = ref(0)
 
 onMounted(async () => {
     await Promise.all([fetchWarehouseData(), fetchProducts()])
@@ -6621,6 +7101,9 @@ export function useCart() {
           product_id: item.product_id,
           variant_id: item.variant_id || null,
           quantity: item.quantity,
+          // 🔥 ДОДАНО: Передаємо збережені заміни з кошика у фінальне замовлення!
+          consumable_overrides: item.consumable_overrides || [],
+          ingredient_overrides: item.ingredient_overrides || [],
           // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
             ? item.modifiers.map(m => ({
@@ -6871,6 +7354,7 @@ export function useProducts() {
     const consumables = warehouse?.consumables || ref([])
     const ingredients = warehouse?.ingredients || ref([]) // Треба для роботи з інгредієнтами
     const calculatedStock = ref(null) // Змінна для збереження результату
+    const variantCalculatedCost = ref(0) // Для збереження розрахункової собівартості варіанту
     
     const fetchCalculatedStock = async (productId, variantId) => {
         calculatedStock.value = null;
@@ -6888,6 +7372,39 @@ export function useProducts() {
         }
     }
     
+    const fetchVariantCost = async () => {
+        // Формуємо об'єкт для калькулятора [6, 7]
+        const payload = {
+            master_recipe_id: variantBuilder.value.master_recipe_id,
+            output_weight: variantBuilder.value.output_weight || 0,
+            ingredients: variantBuilder.value.ingredients,
+            consumables: variantBuilder.value.consumables
+        };
+
+        try {
+            const res = await axios.post('/api/products/calculate-cost', payload);
+            variantCalculatedCost.value = res.data.total_cost;
+            
+            // Оновлюємо дані в самому білдері для збереження
+            variantBuilder.value.cost_price = res.data.total_cost;
+        } catch (err) {
+            console.error("Помилка розрахунку собівартості варіанту", err);
+        }
+    }
+
+    watch(
+        () => [
+            variantBuilder.value.master_recipe_id, 
+            variantBuilder.value.output_weight,
+            variantBuilder.value.ingredients,
+            variantBuilder.value.consumables
+        ],
+        () => {
+            fetchVariantCost();
+        },
+        { deep: true }
+    )
+
     const generateSKU = () => {
         // Перевіряємо, чи є базова інформація для генерації
         const productName = newProduct.value.name || 'PROD';
@@ -7109,7 +7626,8 @@ export function useProducts() {
         addProductConsumable, removeProductConsumable,
         addVariantConsumable, removeVariantConsumable,
         addIngredientToVariant, removeIngredientFromVariant,
-        calculatedStock, fetchCalculatedStock, generateSKU
+        calculatedStock, variantCalculatedCost,fetchVariantCost,
+        fetchCalculatedStock, generateSKU
     }
 }
 </file>
@@ -7134,12 +7652,18 @@ export function useStatistics() {
   const fetchOrders = async () => {
     loading.value = true
     try {
-      const res = await fetch(`/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`)
+      const url = `/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`
+      console.log("🚀 Запит до API:", url) // Додай для дебагу в консолі
+
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         orders.value = data.items
         totalOrders.value = data.total
         totalPages.value = data.pages
+      } else {
+      // Якщо тут 422 - значить лапки все ще не ті
+      console.error("❌ Помилка бекенда:", res.status);
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -7149,9 +7673,10 @@ export function useStatistics() {
   }
 
   // Слідкуємо за зміною сторінки або ліміту
-  watch([currentPage, pageSize], () => {
-    fetchOrders()
-  })
+  watch([currentPage, pageSize], (newValues) => {
+    console.log("👀 Вочер спрацював! Нові значення [page, limit]:", newValues);
+    fetchOrders();
+  }, { immediate: true })
 
   const openDetails = (order) => {
     selectedOrder.value = order
@@ -7394,6 +7919,34 @@ export function useWarehouse() {
     }
   }
 
+  // --- ШВИДКЕ КОРИГУВАННЯ ЗАЛИШКІВ (ІНВЕНТАРИЗАЦІЯ) ---
+  const adjustItemStock = async (payload) => {
+      try {
+          const response = await fetch('/api/adjustments/', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+          })
+
+          if (!response.ok) {
+              const errData = await response.json()
+              throw new Error(errData.detail || 'Помилка коригування залишку')
+          }
+
+          const result = await response.json()
+            
+          // 🔥 Автоматично оновлюємо всі дані складу, щоб нова цифра з'явилася на екрані
+          await fetchWarehouseData() 
+            
+          return { success: true, data: result }
+      } catch (err) {
+          console.error("Помилка при коригуванні:", err)
+          return { success: false, error: err.message }
+      }
+  }
+
   return {
     // Експортуємо products
     products, productRooms, categories, units, ingredients, consumables, processGroups, recipes, loading,
@@ -7401,7 +7954,7 @@ export function useWarehouse() {
     fetchWarehouseData, 
     // Залишаємо стару назву як аліас про всяк випадок
     fetchData: fetchWarehouseData,
-    createItem, deleteItem, updateItem
+    createItem, deleteItem, updateItem, adjustItemStock
   }
 }
 </file>
@@ -7831,7 +8384,8 @@ from routers import (
     customers, 
     orders,
     product_rooms,
-    supplies
+    supplies,
+    adjustments
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -7859,6 +8413,7 @@ app.include_router(processes.router)
 app.include_router(customers.router)
 app.include_router(product_rooms.router)
 app.include_router(supplies.router)
+app.include_router(adjustments.router)
 
 @app.get("/")
 def read_root():
@@ -7870,7 +8425,7 @@ def read_root():
 </file>
 
 <file path="product_service\models.py" lang="py">
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
@@ -8109,6 +8664,7 @@ class OrderItem(Base):
     quantity = Column(Integer)
     price_at_moment = Column(Float)
     details = Column(String, nullable=True) 
+    consumable_overrides = Column(JSON, nullable=True, default=list)
     order = relationship("Order", back_populates="items")
 
 # --- ІСТОРІЯ РУХУ ТОВАРІВ (TRANSACTIONS) ---
@@ -8227,6 +8783,7 @@ class IngredientCreate(BaseModel):
 class Ingredient(BaseModel):
     id: int
     name: str
+    cost_per_unit: float
     
     stock_quantity: float
     unit_id: Optional[int] = None
@@ -8236,13 +8793,15 @@ class Ingredient(BaseModel):
     costing_method: str
     class Config: from_attributes = True
     class Config:
+        from_attributes = True
         extra = 'ignore' # Ігноруємо зайві поля з фронтенду (наприклад, cost_per_unit при створенні)
 
 # --- CONSUMABLES ---
 class ConsumableBase(BaseModel):
     name: str
     cost_per_unit: float
-    stock_quantity: int
+    stock_quantity: float
+    costing_method: str = "wac"
 
 class ConsumableCreate(ConsumableBase):
     category_id: Optional[int] = None 
@@ -8375,6 +8934,7 @@ class Variant(VariantCreate):
     # Тут використовуємо Read схеми, які тепер мають поле 'name'
     consumables: List[ProductConsumableRead] = []
     ingredients: List[ProductIngredientRead] = []
+    master_recipe: Optional[MasterRecipe] = None
     cost_price: float = 0.0
     margin: float = 0.0
     class Config: from_attributes = True
@@ -8444,18 +9004,24 @@ class SoldItemModifier(BaseModel):
     modifier_id: int
     class Config: extra = 'ignore' # На всяк випадок
 
+# 🔥 НОВА СХЕМА: Інструкція від касира про заміну матеріалу
+class ConsumableOverride(BaseModel):
+    original_id: int           # ID матеріалу, який мав би списатися за замовчуванням
+    new_id: Optional[int] = None # ID нового матеріалу (Якщо None/null - значить касир натиснув "Видалити / Своя чашка")
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-
+    # 🔥 НОВЕ: Масив усіх замін пакування, які зробив касир у вікні товару
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
     customer_id: Optional[int] = None
+    
     class Config: extra = 'ignore'
-
+    
 class CustomerCreate(BaseModel):
     name: str
     phone: str
@@ -8470,6 +9036,7 @@ class OrderItemRead(BaseModel):
     quantity: int
     price_at_moment: float
     details: Optional[str] = None
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
     class Config: from_attributes = True
 
 class OrderRead(BaseModel):
@@ -8480,6 +9047,23 @@ class OrderRead(BaseModel):
     items: List[OrderItemRead]
     customer: Optional[Customer] = None
     class Config: from_attributes = True
+
+class ModifierItem(BaseModel):
+    modifier_id: int
+class CartItemCreate(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    modifiers: List[ModifierItem] = []
+    quantity: int = 1
+    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
+    name: str 
+    price: float
+    
+    # 🔥 ДОДАНО: Поле для збереження замін пакування в кошику
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
+
+class CartItem(CartItemCreate):
+    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
 
 class ProductRoomRead(BaseModel):
     id: int
@@ -8549,10 +9133,45 @@ class OrderPaginationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InventoryAdjustRequest(BaseModel):
+    entity_type: str  # 'ingredient', 'consumable', 'product', 'product_variant'
+    entity_id: int
+    actual_quantity: float  # Фактичний залишок, який ввів менеджер
+    reason: str             # Причина коригування
+    batch_id: Optional[int] = None  # ID партії (опціонально, якщо це FIFO)
 </file>
 
 <file path="product_service\routers\__init__.py" lang="py">
 
+</file>
+
+<file path="product_service\routers\adjustments.py" lang="py">
+# FILE: product_service/routers/adjustments.py
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+import database
+import schemas
+from services.inventory_service import InventoryService
+
+router = APIRouter(prefix="/adjustments", tags=["Adjustments"])
+
+@router.post("/")
+def adjust_stock(request: schemas.InventoryAdjustRequest, db: Session = Depends(database.get_db)):
+    """
+    Ендпоінт для ручного коригування залишків (Інвентаризація/Швидка корекція).
+    Приймає фактичний залишок та автоматично вираховує і проводить різницю.
+    """
+    try:
+        result = InventoryService.adjust_inventory(db, request)
+        return result
+    except HTTPException as http_ex:
+        db.rollback()
+        raise http_ex
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 </file>
 
 <file path="product_service\routers\categories.py" lang="py">
@@ -8732,8 +9351,10 @@ def update_ingredient(ingredient_id: int, ingredient_data: schemas.IngredientCre
     db_ingredient.unit_id = ingredient_data.unit_id
     db_ingredient.cost_per_unit = ingredient_data.cost_per_unit
     db_ingredient.category_id = ingredient_data.category_id
+    db_ingredient.costing_method = ingredient_data.costing_method
     
-    db.commit(); db.refresh(db_ingredient)
+    db.commit() 
+    db.refresh(db_ingredient)
     return db_ingredient
 
 @router.delete("/ingredients/{ingredient_id}")
@@ -8820,7 +9441,7 @@ def get_inventory_history(
 </file>
 
 <file path="product_service\routers\orders.py" lang="py">
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 import database, schemas, models
@@ -9108,6 +9729,11 @@ def read_products(db: Session = Depends(database.get_db)):
         joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
         # Завантажуємо варіанти -> їхні інгредієнти -> об'єкт інгредієнта [7, 8]
         joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
+        # 🔥 НОВИЙ ЛАНЦЮЖОК: Варіанти -> Рецепт -> Позиції рецепту -> Назва інгредієнта
+        joinedload(models.Product.variants)
+            .joinedload(models.ProductVariant.master_recipe)
+            .joinedload(models.MasterRecipe.items)
+            .joinedload(models.MasterRecipeItem.ingredient),
         # Завантажуємо матеріали та інгредієнти для простого товару [9, 10]
         joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
         joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
@@ -9133,6 +9759,11 @@ def read_products(db: Session = Depends(database.get_db)):
             if v.stock_quantity is None: v.stock_quantity = 0.0
             if v.price is None: v.price = 0.0
             if v.output_weight is None: v.output_weight = 0.0
+
+            if v.master_recipe:
+                for item in v.master_recipe.items:
+                    if item.ingredient:
+                        item.ingredient_name = item.ingredient.name # Заповнюємо для схеми
 
             if v.master_recipe_id and not p.track_stock:
                 try:
@@ -9546,7 +10177,7 @@ class InventoryLogger:
                 change_amount=change_amount, # Запишеться напр. -2
                 balance_after=balance_after,
                 reason=reason,
-                created_at=datetime.utcnow()
+                created_at=datetime.utcnow(),
             )
             db.add(transaction)
         except Exception as e:
@@ -9554,9 +10185,11 @@ class InventoryLogger:
 </file>
 
 <file path="product_service\services\inventory_service.py" lang="py">
+from services.inventory_logger import InventoryLogger
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import models
+import schemas
 
 class InventoryService:
     
@@ -9618,6 +10251,81 @@ class InventoryService:
         db.add(batch)
         
         return quantity_needed * batch.cost_per_unit
+    
+    @staticmethod
+    def adjust_inventory(db: Session, request: schemas.InventoryAdjustRequest):
+        # 1. Знаходимо сутність
+        target_obj = None
+        if request.entity_type == 'ingredient':
+            target_obj = db.query(models.Ingredient).get(request.entity_id)
+        elif request.entity_type == 'consumable':
+            target_obj = db.query(models.Consumable).get(request.entity_id)
+        elif request.entity_type == 'product_variant':
+            target_obj = db.query(models.ProductVariant).get(request.entity_id)
+        elif request.entity_type == 'product':
+            target_obj = db.query(models.Product).get(request.entity_id)
+            
+        if not target_obj:
+            raise HTTPException(status_code=404, detail="Сутність не знайдена")
+            
+        # Рахуємо різницю
+        current_qty = target_obj.stock_quantity if target_obj.stock_quantity is not None else 0.0
+        difference = request.actual_quantity - current_qty
+        
+        if difference == 0:
+            return {"status": "ok", "message": "Немає змін для збереження"}
+            
+        transaction_reason = f"Коригування: {request.reason}"
+        
+        # 2. Обробка за КОНКРЕТНОЮ ПАРТІЄЮ (Ручний вибір для FIFO)
+        if request.batch_id:
+            batch = db.query(models.SupplyItem).filter(models.SupplyItem.id == request.batch_id).with_for_update().first()
+            if not batch:
+                raise HTTPException(status_code=404, detail="Партія не знайдена")
+                
+            if difference < 0:
+                # Нестача: списуємо з вибраної партії
+                deduct_amount = abs(difference)
+                if batch.remaining_quantity < deduct_amount:
+                    raise HTTPException(status_code=400, detail="У вибраній партії недостатньо залишку для такого списання")
+                batch.remaining_quantity -= deduct_amount
+            else:
+                # Лишок: додаємо знайдений товар у вибрану партію
+                batch.remaining_quantity += difference
+                batch.quantity += difference # Оновлюємо початкову кількість партії
+            db.add(batch)
+            
+        # 3. Обробка БЕЗ партії (WAC або автоматичне FIFO)
+        else:
+            if difference < 0:
+                deduct_amount = abs(difference)
+                # Якщо товар на FIFO, а партію не вибрали вручну - списуємо по стандартному FIFO
+                if getattr(target_obj, 'costing_method', 'wac') == 'fifo':
+                    InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
+            # Якщо це Лишок і WAC, ми просто змінюємо загальний баланс без створення нової партії (спрощений підхід)
+
+        # 4. Оновлюємо загальний залишок сутності
+        target_obj.stock_quantity = request.actual_quantity
+        db.add(target_obj)
+        
+        # 5. Логування в Історію
+        InventoryLogger.log(
+            db=db,
+            entity_type=request.entity_type,
+            entity_id=request.entity_id,
+            entity_name=getattr(target_obj, 'name', 'Unknown'),
+            balance_before=current_qty,
+            balance_after=request.actual_quantity,
+            reason=transaction_reason,
+            force_change=difference
+        )
+        
+        db.commit()
+        return {
+            "status": "success", 
+            "difference": difference, 
+            "new_quantity": request.actual_quantity
+        }
 </file>
 
 <file path="product_service\services\order_service.py" lang="py">
@@ -9655,7 +10363,26 @@ class OrderService:
             # 2. Обробляємо товари
             for item in order_data.items:
                 print(f"   -> Обробка товару ID: {item.product_id} (Варіант: {item.variant_id})")
+
+                # 🔥 ДОДАЙТЕ ЦЕЙ РЯДОК ДЛЯ ДІАГНОСТИКИ:
+                print(f"   -> ДАНІ ПАКУВАННЯ: {getattr(item, 'consumable_overrides', 'НЕМАЄ ДАНИХ')}")
                 
+                # 🔥 1. ЗАХИЩЕНИЙ СЛОВНИК ЗАМІН (працює і з dict, і з об'єктами Pydantic)
+                overrides_map = {}
+                if getattr(item, 'consumable_overrides', None):
+                    for override in item.consumable_overrides:
+                        # Перевіряємо тип: словник чи об'єкт
+                        if isinstance(override, dict):
+                            orig_id = override.get('original_id')
+                            n_id = override.get('new_id')
+                        else:
+                            orig_id = getattr(override, 'original_id', None)
+                            n_id = getattr(override, 'new_id', None)
+                            
+                        # Якщо знайшли original_id, записуємо в словник (обов'язково як числа int)
+                        if orig_id is not None:
+                            overrides_map[int(orig_id)] = int(n_id) if n_id else None
+
                 # Завантажуємо товар (блокуємо для безпеки)
                 product = db.query(models.Product).filter(
                     models.Product.id == item.product_id
@@ -9690,29 +10417,20 @@ class OrderService:
                         if variant.stock_quantity < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку: {variant.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для варіанту (Manual або FIFO)
-                        # Якщо з фронтенду прийшов конкретний batch_id - списуємо з нього
+                        # Гібридний облік для варіанту (Manual або FIFO)
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        # Інакше перевіряємо, чи ввімкнено FIFO для цього варіанту
                         elif getattr(variant, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
                         
-                        # Завжди зменшуємо загальний залишок
                         variant.stock_quantity -= item.quantity
 
-                    # 3. ЛОГУВАННЯ ВАРІАНТУ (ЗАВЖДИ!)
-                    balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
-                    InventoryLogger.log(
-                        db,
-                        entity_type="product_variant",
-                        entity_id=variant.id,
-                        entity_name=item_name,
-                        balance_before=balance_before,
-                        balance_after=balance_after,
-                        reason=transaction_reason,
-                        force_change=-item.quantity 
-                    )
+                        # 🔥 ВИПРАВЛЕНО: Безпечний виклик логера для ФІЗИЧНОГО списання
+                        InventoryLogger.log(
+                            db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                            balance_before=balance_before, balance_after=variant.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity 
+                        )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -9723,7 +10441,6 @@ class OrderService:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
                                     # Розрахунок кількості списання
-                                    deduction = 0
                                     if r_item.is_percentage:
                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -9740,42 +10457,60 @@ class OrderService:
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
-                                    # Логуємо зміну саме ІНГРЕДІЄНТА
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логуємо зміну ІНГРЕДІЄНТА
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
-                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
-                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
-                            # (calculated stock), який тепер доступний для цього варіанту.
-                            
+                            # Після того як всі інгредієнти списані, розраховуємо НОВИЙ "Поточний залишок" 
                             new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
                             
-                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            # 🔥 ВИПРАВЛЕНО: Записуємо транзакцію для РОЗРАХУНКОВОГО ВАРІАНТУ
                             InventoryLogger.log(
-                                db,
-                                entity_type="product_variant",
-                                entity_id=variant.id,
-                                entity_name=item_name,
-                                balance_before=balance_before, # Це значення ми взяли на початку циклу
-                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
-                                reason=transaction_reason,
-                                force_change=-item.quantity
+                                db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                                balance_before=balance_before, balance_after=new_calculated_balance,
+                                reason=transaction_reason, force_change=-item.quantity
                             )
 
-                    # 3. Списання МАТЕРІАЛІВ варіанту
+                    # 3. Списання МАТЕРІАЛІВ варіанту (з урахуванням замін)
                     for v_cons in variant.consumables:
-                         cons = db.query(models.Consumable).filter(models.Consumable.id == v_cons.consumable_id).with_for_update().first()
-                         if cons:
+                        target_cons_id = v_cons.consumable_id
+                        is_replaced = False
+                        
+                        # Перевіряємо, чи є інструкція змінити/видалити цей матеріал
+                        if target_cons_id in overrides_map:
+                            new_id = overrides_map[target_cons_id]
+                            if new_id is None or new_id == 0:
+                                details_list.append(f"🚫 Без пакування")
+                                continue 
+                            else:
+                                target_cons_id = new_id
+                                is_replaced = True
+
+                        cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
+                        if cons:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: Перевірка FIFO для Матеріалу
                             if getattr(cons, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
                             db.add(cons)
-                            InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                            
+                            log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                            # 🔥 ВИПРАВЛЕНО: Логуємо матеріали
+                            InventoryLogger.log(
+                                db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                                balance_before=c_old, balance_after=cons.stock_quantity,
+                                reason=transaction_reason, force_change=-qty_to_deduct
+                            )
+                            
+                            if is_replaced:
+                                details_list.append(f"📦 {cons.name}")
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
@@ -9784,7 +10519,6 @@ class OrderService:
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для простого товару
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
                         elif getattr(product, 'costing_method', 'wac') == 'fifo':
@@ -9793,13 +10527,14 @@ class OrderService:
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
 
-                        # Логування списання простого товару
+                        # 🔥 ВИПРАВЛЕНО: Логування простого товару
                         InventoryLogger.log(
-                            db, "product", product.id, product.name, 
-                            current_stock, product.stock_quantity, transaction_reason
+                            db, entity_type="product", entity_id=product.id, entity_name=product.name,
+                            balance_before=current_stock, balance_after=product.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity
                         )
 
-                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe) - Аналогічно додаємо FIFO
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if product.master_recipe_id:
                         recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
                         if recipe:
@@ -9807,7 +10542,6 @@ class OrderService:
                              for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
-                                    deduction = 0
                                     if r_item.is_percentage:
                                          deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -9815,58 +10549,85 @@ class OrderService:
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    # 🔥 НОВЕ: FIFO
                                     if getattr(ing, 'costing_method', 'wac') == 'fifo':
                                         InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логування інгредієнта для простого товару
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
                 # === ЗАГАЛЬНІ СПИСАННЯ ===
                 
-                # A. ProductIngredient (Додаткові інгредієнти поза рецептом)
+                # A. ProductIngredient
                 for p_ing in product.ingredients:
                     ing = db.query(models.Ingredient).filter(models.Ingredient.id == p_ing.ingredient_id).with_for_update().first()
                     if ing:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(ing, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
                         db.add(ing)
-                        InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                            balance_before=i_old, balance_after=ing.stock_quantity,
+                            reason=transaction_reason, force_change=-deduction
+                        )
 
-                # B. ProductConsumable (Загальні матеріали)
+                # B. ProductConsumable
                 for p_cons in product.consumables:
-                    cons = db.query(models.Consumable).filter(models.Consumable.id == p_cons.consumable_id).with_for_update().first()
+                    target_cons_id = p_cons.consumable_id
+                    is_replaced = False
+                    
+                    if target_cons_id in overrides_map:
+                        new_id = overrides_map[target_cons_id]
+                        if new_id is None or new_id == 0:
+                            details_list.append(f"🚫 Відмова від матеріалу") 
+                            continue 
+                        else:
+                            target_cons_id = new_id
+                            is_replaced = True
+
+                    cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
                     if cons:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(cons, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
                         db.add(cons)
-                        InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                        
+                        log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                            balance_before=c_old, balance_after=cons.stock_quantity,
+                            reason=transaction_reason, force_change=-qty_to_deduct
+                        )
+                        if is_replaced:
+                            details_list.append(f"📦 {cons.name}")
 
-                # C. Modifiers (Модифікатори з фронтенду)
-                if item.modifiers:
+                # C. Modifiers
+                if getattr(item, 'modifiers', None):
                     for modifier in item.modifiers:
                          mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.modifier_id).with_for_update().first()
                          if mod_ing:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: FIFO
                             if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
 
@@ -9874,7 +10635,12 @@ class OrderService:
                             mod_ing.stock_quantity -= deduction
                             db.add(mod_ing)
                             
-                            InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
+                            # 🔥 ВИПРАВЛЕНО
+                            InventoryLogger.log(
+                                db, entity_type="ingredient", entity_id=mod_ing.id, entity_name=mod_ing.name,
+                                balance_before=i_old, balance_after=mod_ing.stock_quantity,
+                                reason=transaction_reason, force_change=-deduction
+                            )
                             details_list.append(f"+ {mod_ing.name}")
 
                 # === ЗАПИС У ЧЕК ===
@@ -9883,7 +10649,9 @@ class OrderService:
                     product_name=item_name,
                     quantity=item.quantity,
                     price_at_moment=price, 
-                    details=", ".join(details_list) if details_list else None
+                    details=", ".join(details_list) if details_list else None,
+                    # 🔥 КРИТИЧНЕ ВИПРАВЛЕННЯ: Додано збереження JSON-даних про пакування!
+                    consumable_overrides=[o.model_dump() for o in item.consumable_overrides] if getattr(item, 'consumable_overrides', None) else []
                 ))
                 
                 total_order_price += price * item.quantity

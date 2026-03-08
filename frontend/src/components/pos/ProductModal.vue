@@ -17,7 +17,9 @@ const { fetchAvailableBatches } = useSupplies() // 🔥 ДОДАНО
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
-const selectedProcesses = ref({}) 
+const selectedProcesses = ref({})
+
+const consumableSelections = ref({}) // Формат: { original_id: selected_id } 
 
 // --- 🔥 НОВИЙ СТАН ДЛЯ ПАРТІЙ (MANUAL BATCH) ---
 const isManualBatch = ref(false)
@@ -25,9 +27,11 @@ const availableBatches = ref([])
 const selectedBatchId = ref(null)
 const isLoadingBatches = ref(false)
 
+
 // --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen && props.product) {
+
     selectedVariant.value = null
     selectedModifiers.value = {}
     selectedProcesses.value = {} 
@@ -36,6 +40,16 @@ watch(() => props.isOpen, (isOpen) => {
     isManualBatch.value = false
     availableBatches.value = []
     selectedBatchId.value = null
+
+    // 🔥 Очищаємо вибір пакування
+    consumableSelections.value = {}
+
+    // Якщо товар без варіантів - відразу виставляємо його матеріали за замовчуванням
+    if (!props.product.has_variants && props.product.consumables) {
+         props.product.consumables.forEach(c => {
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
 
     // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
@@ -83,43 +97,61 @@ watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
     isLoadingBatches.value = false
 })
 
+// 🔥 НОВИЙ WATCH: Коли касир перемикає варіант (напр. з S на L), 
+// ми підтягуємо стандартне пакування саме для цього варіанту
+watch(selectedVariant, (newVal) => {
+    if (newVal && newVal.consumables) {
+         consumableSelections.value = {}
+         newVal.consumables.forEach(c => {
+             // За замовчуванням обраний "рідний" матеріал
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
+})
+
+// 🔥 БЕЗПЕЧНЕ ОТРИМАННЯ МАТЕРІАЛІВ ЗІ СКЛАДУ
+const safeConsumables = computed(() => {
+    // Перевіряємо обидва варіанти: з .value і без, щоб гарантовано отримати масив
+    const arr = warehouse.consumables?.value || warehouse.consumables || [];
+    return Array.isArray(arr) ? arr : [];
+});
 
 const canAddToCart = computed(() => {
   if (!props.product) return false;
 
-  // 🔥 Якщо увімкнено ручний режим, касир ЗОБОВ'ЯЗАНИЙ вибрати партію
+  // 1. Ручний вибір партії обов'язковий (якщо тумблер увімкнено)
   if (isManualBatch.value && !selectedBatchId.value) {
       return false;
   }
 
-  // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
-  if (props.product.has_variants) {
-    if (!selectedVariant.value) return false;
-    
-    // Якщо ручний режим - перевіряємо чи є вибрана партія і чи вистачає там 1 шт
-    if (isManualBatch.value && selectedBatchId.value) {
-        const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-        return batch && batch.remaining_quantity >= 1;
-    }
-    
-    return getAvailableStock(selectedVariant.value) >= 1;
+  // 2. Якщо товар з варіантами - обов'язково треба обрати варіант
+  if (props.product.has_variants && !selectedVariant.value) {
+      return false;
   }
 
-  // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
+  // 3. Перевірка залишків, якщо увімкнено ручну партію
+  if (isManualBatch.value && selectedBatchId.value) {
+      const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+      return batch && batch.remaining_quantity >= 1;
+  }
+
+  // 4. Перевірка залишків для автоматичного режиму (FIFO/WAC)
+  if (props.product.has_variants) {
+      return getAvailableStock(selectedVariant.value) >= 1;
+  } 
+  
   if (props.product.track_stock) {
-      if (isManualBatch.value && selectedBatchId.value) {
-          const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-          return batch && batch.remaining_quantity >= 1;
-      }
       return (props.product.stock_quantity || 0) >= 1;
   }
 
+  // Якщо товар без залишків (послуга тощо) - дозволяємо продавати
   return true;
 })
 
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
+    // 1. Якщо товар має фізичний залишок (готовий на полиці)
     if (props.product.track_stock) {
         const inCart = cartItems.value
             .filter(i => i.variant_id === variant.id)
@@ -129,6 +161,7 @@ const getAvailableStock = (variant) => {
 
     let maxPossible = Infinity;
 
+    // 2. Перевірка залишків по РЕЦЕПТУ (Зерно, вода, молоко тощо)
     if (variant.master_recipe_id) {
         const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
         recipe?.items?.forEach(rItem => {
@@ -146,10 +179,52 @@ const getAvailableStock = (variant) => {
                     const possible = Math.floor(available / qtyPerOne);
                     if (possible < maxPossible) maxPossible = possible;
                 }
+            } else {
+                maxPossible = 0; // Якщо інгредієнта взагалі немає на складі
             }
         });
     }
-    
+
+    // 3. 🔥 НОВЕ: Перевірка залишків по ПАКУВАННЮ (Consumables)
+    // Якщо пакувань менше ніж сировини, доступна кількість зменшиться
+    if (variant.consumables && variant.consumables.length > 0) {
+        variant.consumables.forEach(vCons => {
+            const inStoreCons = warehouse.consumables?.value?.find(c => c.id === vCons.consumable_id) || 
+                                warehouse.consumables?.find?.(c => c.id === vCons.consumable_id); // Залежить від того як у вас працює useWarehouse
+            
+            if (inStoreCons) {
+                const reserved = reservedResources.value?.consumables?.[vCons.consumable_id] || 0;
+                const available = Math.max(0, inStoreCons.stock_quantity - reserved);
+                
+                if (vCons.quantity > 0) {
+                    const possible = Math.floor(available / vCons.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0; // Пакування не знайдено на складі
+            }
+        });
+    }
+
+    // 4. 🔥 НОВЕ: Перевірка залишків по ДОДАТКОВИХ ІНГРЕДІЄНТАХ варіанту (якщо є)
+    if (variant.ingredients && variant.ingredients.length > 0) {
+        variant.ingredients.forEach(vIng => {
+            const inStoreIng = warehouse.ingredients?.value?.find(i => i.id === vIng.ingredient_id);
+            if (inStoreIng) {
+                const reserved = reservedResources.value?.ingredients?.[vIng.ingredient_id] || 0;
+                const available = Math.max(0, inStoreIng.stock_quantity - reserved);
+                
+                if (vIng.quantity > 0) {
+                    const possible = Math.floor(available / vIng.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0;
+            }
+        });
+    }
+
+    // Якщо нічого не рахувалося, значить ліміту немає (або помилка)
     return maxPossible === Infinity ? 0 : maxPossible;
 }
 
@@ -181,11 +256,30 @@ const handleConfirm = () => {
     return;
   }
 
+  // 1. Формуємо масив замін пакування
+  const overrides = []
+  const baseConsumables = selectedVariant.value ? selectedVariant.value.consumables : props.product.consumables
+    
+  if (baseConsumables) {
+      baseConsumables.forEach(c => {
+          const originalId = c.consumable_id
+          const selectedId = consumableSelections.value[originalId]
+          
+          // Якщо касир вибрав щось інше (замінив або обрав "0" для своєї чашки)
+          if (selectedId !== originalId) {
+              overrides.push({
+                  original_id: originalId,
+                  new_id: selectedId === 0 ? null : selectedId
+              })
+          }
+      })
+  }
+
   const payload = {
     product_id: props.product.id,
     quantity: 1,
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    
+    consumable_overrides: overrides, // 🔥 ДОДАЄМО НАШ МАСИВ
     variant_id: props.product.has_variants ? selectedVariant.value.id : null,
     name: props.product.has_variants 
             ? `${props.product.name} (${selectedVariant.value.name})` 
@@ -255,8 +349,43 @@ const formatDate = (dateStr) => {
                   >
                       {{ getAvailableStock(variant) > 0 ? `Доступно: ${getAvailableStock(variant)}` : 'Вичерпано' }}
                   </div>
+                  <div v-if="variant.master_recipe" class="text-[9px] text-black-900 font-bold uppercase tracking-tighter text-center line-clamp-1 px-1">
+                    <i class="fas fa-scroll mr-0.5 opacity-50"></i> {{ variant.master_recipe.name }}
+                  </div>
+                  <div v-else class="text-[9px] text-gray-300 font-medium italic">
+                    Без рецепту
+                  </div>
               </div>
           </div>
+          <div v-if="(selectedVariant?.consumables?.length > 0) || (!product.has_variants && product?.consumables?.length > 0)" 
+            class="p-5 border-t border-gray-100 bg-orange-50/30">
+            <h4 class="text-xs font-bold text-orange-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <i class="fas fa-box-open"></i> Склад пакування
+            </h4>
+            <div class="space-y-2">
+                <div v-for="c in (selectedVariant ? selectedVariant.consumables : product.consumables)" 
+                    :key="c.consumable_id" 
+                    class="flex justify-between items-center bg-white border border-orange-100 p-2.5 rounded-xl shadow-sm">
+                    
+                    <span class="text-sm font-medium text-gray-700 ml-2">
+                        {{ c.name || c.consumable_name }} <span class="text-gray-400 text-xs ml-1">(x{{ c.quantity }})</span>
+                    </span>
+                    
+                    <select v-model="consumableSelections[c.consumable_id]" 
+                            class="p-2 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 bg-gray-50 max-w-[200px] cursor-pointer transition">
+                        <option :value="0" class="text-red-500 font-bold">🚫 Своя тара (Скасувати)</option>
+                        <option :value="c.consumable_id">🟢 Стандартне</option>
+                        <option disabled>──────────</option>
+                        <option v-for="ac in safeConsumables.filter(item => item.id !== c.consumable_id)" 
+                                :key="ac.id" 
+                                :value="ac.id">
+                            🔄 Замінити на: {{ ac.name }}
+                        </option>
+                    </select>
+
+                </div>
+            </div>
+        </div>
         </div>
 
         <div v-if="product.track_stock || (product.has_variants && selectedVariant && !selectedVariant.master_recipe_id)" 
