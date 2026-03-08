@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 81
-Lines: 10504
-Tokens: ~110956
+Lines: 10715
+Tokens: ~113643
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -202,15 +202,16 @@ frontend\src\components\pos\ProductModal.vue
   └── 💾 State (ref): selectedVariant
   └── 💾 State (ref): selectedModifiers
   └── 💾 State (ref): selectedProcesses
+  └── 💾 State (ref): consumableSelections
   └── 💾 State (ref): isManualBatch
   └── 💾 State (ref): availableBatches
   └── 💾 State (ref): selectedBatchId
   └── 💾 State (ref): isLoadingBatches
+  └── 💾 State (computed): safeConsumables
   └── 💾 State (computed): canAddToCart
   └── ƒ  getAvailableStock
   └── 💾 State (computed): currentPrice
   └── ƒ  handleConfirm
-  └── ƒ  formatDate
 frontend\src\components\pos\ProductRoomModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -2243,7 +2244,9 @@ const { fetchAvailableBatches } = useSupplies() // 🔥 ДОДАНО
 
 const selectedVariant = ref(null)
 const selectedModifiers = ref({}) 
-const selectedProcesses = ref({}) 
+const selectedProcesses = ref({})
+
+const consumableSelections = ref({}) // Формат: { original_id: selected_id } 
 
 // --- 🔥 НОВИЙ СТАН ДЛЯ ПАРТІЙ (MANUAL BATCH) ---
 const isManualBatch = ref(false)
@@ -2251,9 +2254,11 @@ const availableBatches = ref([])
 const selectedBatchId = ref(null)
 const isLoadingBatches = ref(false)
 
+
 // --- Ініціалізація (Reset & Defaults) ---
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen && props.product) {
+
     selectedVariant.value = null
     selectedModifiers.value = {}
     selectedProcesses.value = {} 
@@ -2262,6 +2267,16 @@ watch(() => props.isOpen, (isOpen) => {
     isManualBatch.value = false
     availableBatches.value = []
     selectedBatchId.value = null
+
+    // 🔥 Очищаємо вибір пакування
+    consumableSelections.value = {}
+
+    // Якщо товар без варіантів - відразу виставляємо його матеріали за замовчуванням
+    if (!props.product.has_variants && props.product.consumables) {
+         props.product.consumables.forEach(c => {
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
 
     // Auto-select Variant (cheapest)
     if (props.product.variants && props.product.variants.length > 0) {
@@ -2309,43 +2324,61 @@ watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
     isLoadingBatches.value = false
 })
 
+// 🔥 НОВИЙ WATCH: Коли касир перемикає варіант (напр. з S на L), 
+// ми підтягуємо стандартне пакування саме для цього варіанту
+watch(selectedVariant, (newVal) => {
+    if (newVal && newVal.consumables) {
+         consumableSelections.value = {}
+         newVal.consumables.forEach(c => {
+             // За замовчуванням обраний "рідний" матеріал
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+         })
+    }
+})
+
+// 🔥 БЕЗПЕЧНЕ ОТРИМАННЯ МАТЕРІАЛІВ ЗІ СКЛАДУ
+const safeConsumables = computed(() => {
+    // Перевіряємо обидва варіанти: з .value і без, щоб гарантовано отримати масив
+    const arr = warehouse.consumables?.value || warehouse.consumables || [];
+    return Array.isArray(arr) ? arr : [];
+});
 
 const canAddToCart = computed(() => {
   if (!props.product) return false;
 
-  // 🔥 Якщо увімкнено ручний режим, касир ЗОБОВ'ЯЗАНИЙ вибрати партію
+  // 1. Ручний вибір партії обов'язковий (якщо тумблер увімкнено)
   if (isManualBatch.value && !selectedBatchId.value) {
       return false;
   }
 
-  // ЛОГІКА ДЛЯ СКЛАДНИХ ТОВАРІВ
-  if (props.product.has_variants) {
-    if (!selectedVariant.value) return false;
-    
-    // Якщо ручний режим - перевіряємо чи є вибрана партія і чи вистачає там 1 шт
-    if (isManualBatch.value && selectedBatchId.value) {
-        const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-        return batch && batch.remaining_quantity >= 1;
-    }
-    
-    return getAvailableStock(selectedVariant.value) >= 1;
+  // 2. Якщо товар з варіантами - обов'язково треба обрати варіант
+  if (props.product.has_variants && !selectedVariant.value) {
+      return false;
   }
 
-  // ЛОГІКА ДЛЯ ПРОСТИХ ТОВАРІВ
+  // 3. Перевірка залишків, якщо увімкнено ручну партію
+  if (isManualBatch.value && selectedBatchId.value) {
+      const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
+      return batch && batch.remaining_quantity >= 1;
+  }
+
+  // 4. Перевірка залишків для автоматичного режиму (FIFO/WAC)
+  if (props.product.has_variants) {
+      return getAvailableStock(selectedVariant.value) >= 1;
+  } 
+  
   if (props.product.track_stock) {
-      if (isManualBatch.value && selectedBatchId.value) {
-          const batch = availableBatches.value.find(b => b.batch_id === selectedBatchId.value)
-          return batch && batch.remaining_quantity >= 1;
-      }
       return (props.product.stock_quantity || 0) >= 1;
   }
 
+  // Якщо товар без залишків (послуга тощо) - дозволяємо продавати
   return true;
 })
 
 const getAvailableStock = (variant) => {
     if (!variant || !props.product) return 0;
 
+    // 1. Якщо товар має фізичний залишок (готовий на полиці)
     if (props.product.track_stock) {
         const inCart = cartItems.value
             .filter(i => i.variant_id === variant.id)
@@ -2355,6 +2388,7 @@ const getAvailableStock = (variant) => {
 
     let maxPossible = Infinity;
 
+    // 2. Перевірка залишків по РЕЦЕПТУ (Зерно, вода, молоко тощо)
     if (variant.master_recipe_id) {
         const recipe = warehouse.recipes.value.find(r => r.id === variant.master_recipe_id);
         recipe?.items?.forEach(rItem => {
@@ -2372,10 +2406,52 @@ const getAvailableStock = (variant) => {
                     const possible = Math.floor(available / qtyPerOne);
                     if (possible < maxPossible) maxPossible = possible;
                 }
+            } else {
+                maxPossible = 0; // Якщо інгредієнта взагалі немає на складі
             }
         });
     }
-    
+
+    // 3. 🔥 НОВЕ: Перевірка залишків по ПАКУВАННЮ (Consumables)
+    // Якщо пакувань менше ніж сировини, доступна кількість зменшиться
+    if (variant.consumables && variant.consumables.length > 0) {
+        variant.consumables.forEach(vCons => {
+            const inStoreCons = warehouse.consumables?.value?.find(c => c.id === vCons.consumable_id) || 
+                                warehouse.consumables?.find?.(c => c.id === vCons.consumable_id); // Залежить від того як у вас працює useWarehouse
+            
+            if (inStoreCons) {
+                const reserved = reservedResources.value?.consumables?.[vCons.consumable_id] || 0;
+                const available = Math.max(0, inStoreCons.stock_quantity - reserved);
+                
+                if (vCons.quantity > 0) {
+                    const possible = Math.floor(available / vCons.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0; // Пакування не знайдено на складі
+            }
+        });
+    }
+
+    // 4. 🔥 НОВЕ: Перевірка залишків по ДОДАТКОВИХ ІНГРЕДІЄНТАХ варіанту (якщо є)
+    if (variant.ingredients && variant.ingredients.length > 0) {
+        variant.ingredients.forEach(vIng => {
+            const inStoreIng = warehouse.ingredients?.value?.find(i => i.id === vIng.ingredient_id);
+            if (inStoreIng) {
+                const reserved = reservedResources.value?.ingredients?.[vIng.ingredient_id] || 0;
+                const available = Math.max(0, inStoreIng.stock_quantity - reserved);
+                
+                if (vIng.quantity > 0) {
+                    const possible = Math.floor(available / vIng.quantity);
+                    if (possible < maxPossible) maxPossible = possible;
+                }
+            } else {
+                maxPossible = 0;
+            }
+        });
+    }
+
+    // Якщо нічого не рахувалося, значить ліміту немає (або помилка)
     return maxPossible === Infinity ? 0 : maxPossible;
 }
 
@@ -2407,11 +2483,30 @@ const handleConfirm = () => {
     return;
   }
 
+  // 1. Формуємо масив замін пакування
+  const overrides = []
+  const baseConsumables = selectedVariant.value ? selectedVariant.value.consumables : props.product.consumables
+    
+  if (baseConsumables) {
+      baseConsumables.forEach(c => {
+          const originalId = c.consumable_id
+          const selectedId = consumableSelections.value[originalId]
+          
+          // Якщо касир вибрав щось інше (замінив або обрав "0" для своєї чашки)
+          if (selectedId !== originalId) {
+              overrides.push({
+                  original_id: originalId,
+                  new_id: selectedId === 0 ? null : selectedId
+              })
+          }
+      })
+  }
+
   const payload = {
     product_id: props.product.id,
     quantity: 1,
     modifiers: Object.values(selectedModifiers.value).map(id => ({ modifier_id: id })),
-    
+    consumable_overrides: overrides, // 🔥 ДОДАЄМО НАШ МАСИВ
     variant_id: props.product.has_variants ? selectedVariant.value.id : null,
     name: props.product.has_variants 
             ? `${props.product.name} (${selectedVariant.value.name})` 
@@ -2489,6 +2584,35 @@ const formatDate = (dateStr) => {
                   </div>
               </div>
           </div>
+          <div v-if="(selectedVariant?.consumables?.length > 0) || (!product.has_variants && product?.consumables?.length > 0)" 
+            class="p-5 border-t border-gray-100 bg-orange-50/30">
+            <h4 class="text-xs font-bold text-orange-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <i class="fas fa-box-open"></i> Склад пакування
+            </h4>
+            <div class="space-y-2">
+                <div v-for="c in (selectedVariant ? selectedVariant.consumables : product.consumables)" 
+                    :key="c.consumable_id" 
+                    class="flex justify-between items-center bg-white border border-orange-100 p-2.5 rounded-xl shadow-sm">
+                    
+                    <span class="text-sm font-medium text-gray-700 ml-2">
+                        {{ c.name || c.consumable_name }} <span class="text-gray-400 text-xs ml-1">(x{{ c.quantity }})</span>
+                    </span>
+                    
+                    <select v-model="consumableSelections[c.consumable_id]" 
+                            class="p-2 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 bg-gray-50 max-w-[200px] cursor-pointer transition">
+                        <option :value="0" class="text-red-500 font-bold">🚫 Своя тара (Скасувати)</option>
+                        <option :value="c.consumable_id">🟢 Стандартне</option>
+                        <option disabled>──────────</option>
+                        <option v-for="ac in safeConsumables.filter(item => item.id !== c.consumable_id)" 
+                                :key="ac.id" 
+                                :value="ac.id">
+                            🔄 Замінити на: {{ ac.name }}
+                        </option>
+                    </select>
+
+                </div>
+            </div>
+        </div>
         </div>
 
         <div v-if="product.track_stock || (product.has_variants && selectedVariant && !selectedVariant.master_recipe_id)" 
@@ -6977,6 +7101,9 @@ export function useCart() {
           product_id: item.product_id,
           variant_id: item.variant_id || null,
           quantity: item.quantity,
+          // 🔥 ДОДАНО: Передаємо збережені заміни з кошика у фінальне замовлення!
+          consumable_overrides: item.consumable_overrides || [],
+          ingredient_overrides: item.ingredient_overrides || [],
           // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
             ? item.modifiers.map(m => ({
@@ -8298,7 +8425,7 @@ def read_root():
 </file>
 
 <file path="product_service\models.py" lang="py">
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
@@ -8537,6 +8664,7 @@ class OrderItem(Base):
     quantity = Column(Integer)
     price_at_moment = Column(Float)
     details = Column(String, nullable=True) 
+    consumable_overrides = Column(JSON, nullable=True, default=list)
     order = relationship("Order", back_populates="items")
 
 # --- ІСТОРІЯ РУХУ ТОВАРІВ (TRANSACTIONS) ---
@@ -8876,18 +9004,24 @@ class SoldItemModifier(BaseModel):
     modifier_id: int
     class Config: extra = 'ignore' # На всяк випадок
 
+# 🔥 НОВА СХЕМА: Інструкція від касира про заміну матеріалу
+class ConsumableOverride(BaseModel):
+    original_id: int           # ID матеріалу, який мав би списатися за замовчуванням
+    new_id: Optional[int] = None # ID нового матеріалу (Якщо None/null - значить касир натиснув "Видалити / Своя чашка")
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-
+    # 🔥 НОВЕ: Масив усіх замін пакування, які зробив касир у вікні товару
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
     customer_id: Optional[int] = None
+    
     class Config: extra = 'ignore'
-
+    
 class CustomerCreate(BaseModel):
     name: str
     phone: str
@@ -8902,6 +9036,7 @@ class OrderItemRead(BaseModel):
     quantity: int
     price_at_moment: float
     details: Optional[str] = None
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
     class Config: from_attributes = True
 
 class OrderRead(BaseModel):
@@ -8912,6 +9047,23 @@ class OrderRead(BaseModel):
     items: List[OrderItemRead]
     customer: Optional[Customer] = None
     class Config: from_attributes = True
+
+class ModifierItem(BaseModel):
+    modifier_id: int
+class CartItemCreate(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    modifiers: List[ModifierItem] = []
+    quantity: int = 1
+    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
+    name: str 
+    price: float
+    
+    # 🔥 ДОДАНО: Поле для збереження замін пакування в кошику
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
+
+class CartItem(CartItemCreate):
+    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
 
 class ProductRoomRead(BaseModel):
     id: int
@@ -10025,7 +10177,7 @@ class InventoryLogger:
                 change_amount=change_amount, # Запишеться напр. -2
                 balance_after=balance_after,
                 reason=reason,
-                created_at=datetime.utcnow()
+                created_at=datetime.utcnow(),
             )
             db.add(transaction)
         except Exception as e:
@@ -10211,7 +10363,26 @@ class OrderService:
             # 2. Обробляємо товари
             for item in order_data.items:
                 print(f"   -> Обробка товару ID: {item.product_id} (Варіант: {item.variant_id})")
+
+                # 🔥 ДОДАЙТЕ ЦЕЙ РЯДОК ДЛЯ ДІАГНОСТИКИ:
+                print(f"   -> ДАНІ ПАКУВАННЯ: {getattr(item, 'consumable_overrides', 'НЕМАЄ ДАНИХ')}")
                 
+                # 🔥 1. ЗАХИЩЕНИЙ СЛОВНИК ЗАМІН (працює і з dict, і з об'єктами Pydantic)
+                overrides_map = {}
+                if getattr(item, 'consumable_overrides', None):
+                    for override in item.consumable_overrides:
+                        # Перевіряємо тип: словник чи об'єкт
+                        if isinstance(override, dict):
+                            orig_id = override.get('original_id')
+                            n_id = override.get('new_id')
+                        else:
+                            orig_id = getattr(override, 'original_id', None)
+                            n_id = getattr(override, 'new_id', None)
+                            
+                        # Якщо знайшли original_id, записуємо в словник (обов'язково як числа int)
+                        if orig_id is not None:
+                            overrides_map[int(orig_id)] = int(n_id) if n_id else None
+
                 # Завантажуємо товар (блокуємо для безпеки)
                 product = db.query(models.Product).filter(
                     models.Product.id == item.product_id
@@ -10246,29 +10417,20 @@ class OrderService:
                         if variant.stock_quantity < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку: {variant.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для варіанту (Manual або FIFO)
-                        # Якщо з фронтенду прийшов конкретний batch_id - списуємо з нього
+                        # Гібридний облік для варіанту (Manual або FIFO)
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        # Інакше перевіряємо, чи ввімкнено FIFO для цього варіанту
                         elif getattr(variant, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
                         
-                        # Завжди зменшуємо загальний залишок
                         variant.stock_quantity -= item.quantity
 
-                    # 3. ЛОГУВАННЯ ВАРІАНТУ (ЗАВЖДИ!)
-                    balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
-                    InventoryLogger.log(
-                        db,
-                        entity_type="product_variant",
-                        entity_id=variant.id,
-                        entity_name=item_name,
-                        balance_before=balance_before,
-                        balance_after=balance_after,
-                        reason=transaction_reason,
-                        force_change=-item.quantity 
-                    )
+                        # 🔥 ВИПРАВЛЕНО: Безпечний виклик логера для ФІЗИЧНОГО списання
+                        InventoryLogger.log(
+                            db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                            balance_before=balance_before, balance_after=variant.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity 
+                        )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -10279,7 +10441,6 @@ class OrderService:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
                                     # Розрахунок кількості списання
-                                    deduction = 0
                                     if r_item.is_percentage:
                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -10296,42 +10457,60 @@ class OrderService:
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
-                                    # Логуємо зміну саме ІНГРЕДІЄНТА
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логуємо зміну ІНГРЕДІЄНТА
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
-                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
-                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
-                            # (calculated stock), який тепер доступний для цього варіанту.
-                            
+                            # Після того як всі інгредієнти списані, розраховуємо НОВИЙ "Поточний залишок" 
                             new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
                             
-                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            # 🔥 ВИПРАВЛЕНО: Записуємо транзакцію для РОЗРАХУНКОВОГО ВАРІАНТУ
                             InventoryLogger.log(
-                                db,
-                                entity_type="product_variant",
-                                entity_id=variant.id,
-                                entity_name=item_name,
-                                balance_before=balance_before, # Це значення ми взяли на початку циклу
-                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
-                                reason=transaction_reason,
-                                force_change=-item.quantity
+                                db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                                balance_before=balance_before, balance_after=new_calculated_balance,
+                                reason=transaction_reason, force_change=-item.quantity
                             )
 
-                    # 3. Списання МАТЕРІАЛІВ варіанту
+                    # 3. Списання МАТЕРІАЛІВ варіанту (з урахуванням замін)
                     for v_cons in variant.consumables:
-                         cons = db.query(models.Consumable).filter(models.Consumable.id == v_cons.consumable_id).with_for_update().first()
-                         if cons:
+                        target_cons_id = v_cons.consumable_id
+                        is_replaced = False
+                        
+                        # Перевіряємо, чи є інструкція змінити/видалити цей матеріал
+                        if target_cons_id in overrides_map:
+                            new_id = overrides_map[target_cons_id]
+                            if new_id is None or new_id == 0:
+                                details_list.append(f"🚫 Без пакування")
+                                continue 
+                            else:
+                                target_cons_id = new_id
+                                is_replaced = True
+
+                        cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
+                        if cons:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: Перевірка FIFO для Матеріалу
                             if getattr(cons, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
                             db.add(cons)
-                            InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                            
+                            log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                            # 🔥 ВИПРАВЛЕНО: Логуємо матеріали
+                            InventoryLogger.log(
+                                db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                                balance_before=c_old, balance_after=cons.stock_quantity,
+                                reason=transaction_reason, force_change=-qty_to_deduct
+                            )
+                            
+                            if is_replaced:
+                                details_list.append(f"📦 {cons.name}")
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
@@ -10340,7 +10519,6 @@ class OrderService:
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для простого товару
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
                         elif getattr(product, 'costing_method', 'wac') == 'fifo':
@@ -10349,13 +10527,14 @@ class OrderService:
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
 
-                        # Логування списання простого товару
+                        # 🔥 ВИПРАВЛЕНО: Логування простого товару
                         InventoryLogger.log(
-                            db, "product", product.id, product.name, 
-                            current_stock, product.stock_quantity, transaction_reason
+                            db, entity_type="product", entity_id=product.id, entity_name=product.name,
+                            balance_before=current_stock, balance_after=product.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity
                         )
 
-                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe) - Аналогічно додаємо FIFO
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if product.master_recipe_id:
                         recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
                         if recipe:
@@ -10363,7 +10542,6 @@ class OrderService:
                              for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
-                                    deduction = 0
                                     if r_item.is_percentage:
                                          deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -10371,58 +10549,85 @@ class OrderService:
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    # 🔥 НОВЕ: FIFO
                                     if getattr(ing, 'costing_method', 'wac') == 'fifo':
                                         InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логування інгредієнта для простого товару
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
                 # === ЗАГАЛЬНІ СПИСАННЯ ===
                 
-                # A. ProductIngredient (Додаткові інгредієнти поза рецептом)
+                # A. ProductIngredient
                 for p_ing in product.ingredients:
                     ing = db.query(models.Ingredient).filter(models.Ingredient.id == p_ing.ingredient_id).with_for_update().first()
                     if ing:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(ing, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
                         db.add(ing)
-                        InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                            balance_before=i_old, balance_after=ing.stock_quantity,
+                            reason=transaction_reason, force_change=-deduction
+                        )
 
-                # B. ProductConsumable (Загальні матеріали)
+                # B. ProductConsumable
                 for p_cons in product.consumables:
-                    cons = db.query(models.Consumable).filter(models.Consumable.id == p_cons.consumable_id).with_for_update().first()
+                    target_cons_id = p_cons.consumable_id
+                    is_replaced = False
+                    
+                    if target_cons_id in overrides_map:
+                        new_id = overrides_map[target_cons_id]
+                        if new_id is None or new_id == 0:
+                            details_list.append(f"🚫 Відмова від матеріалу") 
+                            continue 
+                        else:
+                            target_cons_id = new_id
+                            is_replaced = True
+
+                    cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
                     if cons:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(cons, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
                         db.add(cons)
-                        InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                        
+                        log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                            balance_before=c_old, balance_after=cons.stock_quantity,
+                            reason=transaction_reason, force_change=-qty_to_deduct
+                        )
+                        if is_replaced:
+                            details_list.append(f"📦 {cons.name}")
 
-                # C. Modifiers (Модифікатори з фронтенду)
-                if item.modifiers:
+                # C. Modifiers
+                if getattr(item, 'modifiers', None):
                     for modifier in item.modifiers:
                          mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.modifier_id).with_for_update().first()
                          if mod_ing:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: FIFO
                             if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
 
@@ -10430,7 +10635,12 @@ class OrderService:
                             mod_ing.stock_quantity -= deduction
                             db.add(mod_ing)
                             
-                            InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
+                            # 🔥 ВИПРАВЛЕНО
+                            InventoryLogger.log(
+                                db, entity_type="ingredient", entity_id=mod_ing.id, entity_name=mod_ing.name,
+                                balance_before=i_old, balance_after=mod_ing.stock_quantity,
+                                reason=transaction_reason, force_change=-deduction
+                            )
                             details_list.append(f"+ {mod_ing.name}")
 
                 # === ЗАПИС У ЧЕК ===
@@ -10439,7 +10649,9 @@ class OrderService:
                     product_name=item_name,
                     quantity=item.quantity,
                     price_at_moment=price, 
-                    details=", ".join(details_list) if details_list else None
+                    details=", ".join(details_list) if details_list else None,
+                    # 🔥 КРИТИЧНЕ ВИПРАВЛЕННЯ: Додано збереження JSON-даних про пакування!
+                    consumable_overrides=[o.model_dump() for o in item.consumable_overrides] if getattr(item, 'consumable_overrides', None) else []
                 ))
                 
                 total_order_price += price * item.quantity

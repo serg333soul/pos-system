@@ -257,18 +257,24 @@ class SoldItemModifier(BaseModel):
     modifier_id: int
     class Config: extra = 'ignore' # На всяк випадок
 
+# 🔥 НОВА СХЕМА: Інструкція від касира про заміну матеріалу
+class ConsumableOverride(BaseModel):
+    original_id: int           # ID матеріалу, який мав би списатися за замовчуванням
+    new_id: Optional[int] = None # ID нового матеріалу (Якщо None/null - значить касир натиснув "Видалити / Своя чашка")
 class SoldItem(BaseModel):
     product_id: int
     variant_id: Optional[int] = None
     modifiers: List[SoldItemModifier] = []
     quantity: int
-
+    # 🔥 НОВЕ: Масив усіх замін пакування, які зробив касир у вікні товару
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
 class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
     customer_id: Optional[int] = None
+    
     class Config: extra = 'ignore'
-
+    
 class CustomerCreate(BaseModel):
     name: str
     phone: str
@@ -283,6 +289,7 @@ class OrderItemRead(BaseModel):
     quantity: int
     price_at_moment: float
     details: Optional[str] = None
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
     class Config: from_attributes = True
 
 class OrderRead(BaseModel):

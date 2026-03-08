@@ -24,7 +24,7 @@ class InventoryLogger:
                 change_amount=change_amount, # Запишеться напр. -2
                 balance_after=balance_after,
                 reason=reason,
-                created_at=datetime.utcnow()
+                created_at=datetime.utcnow(),
             )
             db.add(transaction)
         except Exception as e:

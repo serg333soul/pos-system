@@ -32,7 +32,26 @@ class OrderService:
             # 2. Обробляємо товари
             for item in order_data.items:
                 print(f"   -> Обробка товару ID: {item.product_id} (Варіант: {item.variant_id})")
+
+                # 🔥 ДОДАЙТЕ ЦЕЙ РЯДОК ДЛЯ ДІАГНОСТИКИ:
+                print(f"   -> ДАНІ ПАКУВАННЯ: {getattr(item, 'consumable_overrides', 'НЕМАЄ ДАНИХ')}")
                 
+                # 🔥 1. ЗАХИЩЕНИЙ СЛОВНИК ЗАМІН (працює і з dict, і з об'єктами Pydantic)
+                overrides_map = {}
+                if getattr(item, 'consumable_overrides', None):
+                    for override in item.consumable_overrides:
+                        # Перевіряємо тип: словник чи об'єкт
+                        if isinstance(override, dict):
+                            orig_id = override.get('original_id')
+                            n_id = override.get('new_id')
+                        else:
+                            orig_id = getattr(override, 'original_id', None)
+                            n_id = getattr(override, 'new_id', None)
+                            
+                        # Якщо знайшли original_id, записуємо в словник (обов'язково як числа int)
+                        if orig_id is not None:
+                            overrides_map[int(orig_id)] = int(n_id) if n_id else None
+
                 # Завантажуємо товар (блокуємо для безпеки)
                 product = db.query(models.Product).filter(
                     models.Product.id == item.product_id
@@ -67,29 +86,20 @@ class OrderService:
                         if variant.stock_quantity < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку: {variant.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для варіанту (Manual або FIFO)
-                        # Якщо з фронтенду прийшов конкретний batch_id - списуємо з нього
+                        # Гібридний облік для варіанту (Manual або FIFO)
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        # Інакше перевіряємо, чи ввімкнено FIFO для цього варіанту
                         elif getattr(variant, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
                         
-                        # Завжди зменшуємо загальний залишок
                         variant.stock_quantity -= item.quantity
 
-                    # 3. ЛОГУВАННЯ ВАРІАНТУ (ЗАВЖДИ!)
-                    balance_after = variant.stock_quantity if variant.stock_quantity is not None else 0.0
-                    InventoryLogger.log(
-                        db,
-                        entity_type="product_variant",
-                        entity_id=variant.id,
-                        entity_name=item_name,
-                        balance_before=balance_before,
-                        balance_after=balance_after,
-                        reason=transaction_reason,
-                        force_change=-item.quantity 
-                    )
+                        # 🔥 ВИПРАВЛЕНО: Безпечний виклик логера для ФІЗИЧНОГО списання
+                        InventoryLogger.log(
+                            db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                            balance_before=balance_before, balance_after=variant.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity 
+                        )
 
                     # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if variant.master_recipe_id:
@@ -100,7 +110,6 @@ class OrderService:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
                                     # Розрахунок кількості списання
-                                    deduction = 0
                                     if r_item.is_percentage:
                                         deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -117,42 +126,60 @@ class OrderService:
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
                                     
-                                    # Логуємо зміну саме ІНГРЕДІЄНТА
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логуємо зміну ІНГРЕДІЄНТА
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
-                            # 🔥 КЛЮЧОВЕ ВИПРАВЛЕННЯ ДЛЯ ВАРІАНТУ:
-                            # Після того як всі інгредієнти списані, ми розраховуємо НОВИЙ "Поточний залишок" 
-                            # (calculated stock), який тепер доступний для цього варіанту.
-                            
+                            # Після того як всі інгредієнти списані, розраховуємо НОВИЙ "Поточний залишок" 
                             new_calculated_balance = ProductService.calculate_max_possible_stock(db, variant.id)
                             
-                            # Записуємо транзакцію для ВАРІАНТУ з актуальним залишком
+                            # 🔥 ВИПРАВЛЕНО: Записуємо транзакцію для РОЗРАХУНКОВОГО ВАРІАНТУ
                             InventoryLogger.log(
-                                db,
-                                entity_type="product_variant",
-                                entity_id=variant.id,
-                                entity_name=item_name,
-                                balance_before=balance_before, # Це значення ми взяли на початку циклу
-                                balance_after=new_calculated_balance, # 🔥 Тепер тут НЕ 0, а реальний розрахунок!
-                                reason=transaction_reason,
-                                force_change=-item.quantity
+                                db, entity_type="product_variant", entity_id=variant.id, entity_name=item_name,
+                                balance_before=balance_before, balance_after=new_calculated_balance,
+                                reason=transaction_reason, force_change=-item.quantity
                             )
 
-                    # 3. Списання МАТЕРІАЛІВ варіанту
+                    # 3. Списання МАТЕРІАЛІВ варіанту (з урахуванням замін)
                     for v_cons in variant.consumables:
-                         cons = db.query(models.Consumable).filter(models.Consumable.id == v_cons.consumable_id).with_for_update().first()
-                         if cons:
+                        target_cons_id = v_cons.consumable_id
+                        is_replaced = False
+                        
+                        # Перевіряємо, чи є інструкція змінити/видалити цей матеріал
+                        if target_cons_id in overrides_map:
+                            new_id = overrides_map[target_cons_id]
+                            if new_id is None or new_id == 0:
+                                details_list.append(f"🚫 Без пакування")
+                                continue 
+                            else:
+                                target_cons_id = new_id
+                                is_replaced = True
+
+                        cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
+                        if cons:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: Перевірка FIFO для Матеріалу
                             if getattr(cons, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
                             db.add(cons)
-                            InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                            
+                            log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                            # 🔥 ВИПРАВЛЕНО: Логуємо матеріали
+                            InventoryLogger.log(
+                                db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                                balance_before=c_old, balance_after=cons.stock_quantity,
+                                reason=transaction_reason, force_change=-qty_to_deduct
+                            )
+                            
+                            if is_replaced:
+                                details_list.append(f"📦 {cons.name}")
 
                 # --- ЛОГІКА ПРОСТОГО ТОВАРУ ---
                 else:
@@ -161,7 +188,6 @@ class OrderService:
                         if current_stock < item.quantity:
                             raise HTTPException(status_code=400, detail=f"Недостатньо залишку товару: {product.name}")
                         
-                        # 🔥 НОВЕ: Гібридний облік для простого товару
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
                         elif getattr(product, 'costing_method', 'wac') == 'fifo':
@@ -170,13 +196,14 @@ class OrderService:
                         product.stock_quantity = current_stock - item.quantity
                         db.add(product)
 
-                        # Логування списання простого товару
+                        # 🔥 ВИПРАВЛЕНО: Логування простого товару
                         InventoryLogger.log(
-                            db, "product", product.id, product.name, 
-                            current_stock, product.stock_quantity, transaction_reason
+                            db, entity_type="product", entity_id=product.id, entity_name=product.name,
+                            balance_before=current_stock, balance_after=product.stock_quantity,
+                            reason=transaction_reason, force_change=-item.quantity
                         )
 
-                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe) - Аналогічно додаємо FIFO
+                    # 2. Списання ІНГРЕДІЄНТІВ (MasterRecipe)
                     if product.master_recipe_id:
                         recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == product.master_recipe_id).first()
                         if recipe:
@@ -184,7 +211,6 @@ class OrderService:
                              for r_item in recipe.items:
                                 ing = db.query(models.Ingredient).filter(models.Ingredient.id == r_item.ingredient_id).with_for_update().first()
                                 if ing:
-                                    deduction = 0
                                     if r_item.is_percentage:
                                          deduction = (r_item.quantity / 100) * output_w * item.quantity
                                     else:
@@ -192,58 +218,85 @@ class OrderService:
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    # 🔥 НОВЕ: FIFO
                                     if getattr(ing, 'costing_method', 'wac') == 'fifo':
                                         InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
                                     db.add(ing)
-                                    InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                                    # 🔥 ВИПРАВЛЕНО: Логування інгредієнта для простого товару
+                                    InventoryLogger.log(
+                                        db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                                        balance_before=i_old, balance_after=ing.stock_quantity,
+                                        reason=transaction_reason, force_change=-deduction
+                                    )
 
                 # === ЗАГАЛЬНІ СПИСАННЯ ===
                 
-                # A. ProductIngredient (Додаткові інгредієнти поза рецептом)
+                # A. ProductIngredient
                 for p_ing in product.ingredients:
                     ing = db.query(models.Ingredient).filter(models.Ingredient.id == p_ing.ingredient_id).with_for_update().first()
                     if ing:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(ing, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
                         db.add(ing)
-                        InventoryLogger.log(db, "ingredient", ing.id, ing.name, i_old, ing.stock_quantity, transaction_reason)
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="ingredient", entity_id=ing.id, entity_name=ing.name,
+                            balance_before=i_old, balance_after=ing.stock_quantity,
+                            reason=transaction_reason, force_change=-deduction
+                        )
 
-                # B. ProductConsumable (Загальні матеріали)
+                # B. ProductConsumable
                 for p_cons in product.consumables:
-                    cons = db.query(models.Consumable).filter(models.Consumable.id == p_cons.consumable_id).with_for_update().first()
+                    target_cons_id = p_cons.consumable_id
+                    is_replaced = False
+                    
+                    if target_cons_id in overrides_map:
+                        new_id = overrides_map[target_cons_id]
+                        if new_id is None or new_id == 0:
+                            details_list.append(f"🚫 Відмова від матеріалу") 
+                            continue 
+                        else:
+                            target_cons_id = new_id
+                            is_replaced = True
+
+                    cons = db.query(models.Consumable).filter(models.Consumable.id == target_cons_id).with_for_update().first()
                     if cons:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
-                        # 🔥 НОВЕ: FIFO
                         if getattr(cons, 'costing_method', 'wac') == 'fifo':
                             InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
                         db.add(cons)
-                        InventoryLogger.log(db, "consumable", cons.id, cons.name, c_old, cons.stock_quantity, transaction_reason)
+                        
+                        log_name = f"{cons.name} (Заміна)" if is_replaced else cons.name
+                        # 🔥 ВИПРАВЛЕНО
+                        InventoryLogger.log(
+                            db, entity_type="consumable", entity_id=cons.id, entity_name=log_name,
+                            balance_before=c_old, balance_after=cons.stock_quantity,
+                            reason=transaction_reason, force_change=-qty_to_deduct
+                        )
+                        if is_replaced:
+                            details_list.append(f"📦 {cons.name}")
 
-                # C. Modifiers (Модифікатори з фронтенду)
-                if item.modifiers:
+                # C. Modifiers
+                if getattr(item, 'modifiers', None):
                     for modifier in item.modifiers:
                          mod_ing = db.query(models.Ingredient).filter(models.Ingredient.id == modifier.modifier_id).with_for_update().first()
                          if mod_ing:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
-                            # 🔥 НОВЕ: FIFO
                             if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
                                 InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
 
@@ -251,7 +304,12 @@ class OrderService:
                             mod_ing.stock_quantity -= deduction
                             db.add(mod_ing)
                             
-                            InventoryLogger.log(db, "ingredient", mod_ing.id, mod_ing.name, i_old, mod_ing.stock_quantity, transaction_reason)
+                            # 🔥 ВИПРАВЛЕНО
+                            InventoryLogger.log(
+                                db, entity_type="ingredient", entity_id=mod_ing.id, entity_name=mod_ing.name,
+                                balance_before=i_old, balance_after=mod_ing.stock_quantity,
+                                reason=transaction_reason, force_change=-deduction
+                            )
                             details_list.append(f"+ {mod_ing.name}")
 
                 # === ЗАПИС У ЧЕК ===
@@ -260,7 +318,9 @@ class OrderService:
                     product_name=item_name,
                     quantity=item.quantity,
                     price_at_moment=price, 
-                    details=", ".join(details_list) if details_list else None
+                    details=", ".join(details_list) if details_list else None,
+                    # 🔥 КРИТИЧНЕ ВИПРАВЛЕННЯ: Додано збереження JSON-даних про пакування!
+                    consumable_overrides=[o.model_dump() for o in item.consumable_overrides] if getattr(item, 'consumable_overrides', None) else []
                 ))
                 
                 total_order_price += price * item.quantity

@@ -103,6 +103,9 @@ export function useCart() {
           product_id: item.product_id,
           variant_id: item.variant_id || null,
           quantity: item.quantity,
+          // 🔥 ДОДАНО: Передаємо збережені заміни з кошика у фінальне замовлення!
+          consumable_overrides: item.consumable_overrides || [],
+          ingredient_overrides: item.ingredient_overrides || [],
           // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
             ? item.modifiers.map(m => ({
