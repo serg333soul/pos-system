@@ -108,14 +108,45 @@ class InventoryService:
                 batch.quantity += difference # Оновлюємо початкову кількість партії
             db.add(batch)
             
-        # 3. Обробка БЕЗ партії (WAC або автоматичне FIFO)
+        # 3. Обробка БЕЗ партії (Автоматичне розподілення)
         else:
             if difference < 0:
                 deduct_amount = abs(difference)
-                # Якщо товар на FIFO, а партію не вибрали вручну - списуємо по стандартному FIFO
-                if getattr(target_obj, 'costing_method', 'wac') == 'fifo':
-                    InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
-            # Якщо це Лишок і WAC, ми просто змінюємо загальний баланс без створення нової партії (спрощений підхід)
+                # 🔥 ВИПРАВЛЕННЯ: Списуємо з найстаріших партій ЗАВЖДИ (і для FIFO, і для WAC), 
+                # щоб сума в партіях дорівнювала stock_quantity
+                InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
+            else:
+                # 🔥 ВИПРАВЛЕННЯ: Якщо це Лишок - створюємо НОВУ системну партію ЗАВЖДИ 
+                # (і для FIFO, і для WAC), щоб ця кількість з'явилась у випадаючих списках
+                
+                # Шукаємо останню ціну закупівлі цього товару для адекватної оцінки лишку
+                last_batch = db.query(models.SupplyItem).filter(
+                    models.SupplyItem.entity_type == request.entity_type,
+                    models.SupplyItem.entity_id == request.entity_id
+                ).order_by(models.SupplyItem.id.desc()).first()
+                
+                cost_unit = last_batch.cost_per_unit if last_batch else getattr(target_obj, 'cost_per_unit', 0.0)
+                
+                # Створюємо системну поставку-документ
+                system_supply = models.Supply(
+                    notes=f"Системна накладна (Коригування: {request.reason})",
+                    total_cost=difference * cost_unit
+                )
+                db.add(system_supply)
+                db.flush() # робимо flush, щоб отримати system_supply.id
+                
+                # Створюємо сам рядок партії
+                system_supply_item = models.SupplyItem(
+                    supply_id=system_supply.id,
+                    entity_type=request.entity_type,
+                    entity_id=request.entity_id,
+                    entity_name=getattr(target_obj, 'name', 'Unknown'),
+                    quantity=difference,
+                    remaining_quantity=difference,
+                    cost_per_unit=cost_unit,
+                    total_cost=difference * cost_unit
+                )
+                db.add(system_supply_item)
 
         # 4. Оновлюємо загальний залишок сутності
         target_obj.stock_quantity = request.actual_quantity

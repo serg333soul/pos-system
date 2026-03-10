@@ -26,18 +26,17 @@ const isSubmitting = ref(false)
 
 // Типові причини
 const reasons = [
-    "Псування / Брак",
-    "Розбито / Пролито",
+    "Псування",
+    "Брак",
+    "Вирівнювання залишків після інвентаризації",
     "Помилка інвентаризації",
     "Знайдений лишок",
-    "Крадіжка",
     "Списання на потреби закладу",
     "Інше"
 ]
 
 // Обчислення різниці
 const currentQuantity = computed(() => {
-  // 🛡 Захищаємо від відсутності item або одиниці виміру
   return props.item?.stock_quantity ?? 0;
 })
 
@@ -62,7 +61,9 @@ watch(() => props.isOpen, async (isOpen) => {
         // Якщо це FIFO, одразу вантажимо активні партії
         if (isFifo.value) {
             isLoading.value = true
-            availableBatches.value = await fetchAvailableBatches(props.entityType, props.item.id)
+            const res = await fetchAvailableBatches(props.entityType || props.item.type, props.item.id)
+            // 🔥 ВИПРАВЛЕНО 1: Безпечно дістаємо масив batches
+            availableBatches.value = res?.batches || []
             isLoading.value = false
         }
     }
@@ -70,7 +71,6 @@ watch(() => props.isOpen, async (isOpen) => {
 
 // Збереження
 const handleSave = async () => {
-    // 🛡 ЗАХИСТ: Якщо об'єкт не прокинувся, не даємо впасти скрипту
     if (!props.item || !props.item.id) {
         console.error("❌ Помилка: спроба зберегти коригування для undefined товару");
         return;
@@ -79,20 +79,27 @@ const handleSave = async () => {
     if (difference.value === 0) return alert("Немає змін для збереження. Фактичний залишок дорівнює системному.")
     if (!reason.value) return alert("Оберіть причину коригування!")
     
-    // Якщо FIFO і це НЕСТАЧА (< 0) - вимагаємо вибрати партію
-    if (isFifo.value && difference.value < 0 && !batchId.value) {
-        return alert("Для товару FIFO обов'язково оберіть партію, з якої списується нестача!")
+    if (isFifo.value) {
+        if (difference.value < 0 && !batchId.value) {
+            return alert("Для товару FIFO обов'язково оберіть партію, з якої списується нестача!")
+        }
+        if (difference.value > 0 && !batchId.value) {
+            return alert("Оберіть партію для додавання лишку або створення нової системної накладної!")
+        }
     }
 
     const fullReason = comment.value ? `${reason.value} - ${comment.value}` : reason.value
 
     isSubmitting.value = true
+    
+    const finalBatchId = (isFifo.value && batchId.value !== 'new') ? batchId.value : null;
+
     const payload = {
-        entity_type: props.item.type || 'ingredient', 
+        entity_type: props.entityType || props.item.type || 'ingredient', 
         entity_id: props.item.id,
         actual_quantity: actualQuantity.value,
-        reason: reason.value,
-        batch_id: isFifo.value ? batchId.value : null
+        reason: fullReason, 
+        batch_id: finalBatchId
     }
 
     const result = await adjustItemStock(payload)
@@ -114,12 +121,15 @@ const formatDate = (dateStr) => {
 }
 
 onMounted(() => {
-  console.log("🏠 Модалка змонтована з item:", props.item?.id, "Type:", props.entityType);
-  if (isFifo.value) {
-    fetchAvailableBatches(); // Переконайся, що ця функція не зависає
+  if (isFifo.value && props.item) {
+    isLoading.value = true
+    fetchAvailableBatches(props.entityType || props.item.type, props.item.id).then(res => {
+        // 🔥 ВИПРАВЛЕНО 2: Безпечно дістаємо масив batches
+        availableBatches.value = res?.batches || []
+        isLoading.value = false
+    })
   }
 })
-
 </script>
 
 <template>
@@ -127,7 +137,7 @@ onMounted(() => {
         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
                 
-                <div class="flex justify-between items-start mb-6">
+                <div class="flex justify-between items-start mb-6 p-6 pb-0">
                     <div>
                         <h3 class="text-xl font-black text-gray-800">
                         {{ item?.display_name || item?.name || 'Завантаження...' }}
@@ -171,13 +181,28 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div v-if="isFifo && difference < 0" class="bg-red-50 p-4 rounded-xl border border-red-100 animate-fade-in mt-8">
-                        <label class="block text-xs font-bold text-red-800 uppercase mb-2">З якої партії списати нестачу?</label>
-                        <div v-if="isLoading" class="text-xs text-red-600"><i class="fas fa-spinner fa-spin mr-1"></i> Завантаження...</div>
-                        <div v-else-if="availableBatches.length === 0" class="text-xs text-red-600">Немає активних партій! Створіть постачання.</div>
-                        <select v-else v-model="batchId" class="w-full p-2.5 rounded-lg border border-red-200 bg-white text-sm outline-none focus:ring-2 focus:ring-red-200">
-                            <option :value="null" disabled>-- Оберіть партію --</option>
-                            <option v-for="b in availableBatches" :key="b.batch_id" :value="b.batch_id">
+                    <div v-if="isFifo && difference !== 0" 
+                         class="p-4 rounded-xl border animate-fade-in mt-8" 
+                         :class="difference > 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'">
+                        
+                        <label class="block text-xs font-bold uppercase mb-2" 
+                               :class="difference > 0 ? 'text-green-800' : 'text-red-800'">
+                            {{ difference > 0 ? 'Куди додати знайдений лишок?' : 'З якої партії списати нестачу?' }}
+                        </label>
+                        
+                        <div v-if="isLoading" class="text-xs" :class="difference > 0 ? 'text-green-600' : 'text-red-600'">
+                            <i class="fas fa-spinner fa-spin mr-1"></i> Завантаження...
+                        </div>
+                        <div v-else-if="difference < 0 && availableBatches.length === 0" class="text-xs text-red-600">
+                            Немає активних партій! Створіть постачання.
+                        </div>
+                        
+                        <select v-else v-model="batchId" 
+                                class="w-full p-2.5 rounded-lg border bg-white text-sm outline-none focus:ring-2" 
+                                :class="difference > 0 ? 'border-green-200 focus:ring-green-200' : 'border-red-200 focus:ring-red-200'">
+                            <option :value="null" disabled>-- Оберіть партію / дію --</option>
+                            <option v-if="difference > 0" value="new">🌟 Створити НОВУ системну накладну</option>
+                            <option v-for="b in availableBatches" :key="b.id" :value="b.id">
                                 Партія від {{ formatDate(b.supply_date) }} (Залишок: {{ b.remaining_quantity }})
                             </option>
                         </select>

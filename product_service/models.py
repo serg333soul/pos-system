@@ -80,14 +80,23 @@ class ProcessGroup(Base):
     __tablename__ = "process_groups"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String) # "Помол", "Молоко"
-    options = relationship("ProcessOption", back_populates="group", cascade="all, delete-orphan")
+
+    # 🔥 НОВЕ: Група може залежати від конкретної опції іншої групи
+    parent_option_id = Column(Integer, ForeignKey("process_options.id", ondelete="CASCADE"), nullable=True)
+
+    # Зв'язки
+    options = relationship("ProcessOption", foreign_keys="[ProcessOption.group_id]", back_populates="group", cascade="all, delete-orphan")
+    parent_option = relationship("ProcessOption", foreign_keys=[parent_option_id], back_populates="child_groups")
 
 class ProcessOption(Base):
     __tablename__ = "process_options"
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("process_groups.id"))
     name = Column(String) # "Дрібний", "Зерно"
-    group = relationship("ProcessGroup", back_populates="options")
+    # Зв'язки
+    group = relationship("ProcessGroup", foreign_keys=[group_id], back_populates="options")
+    # 🔥 Зворотний зв'язок: Групи, які з'являються ТІЛЬКИ якщо обрано цю опцію
+    child_groups = relationship("ProcessGroup", foreign_keys="[ProcessGroup.parent_option_id]", back_populates="parent_option")
 
 # --- ПРОДУКТИ ТА ВАРІАНТИ ---
 

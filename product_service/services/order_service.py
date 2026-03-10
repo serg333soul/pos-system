@@ -89,7 +89,7 @@ class OrderService:
                         # Гібридний облік для варіанту (Manual або FIFO)
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        elif getattr(variant, 'costing_method', 'wac') == 'fifo':
+                        else:
                             InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
                         
                         variant.stock_quantity -= item.quantity
@@ -118,8 +118,8 @@ class OrderService:
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
                                     # Облік за методом FIFO або WAC
-                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                                    
+                                    InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     # Оновлюємо фізичний залишок інгредієнта
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
@@ -163,8 +163,8 @@ class OrderService:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
-                            if getattr(cons, 'costing_method', 'wac') == 'fifo':
-                                InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+                            
+                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
@@ -190,7 +190,7 @@ class OrderService:
                         
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        elif getattr(product, 'costing_method', 'wac') == 'fifo':
+                        else:
                             InventoryService.deduct_fifo(db, 'product', product.id, item.quantity)
 
                         product.stock_quantity = current_stock - item.quantity
@@ -218,8 +218,8 @@ class OrderService:
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                                    
+                                    InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
@@ -240,8 +240,8 @@ class OrderService:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
-                        if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                            InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                        
+                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
@@ -272,8 +272,8 @@ class OrderService:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
-                        if getattr(cons, 'costing_method', 'wac') == 'fifo':
-                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+                        
+                        InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
@@ -297,8 +297,8 @@ class OrderService:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
-                            if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
-                                InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
+                            
+                            InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
 
                             if mod_ing.stock_quantity is None: mod_ing.stock_quantity = 0.0
                             mod_ing.stock_quantity -= deduction
