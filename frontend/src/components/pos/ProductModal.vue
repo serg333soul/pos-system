@@ -70,12 +70,57 @@ watch(() => props.isOpen, (isOpen) => {
     if (props.product.process_groups) {
         props.product.process_groups.forEach(pg => {
             if (pg.options && pg.options.length > 0) {
-                selectedProcesses.value[pg.id] = pg.options[0].name
+                // 🔥 ТЕПЕР ЗБЕРІГАЄМО ID замість імені для правильного зв'язку
+                selectedProcesses.value[pg.id] = pg.options[0].id 
             }
         })
     }
   }
 })
+
+// 🔥 НОВЕ: Отримуємо тільки головні групи (які ні від кого не залежать)
+const baseProcessGroups = computed(() => {
+    if (!props.product?.process_groups) return [];
+    return props.product.process_groups.filter(group => !group.parent_option_id);
+});
+
+// 🔥 НОВЕ: Шукаємо підгрупи для конкретно обраної ОПЦІЇ
+const getSubGroupsForOption = (optionId) => {
+    if (!props.product?.process_groups) return [];
+    return props.product.process_groups.filter(g => g.parent_option_id === optionId);
+};
+
+// 🔥 НОВЕ: Перевіряємо, чи має ця група хоча б одну опцію з підпроцесами.
+const groupHasSubprocesses = (groupId) => {
+    if (!props.product?.process_groups) return false;
+    const group = props.product.process_groups.find(g => g.id === groupId);
+    if (!group || !group.options) return false;
+    
+    return group.options.some(opt => getSubGroupsForOption(opt.id).length > 0);
+};
+
+// 🔥 ЗАХИСТ ВІД "СМІТТЯ": Перероблений watch для очищення залежних опцій, якщо батьківську опцію змінено
+watch(() => selectedProcesses.value, (newSelected) => {
+    if (!props.product?.process_groups) return;
+    
+    const validGroupIds = new Set();
+    
+    // 1. Спочатку додаємо всі базові групи (вони завжди валідні)
+    baseProcessGroups.value.forEach(g => validGroupIds.add(g.id));
+    
+    // 2. Додаємо підгрупи, чиї батьківські опції зараз обрані
+    Object.values(newSelected).forEach(optionId => {
+        const subGroups = getSubGroupsForOption(optionId);
+        subGroups.forEach(sg => validGroupIds.add(sg.id));
+    });
+    
+    // 3. Видаляємо з selectedProcesses ті групи, яких немає у validGroupIds
+    for (const groupId in newSelected) {
+        if (!validGroupIds.has(Number(groupId))) {
+            delete selectedProcesses.value[groupId];
+        }
+    }
+}, { deep: true });  
 
 // --- 🔥 ЗАВАНТАЖЕННЯ ПАРТІЙ ПРИ УВІМКНЕННІ ТУМБЛЕРА ---
 watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
@@ -422,22 +467,65 @@ const formatDate = (dateStr) => {
         </div>
 
 
-        <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
-            <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                <label class="block text-sm font-bold text-indigo-900 mb-2">
+        <div v-if="baseProcessGroups.length > 0" class="space-y-4">
+            <div v-for="pg in baseProcessGroups" :key="pg.id" class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 transition-all duration-300">
+                
+                <label class="block text-sm font-bold text-indigo-900 mb-3">
                     {{ pg.name }}
                 </label>
-                <div class="flex flex-wrap gap-2">
+                
+                <div v-if="groupHasSubprocesses(pg.id)" class="flex flex-col gap-2">
+                    <div v-for="opt in pg.options" :key="opt.id" class="flex flex-col w-full">
+                        
+                        <button 
+                            @click="selectedProcesses[pg.id] = opt.id" 
+                            class="text-left px-4 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm border flex justify-between items-center"
+                            :class="selectedProcesses[pg.id] === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-white/80'"
+                        >
+                            <span>{{ opt.name }}</span>
+                            <i v-if="getSubGroupsForOption(opt.id).length > 0" 
+                               class="fas fa-chevron-down text-xs transition-transform duration-300"
+                               :class="selectedProcesses[pg.id] === opt.id ? 'rotate-180 text-indigo-200' : 'text-gray-400'"
+                            ></i>
+                        </button>
+
+                        <div v-if="selectedProcesses[pg.id] === opt.id && getSubGroupsForOption(opt.id).length > 0" 
+                             class="mt-2 ml-4 pl-3 border-l-2 border-indigo-300 space-y-3 animate-fade-in-up">
+                            
+                            <div v-for="subGroup in getSubGroupsForOption(opt.id)" :key="subGroup.id">
+                                <label class="block text-[11px] font-bold text-indigo-500 uppercase tracking-wider mb-1.5 flex items-center">
+                                    <i class="fas fa-level-up-alt rotate-90 mr-1.5 opacity-70"></i> {{ subGroup.name }}
+                                </label>
+                                
+                                <div class="flex flex-col gap-1.5">
+                                    <button 
+                                        v-for="subOpt in subGroup.options" 
+                                        :key="subOpt.id"
+                                        @click="selectedProcesses[subGroup.id] = subOpt.id"
+                                        class="text-left px-3 py-2 rounded-md text-xs font-bold transition-all border"
+                                        :class="selectedProcesses[subGroup.id] === subOpt.id ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' : 'bg-white/80 text-gray-600 border-gray-200 hover:bg-white'"
+                                    >
+                                        {{ subOpt.name }}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="flex flex-wrap gap-2">
                     <button 
                         v-for="opt in pg.options" 
                         :key="opt.id"
-                        @click="selectedProcesses[pg.id] = opt.name"
+                        @click="selectedProcesses[pg.id] = opt.id" 
                         class="px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border"
-                        :class="selectedProcesses[pg.id] === opt.name ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
+                        :class="selectedProcesses[pg.id] === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-white/80'"
                     >
                         {{ opt.name }}
                     </button>
                 </div>
+                
             </div>
         </div>
 

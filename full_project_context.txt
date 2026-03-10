@@ -5,8 +5,8 @@
 📊 PROJECT STATISTICS
 =====================
 Files: 81
-Lines: 10715
-Tokens: ~113643
+Lines: 10979
+Tokens: ~116555
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -207,11 +207,11 @@ frontend\src\components\pos\ProductModal.vue
   └── 💾 State (ref): availableBatches
   └── 💾 State (ref): selectedBatchId
   └── 💾 State (ref): isLoadingBatches
+  └── 💾 State (computed): visibleProcessGroups
   └── 💾 State (computed): safeConsumables
   └── 💾 State (computed): canAddToCart
   └── ƒ  getAvailableStock
   └── 💾 State (computed): currentPrice
-  └── ƒ  handleConfirm
 frontend\src\components\pos\ProductRoomModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -268,8 +268,18 @@ frontend\src\components\warehouse\tabs\IngredientsTab.vue
   └── ƒ  handleDelete
 frontend\src\components\warehouse\tabs\ProcessesTab.vue
   └── 💾 State (ref): newProcessGroup
+  └── 💾 State (computed): availableParentOptions
   └── ƒ  handleDeleteGroup
+  └── 💾 State (ref): editingGroupId
+  └── 💾 State (ref): editGroupData
+  └── ƒ  startEditGroup
+  └── ƒ  cancelEditGroup
   └── ƒ  deleteProcessOption
+  └── 💾 State (ref): editingOptionId
+  └── 💾 State (ref): editOptionName
+  └── ƒ  startEditOption
+  └── ƒ  cancelEditOption
+  └── ƒ  getParentOptionName
 frontend\src\components\warehouse\tabs\ProductsTab.vue
   └── 💾 State (ref): showTypeModal
   └── 💾 State (ref): showForm
@@ -447,6 +457,7 @@ order_service\main.py
   └── 🌐 Endpoint: @app.delete
   └── ƒ  clear_cart
 order_service\schemas.py
+  └── 📄 Schema: ConsumableOverride
   └── 📄 Schema: ModifierItem
   └── 📄 Schema: CartItemCreate
   └── 📦 Class: CartItem
@@ -538,6 +549,8 @@ product_service\routers\orders.py
 product_service\routers\processes.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_process_group
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_process_group
   └── 🌐 Endpoint: @router.get
   └── ƒ  read_process_groups
   └── 🌐 Endpoint: @router.delete
@@ -546,6 +559,8 @@ product_service\routers\processes.py
   └── ƒ  add_process_option
   └── 🌐 Endpoint: @router.delete
   └── ƒ  delete_process_option
+  └── 🌐 Endpoint: @router.put
+  └── ƒ  update_process_option
 product_service\routers\product_rooms.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_room
@@ -2297,12 +2312,38 @@ watch(() => props.isOpen, (isOpen) => {
     if (props.product.process_groups) {
         props.product.process_groups.forEach(pg => {
             if (pg.options && pg.options.length > 0) {
-                selectedProcesses.value[pg.id] = pg.options[0].name
+                // 🔥 ТЕПЕР ЗБЕРІГАЄМО ID замість імені для правильного зв'язку
+                selectedProcesses.value[pg.id] = pg.options[0].id 
             }
         })
     }
   }
 })
+
+// 🔥 МАГІЯ: Цей computed автоматично ховає або показує залежні групи процесів
+const visibleProcessGroups = computed(() => {
+    if (!props.product?.process_groups) return [];
+    
+    return props.product.process_groups.filter(group => {
+        // Якщо група базова (не має батьківської опції) -> показуємо завжди
+        if (!group.parent_option_id) return true;
+        
+        // Якщо група залежна -> перевіряємо, чи є її батьківська опція серед обраних касиром
+        const chosenOptionIds = Object.values(selectedProcesses.value);
+        return chosenOptionIds.includes(group.parent_option_id);
+    });
+});
+
+// 🔥 ЗАХИСТ ВІД "СМІТТЯ": Очищаємо вибір, якщо касир змінив рішення і залежна група зникла
+watch(visibleProcessGroups, (newVisibleGroups) => {
+    const visibleGroupIds = newVisibleGroups.map(g => g.id);
+    
+    for (const groupId in selectedProcesses.value) {
+        if (!visibleGroupIds.includes(Number(groupId))) {
+            delete selectedProcesses.value[groupId];
+        }
+    }
+}, { deep: true })  
 
 // --- 🔥 ЗАВАНТАЖЕННЯ ПАРТІЙ ПРИ УВІМКНЕННІ ТУМБЛЕРА ---
 watch([isManualBatch, selectedVariant], async ([isManual, currentVariant]) => {
@@ -2649,8 +2690,8 @@ const formatDate = (dateStr) => {
         </div>
 
 
-        <div v-if="product.process_groups && product.process_groups.length > 0" class="space-y-4">
-            <div v-for="pg in product.process_groups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+        <div v-if="visibleProcessGroups.length > 0" class="space-y-4">
+            <div v-for="pg in visibleProcessGroups" :key="pg.id" class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                 <label class="block text-sm font-bold text-indigo-900 mb-2">
                     {{ pg.name }}
                 </label>
@@ -2658,9 +2699,9 @@ const formatDate = (dateStr) => {
                     <button 
                         v-for="opt in pg.options" 
                         :key="opt.id"
-                        @click="selectedProcesses[pg.id] = opt.name"
+                        @click="selectedProcesses[pg.id] = opt.id" 
                         class="px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border"
-                        :class="selectedProcesses[pg.id] === opt.name ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
+                        :class="selectedProcesses[pg.id] === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-white/80'"
                     >
                         {{ opt.name }}
                     </button>
@@ -3236,18 +3277,17 @@ const isSubmitting = ref(false)
 
 // Типові причини
 const reasons = [
-    "Псування / Брак",
-    "Розбито / Пролито",
+    "Псування",
+    "Брак",
+    "Вирівнювання залишків після інвентаризації",
     "Помилка інвентаризації",
     "Знайдений лишок",
-    "Крадіжка",
     "Списання на потреби закладу",
     "Інше"
 ]
 
 // Обчислення різниці
 const currentQuantity = computed(() => {
-  // 🛡 Захищаємо від відсутності item або одиниці виміру
   return props.item?.stock_quantity ?? 0;
 })
 
@@ -3272,7 +3312,9 @@ watch(() => props.isOpen, async (isOpen) => {
         // Якщо це FIFO, одразу вантажимо активні партії
         if (isFifo.value) {
             isLoading.value = true
-            availableBatches.value = await fetchAvailableBatches(props.entityType, props.item.id)
+            const res = await fetchAvailableBatches(props.entityType || props.item.type, props.item.id)
+            // 🔥 ВИПРАВЛЕНО 1: Безпечно дістаємо масив batches
+            availableBatches.value = res?.batches || []
             isLoading.value = false
         }
     }
@@ -3280,7 +3322,6 @@ watch(() => props.isOpen, async (isOpen) => {
 
 // Збереження
 const handleSave = async () => {
-    // 🛡 ЗАХИСТ: Якщо об'єкт не прокинувся, не даємо впасти скрипту
     if (!props.item || !props.item.id) {
         console.error("❌ Помилка: спроба зберегти коригування для undefined товару");
         return;
@@ -3289,20 +3330,27 @@ const handleSave = async () => {
     if (difference.value === 0) return alert("Немає змін для збереження. Фактичний залишок дорівнює системному.")
     if (!reason.value) return alert("Оберіть причину коригування!")
     
-    // Якщо FIFO і це НЕСТАЧА (< 0) - вимагаємо вибрати партію
-    if (isFifo.value && difference.value < 0 && !batchId.value) {
-        return alert("Для товару FIFO обов'язково оберіть партію, з якої списується нестача!")
+    if (isFifo.value) {
+        if (difference.value < 0 && !batchId.value) {
+            return alert("Для товару FIFO обов'язково оберіть партію, з якої списується нестача!")
+        }
+        if (difference.value > 0 && !batchId.value) {
+            return alert("Оберіть партію для додавання лишку або створення нової системної накладної!")
+        }
     }
 
     const fullReason = comment.value ? `${reason.value} - ${comment.value}` : reason.value
 
     isSubmitting.value = true
+    
+    const finalBatchId = (isFifo.value && batchId.value !== 'new') ? batchId.value : null;
+
     const payload = {
-        entity_type: props.item.type || 'ingredient', 
+        entity_type: props.entityType || props.item.type || 'ingredient', 
         entity_id: props.item.id,
         actual_quantity: actualQuantity.value,
-        reason: reason.value,
-        batch_id: isFifo.value ? batchId.value : null
+        reason: fullReason, 
+        batch_id: finalBatchId
     }
 
     const result = await adjustItemStock(payload)
@@ -3324,12 +3372,15 @@ const formatDate = (dateStr) => {
 }
 
 onMounted(() => {
-  console.log("🏠 Модалка змонтована з item:", props.item?.id, "Type:", props.entityType);
-  if (isFifo.value) {
-    fetchAvailableBatches(); // Переконайся, що ця функція не зависає
+  if (isFifo.value && props.item) {
+    isLoading.value = true
+    fetchAvailableBatches(props.entityType || props.item.type, props.item.id).then(res => {
+        // 🔥 ВИПРАВЛЕНО 2: Безпечно дістаємо масив batches
+        availableBatches.value = res?.batches || []
+        isLoading.value = false
+    })
   }
 })
-
 </script>
 
 <template>
@@ -3337,7 +3388,7 @@ onMounted(() => {
         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
                 
-                <div class="flex justify-between items-start mb-6">
+                <div class="flex justify-between items-start mb-6 p-6 pb-0">
                     <div>
                         <h3 class="text-xl font-black text-gray-800">
                         {{ item?.display_name || item?.name || 'Завантаження...' }}
@@ -3381,13 +3432,28 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div v-if="isFifo && difference < 0" class="bg-red-50 p-4 rounded-xl border border-red-100 animate-fade-in mt-8">
-                        <label class="block text-xs font-bold text-red-800 uppercase mb-2">З якої партії списати нестачу?</label>
-                        <div v-if="isLoading" class="text-xs text-red-600"><i class="fas fa-spinner fa-spin mr-1"></i> Завантаження...</div>
-                        <div v-else-if="availableBatches.length === 0" class="text-xs text-red-600">Немає активних партій! Створіть постачання.</div>
-                        <select v-else v-model="batchId" class="w-full p-2.5 rounded-lg border border-red-200 bg-white text-sm outline-none focus:ring-2 focus:ring-red-200">
-                            <option :value="null" disabled>-- Оберіть партію --</option>
-                            <option v-for="b in availableBatches" :key="b.batch_id" :value="b.batch_id">
+                    <div v-if="isFifo && difference !== 0" 
+                         class="p-4 rounded-xl border animate-fade-in mt-8" 
+                         :class="difference > 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'">
+                        
+                        <label class="block text-xs font-bold uppercase mb-2" 
+                               :class="difference > 0 ? 'text-green-800' : 'text-red-800'">
+                            {{ difference > 0 ? 'Куди додати знайдений лишок?' : 'З якої партії списати нестачу?' }}
+                        </label>
+                        
+                        <div v-if="isLoading" class="text-xs" :class="difference > 0 ? 'text-green-600' : 'text-red-600'">
+                            <i class="fas fa-spinner fa-spin mr-1"></i> Завантаження...
+                        </div>
+                        <div v-else-if="difference < 0 && availableBatches.length === 0" class="text-xs text-red-600">
+                            Немає активних партій! Створіть постачання.
+                        </div>
+                        
+                        <select v-else v-model="batchId" 
+                                class="w-full p-2.5 rounded-lg border bg-white text-sm outline-none focus:ring-2" 
+                                :class="difference > 0 ? 'border-green-200 focus:ring-green-200' : 'border-red-200 focus:ring-red-200'">
+                            <option :value="null" disabled>-- Оберіть партію / дію --</option>
+                            <option v-if="difference > 0" value="new">🌟 Створити НОВУ системну накладну</option>
+                            <option v-for="b in availableBatches" :key="b.id" :value="b.id">
                                 Партія від {{ formatDate(b.supply_date) }} (Залишок: {{ b.remaining_quantity }})
                             </option>
                         </select>
@@ -4061,21 +4127,75 @@ const handleDelete = (id) => deleteItem(`/api/ingredients/${id}`)
 
 <file path="frontend\src\components\warehouse\tabs\ProcessesTab.vue" lang="vue">
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 
-const { processGroups, fetchData, createItem, deleteItem } = useWarehouse()
+// Додано updateItem
+const { processGroups, fetchData, createItem, updateItem, deleteItem } = useWarehouse()
 
-const newProcessGroup = ref({ name: '' })
+// --- СТВОРЕННЯ ГРУПИ ---
+const newProcessGroup = ref({ 
+    name: '',
+    parent_option_id: null
+})
+
+const availableParentOptions = computed(() => {
+    let options = []
+    processGroups.value.forEach(group => {
+        if (group.options) {
+            group.options.forEach(opt => {
+                options.push({
+                    id: opt.id,
+                    name: `${group.name} ➡️ ${opt.name}`
+                })
+            })
+        }
+    })
+    return options
+})
 
 const handleCreateGroup = async () => {
     if(!newProcessGroup.value.name) return alert("Вкажіть назву групи (напр. Помол)")
-    const success = await createItem('/api/processes/groups/', { name: newProcessGroup.value.name, options: [] })
-    if(success) newProcessGroup.value.name = ''
+    
+    const payload = { 
+        name: newProcessGroup.value.name, 
+        options: [],
+        parent_option_id: newProcessGroup.value.parent_option_id || null
+    }
+    
+    const success = await createItem('/api/processes/groups/', payload)
+    
+    if(success) {
+        newProcessGroup.value.name = ''
+        newProcessGroup.value.parent_option_id = null
+    }
 }
 
 const handleDeleteGroup = (id) => deleteItem(`/api/processes/groups/${id}`)
 
+// --- РЕДАГУВАННЯ ГРУПИ ---
+const editingGroupId = ref(null)
+const editGroupData = ref({ name: '', parent_option_id: null })
+
+const startEditGroup = (group) => {
+    editingGroupId.value = group.id
+    editGroupData.value = { 
+        name: group.name, 
+        parent_option_id: group.parent_option_id 
+    }
+}
+
+const cancelEditGroup = () => {
+    editingGroupId.value = null
+}
+
+const saveGroupEdit = async () => {
+    if(!editGroupData.value.name) return alert("Назва групи не може бути порожньою")
+    const success = await updateItem(`/api/processes/groups/${editingGroupId.value}`, editGroupData.value)
+    if(success) editingGroupId.value = null
+}
+
+// --- ОПЦІЇ (ВАРІАЦІЇ) ---
 const addProcessOption = async (groupId) => {
     const name = prompt("Введіть назву опції (напр. Під еспресо):")
     if(!name) return
@@ -4083,40 +4203,133 @@ const addProcessOption = async (groupId) => {
 }
 
 const deleteProcessOption = (optionId) => deleteItem(`/api/processes/options/${optionId}`)
+
+// --- РЕДАГУВАННЯ ОПЦІЇ ---
+const editingOptionId = ref(null)
+const editOptionName = ref('')
+
+const startEditOption = (opt) => {
+    editingOptionId.value = opt.id
+    editOptionName.value = opt.name
+}
+
+const cancelEditOption = () => {
+    editingOptionId.value = null
+}
+
+const saveOptionEdit = async () => {
+    if(!editOptionName.value) return alert("Назва опції не може бути порожньою")
+    const success = await updateItem(`/api/processes/options/${editingOptionId.value}`, { name: editOptionName.value })
+    if(success) editingOptionId.value = null
+}
+
+
+// Допоміжна функція
+const getParentOptionName = (parentId) => {
+    if (!parentId) return null;
+    for (const group of processGroups.value) {
+        if (group.options) {
+            const opt = group.options.find(o => o.id === parentId);
+            if (opt) return `${group.name} ➡️ ${opt.name}`;
+        }
+    }
+    return "Невідома опція (Можливо видалена)";
+}
 </script>
 
 <template>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-indigo-100 h-fit">
             <h3 class="font-bold text-lg text-indigo-800 mb-4 border-b pb-2">➕ Нова група процесів</h3>
-            <p class="text-sm text-gray-500 mb-4">Наприклад: "Помол", "Ступінь просмаження", "Температура подачі".</p>
-            <div class="flex gap-2">
-                <input v-model="newProcessGroup.name" placeholder="Назва групи..." class="flex-1 border p-2 rounded-lg outline-none focus:ring-2 ring-indigo-200">
-                <button @click="handleCreateGroup" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition">Створити</button>
+            <p class="text-sm text-gray-500 mb-6">Створюйте групи процесів (напр. "Помол") та налаштовуйте умови їх появи.</p>
+            
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Назва групи *</label>
+                    <input v-model="newProcessGroup.name" placeholder="напр. Помол..." class="w-full border p-3 rounded-xl outline-none focus:ring-2 ring-indigo-200">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Умова появи (Залежність)</label>
+                    <select v-model="newProcessGroup.parent_option_id" class="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white outline-none">
+                        <option :value="null">-- З'являється завжди (Немає залежності) --</option>
+                        <option v-for="opt in availableParentOptions" :key="opt.id" :value="opt.id">
+                            Тільки якщо обрано: {{ opt.name }}
+                        </option>
+                    </select>
+                </div>
+
+                <button @click="handleCreateGroup" class="w-full mt-2 bg-indigo-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">
+                    Створити групу
+                </button>
             </div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-             <div v-if="processGroups.length === 0" class="p-8 text-center text-gray-400">
+             <div v-if="processGroups.length === 0" class="p-8 text-center text-gray-400 font-medium">
                  Немає створених процесів
              </div>
              
              <div v-else class="divide-y divide-gray-100">
-                 <div v-for="group in processGroups" :key="group.id" class="p-6">
-                     <div class="flex justify-between items-center mb-4">
-                         <h4 class="font-bold text-xl text-gray-800">{{ group.name }}</h4>
-                         <button @click="handleDeleteGroup(group.id)" class="text-gray-300 hover:text-red-500 transition"><i class="fas fa-trash"></i></button>
-                     </div>
-
-                     <div class="space-y-2 mb-4">
-                         <div v-for="opt in group.options" :key="opt.id" class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
-                             <span class="text-gray-700 font-medium">{{ opt.name }}</span>
-                             <button @click="deleteProcessOption(opt.id)" class="text-red-300 hover:text-red-500"><i class="fas fa-times"></i></button>
+                 <div v-for="group in processGroups" :key="group.id" class="p-6 transition hover:bg-gray-50/50">
+                     
+                     <div v-if="editingGroupId === group.id" class="mb-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                         <div class="space-y-3">
+                             <input v-model="editGroupData.name" class="w-full border p-2 rounded-lg font-bold outline-none focus:ring-2 ring-indigo-300">
+                             <select v-model="editGroupData.parent_option_id" class="w-full border p-2 rounded-lg bg-white outline-none text-sm">
+                                 <option :value="null">-- З'являється завжди --</option>
+                                 <option v-for="opt in availableParentOptions" :key="opt.id" :value="opt.id" :disabled="opt.id === group.parent_option_id">
+                                     Залежить від: {{ opt.name }}
+                                 </option>
+                             </select>
+                             <div class="flex gap-2">
+                                 <button @click="saveGroupEdit" class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold">Зберегти</button>
+                                 <button @click="cancelEditGroup" class="bg-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-bold">Скасувати</button>
+                             </div>
                          </div>
                      </div>
 
-                     <button @click="addProcessOption(group.id)" class="w-full py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg hover:bg-indigo-100 border border-indigo-200 border-dashed">
-                         + Додати варіант (напр. "Під еспресо")
+                     <div v-else class="flex justify-between items-start mb-4">
+                         <div>
+                             <h4 class="font-bold text-xl text-gray-800">{{ group.name }}</h4>
+                             <div v-if="group.parent_option_id" class="mt-2 inline-flex items-center text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded-md font-black uppercase tracking-wider">
+                                 <i class="fas fa-link mr-1.5 opacity-70"></i> 
+                                 Залежить від: {{ getParentOptionName(group.parent_option_id) }}
+                             </div>
+                         </div>
+                         <div class="flex gap-1 ml-4">
+                             <button @click="startEditGroup(group)" class="text-gray-400 hover:text-indigo-600 transition bg-white rounded-full p-2 hover:bg-indigo-50">
+                                 <i class="fas fa-pen"></i>
+                             </button>
+                             <button @click="handleDeleteGroup(group.id)" class="text-gray-400 hover:text-red-500 transition bg-white rounded-full p-2 hover:bg-red-50">
+                                 <i class="fas fa-trash"></i>
+                             </button>
+                         </div>
+                     </div>
+
+                     <div class="space-y-2 mb-4 mt-3">
+                         <div v-for="opt in group.options" :key="opt.id">
+                             
+                             <div v-if="editingOptionId === opt.id" class="flex items-center gap-2 bg-yellow-50 px-3 py-2 rounded-lg border border-yellow-200 shadow-sm">
+                                 <input v-model="editOptionName" @keyup.enter="saveOptionEdit" class="flex-1 border p-1 rounded outline-none focus:ring-1 ring-yellow-400 font-bold text-sm bg-white" autofocus>
+                                 <button @click="saveOptionEdit" class="text-green-600 hover:text-green-700"><i class="fas fa-check"></i></button>
+                                 <button @click="cancelEditOption" class="text-gray-400 hover:text-red-500 ml-1"><i class="fas fa-times"></i></button>
+                             </div>
+
+                             <div v-else class="group flex items-center justify-between bg-white px-4 py-2.5 rounded-lg border border-gray-100 shadow-sm hover:border-gray-300 transition">
+                                 <span class="text-gray-700 font-bold text-sm">{{ opt.name }}</span>
+                                 <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                     <button @click="startEditOption(opt)" class="text-gray-300 hover:text-indigo-500"><i class="fas fa-pen"></i></button>
+                                     <button @click="deleteProcessOption(opt.id)" class="text-gray-300 hover:text-red-500"><i class="fas fa-trash"></i></button>
+                                 </div>
+                             </div>
+
+                         </div>
+                     </div>
+
+                     <button @click="addProcessOption(group.id)" class="w-full py-2.5 bg-indigo-50/50 text-indigo-600 font-bold text-sm rounded-lg hover:bg-indigo-50 border border-indigo-200 border-dashed transition">
+                         <i class="fas fa-plus mr-1"></i> Додати варіант
                      </button>
                  </div>
              </div>
@@ -8084,6 +8297,11 @@ pydantic
 from pydantic import BaseModel
 from typing import List, Optional
 
+# 🔥 ДОДАНО: Схема для замін пакування
+class ConsumableOverride(BaseModel):
+    original_id: int
+    new_id: Optional[int] = None
+
 class ModifierItem(BaseModel):
     modifier_id: int
 
@@ -8095,6 +8313,9 @@ class CartItemCreate(BaseModel):
     # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
     name: str 
     price: float
+
+    # 🔥 ДОДАНО: Поле для збереження замін пакування в кошику
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
 
 class CartItem(CartItemCreate):
     cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
@@ -8507,14 +8728,23 @@ class ProcessGroup(Base):
     __tablename__ = "process_groups"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String) # "Помол", "Молоко"
-    options = relationship("ProcessOption", back_populates="group", cascade="all, delete-orphan")
+
+    # 🔥 НОВЕ: Група може залежати від конкретної опції іншої групи
+    parent_option_id = Column(Integer, ForeignKey("process_options.id", ondelete="CASCADE"), nullable=True)
+
+    # Зв'язки
+    options = relationship("ProcessOption", foreign_keys="[ProcessOption.group_id]", back_populates="group", cascade="all, delete-orphan")
+    parent_option = relationship("ProcessOption", foreign_keys=[parent_option_id], back_populates="child_groups")
 
 class ProcessOption(Base):
     __tablename__ = "process_options"
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("process_groups.id"))
     name = Column(String) # "Дрібний", "Зерно"
-    group = relationship("ProcessGroup", back_populates="options")
+    # Зв'язки
+    group = relationship("ProcessGroup", foreign_keys=[group_id], back_populates="options")
+    # 🔥 Зворотний зв'язок: Групи, які з'являються ТІЛЬКИ якщо обрано цю опцію
+    child_groups = relationship("ProcessGroup", foreign_keys="[ProcessGroup.parent_option_id]", back_populates="parent_option")
 
 # --- ПРОДУКТИ ТА ВАРІАНТИ ---
 
@@ -8870,10 +9100,12 @@ class ProcessOption(ProcessOptionCreate):
 class ProcessGroupCreate(BaseModel):
     name: str 
     options: List[ProcessOptionCreate] = []
+    parent_option_id: Optional[int] = None
 
 class ProcessGroup(BaseModel):
     id: int
     name: str
+    parent_option_id: Optional[int] = None
     options: List[ProcessOption] = []
     class Config: from_attributes = True
 
@@ -9047,23 +9279,6 @@ class OrderRead(BaseModel):
     items: List[OrderItemRead]
     customer: Optional[Customer] = None
     class Config: from_attributes = True
-
-class ModifierItem(BaseModel):
-    modifier_id: int
-class CartItemCreate(BaseModel):
-    product_id: int
-    variant_id: Optional[int] = None
-    modifiers: List[ModifierItem] = []
-    quantity: int = 1
-    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
-    name: str 
-    price: float
-    
-    # 🔥 ДОДАНО: Поле для збереження замін пакування в кошику
-    consumable_overrides: Optional[List[ConsumableOverride]] = []
-
-class CartItem(CartItemCreate):
-    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)
 
 class ProductRoomRead(BaseModel):
     id: int
@@ -9499,18 +9714,37 @@ router = APIRouter(prefix="/processes", tags=["Processes"])
 # --- Групи (напр. Помол) ---
 @router.post("/groups/", response_model=schemas.ProcessGroup)
 def create_process_group(group: schemas.ProcessGroupCreate, db: Session = Depends(database.get_db)):
-    new_group = models.ProcessGroup(name=group.name)
-    db.add(new_group); db.commit(); db.refresh(new_group)
+    # 🔥 Зберігаємо parent_option_id
+    new_group = models.ProcessGroup(
+        name=group.name,
+        parent_option_id=group.parent_option_id 
+    )
+    db.add(new_group)
+    db.commit()
+    db.refresh(new_group)
     
     for opt in group.options:
         db.add(models.ProcessOption(group_id=new_group.id, name=opt.name))
     
-    db.commit(); db.refresh(new_group)
+    db.commit()
+    db.refresh(new_group)
     return new_group
+
+@router.put("/groups/{id}", response_model=schemas.ProcessGroup)
+def update_process_group(id: int, group_data: schemas.ProcessGroupCreate, db: Session = Depends(database.get_db)):
+    group = db.query(models.ProcessGroup).filter(models.ProcessGroup.id == id).first()
+    if not group: raise HTTPException(status_code=404)
+    
+    group.name = group_data.name
+    group.parent_option_id = group_data.parent_option_id
+    db.commit()
+    db.refresh(group)
+    return group
 
 @router.get("/groups/", response_model=List[schemas.ProcessGroup])
 def read_process_groups(db: Session = Depends(database.get_db)):
     return db.query(models.ProcessGroup).all()
+
 
 @router.delete("/groups/{id}")
 def delete_process_group(id: int, db: Session = Depends(database.get_db)):
@@ -9532,6 +9766,20 @@ def delete_process_option(id: int, db: Session = Depends(database.get_db)):
     if not opt: raise HTTPException(status_code=404)
     db.delete(opt); db.commit()
     return {"status": "deleted"}
+
+# 🔥 НОВЕ: Роут для редагування вже існуючої опції процесу
+@router.put("/options/{id}", response_model=schemas.ProcessOption)
+def update_process_option(id: int, option_data: schemas.ProcessOptionCreate, db: Session = Depends(database.get_db)):
+    opt = db.query(models.ProcessOption).filter(models.ProcessOption.id == id).first()
+    if not opt: 
+        raise HTTPException(status_code=404, detail="Опцію не знайдено")
+    
+    # Оновлюємо назву
+    opt.name = option_data.name
+    
+    db.commit()
+    db.refresh(opt)
+    return opt
 </file>
 
 <file path="product_service\routers\product_rooms.py" lang="py">
@@ -10295,14 +10543,45 @@ class InventoryService:
                 batch.quantity += difference # Оновлюємо початкову кількість партії
             db.add(batch)
             
-        # 3. Обробка БЕЗ партії (WAC або автоматичне FIFO)
+        # 3. Обробка БЕЗ партії (Автоматичне розподілення)
         else:
             if difference < 0:
                 deduct_amount = abs(difference)
-                # Якщо товар на FIFO, а партію не вибрали вручну - списуємо по стандартному FIFO
-                if getattr(target_obj, 'costing_method', 'wac') == 'fifo':
-                    InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
-            # Якщо це Лишок і WAC, ми просто змінюємо загальний баланс без створення нової партії (спрощений підхід)
+                # 🔥 ВИПРАВЛЕННЯ: Списуємо з найстаріших партій ЗАВЖДИ (і для FIFO, і для WAC), 
+                # щоб сума в партіях дорівнювала stock_quantity
+                InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
+            else:
+                # 🔥 ВИПРАВЛЕННЯ: Якщо це Лишок - створюємо НОВУ системну партію ЗАВЖДИ 
+                # (і для FIFO, і для WAC), щоб ця кількість з'явилась у випадаючих списках
+                
+                # Шукаємо останню ціну закупівлі цього товару для адекватної оцінки лишку
+                last_batch = db.query(models.SupplyItem).filter(
+                    models.SupplyItem.entity_type == request.entity_type,
+                    models.SupplyItem.entity_id == request.entity_id
+                ).order_by(models.SupplyItem.id.desc()).first()
+                
+                cost_unit = last_batch.cost_per_unit if last_batch else getattr(target_obj, 'cost_per_unit', 0.0)
+                
+                # Створюємо системну поставку-документ
+                system_supply = models.Supply(
+                    notes=f"Системна накладна (Коригування: {request.reason})",
+                    total_cost=difference * cost_unit
+                )
+                db.add(system_supply)
+                db.flush() # робимо flush, щоб отримати system_supply.id
+                
+                # Створюємо сам рядок партії
+                system_supply_item = models.SupplyItem(
+                    supply_id=system_supply.id,
+                    entity_type=request.entity_type,
+                    entity_id=request.entity_id,
+                    entity_name=getattr(target_obj, 'name', 'Unknown'),
+                    quantity=difference,
+                    remaining_quantity=difference,
+                    cost_per_unit=cost_unit,
+                    total_cost=difference * cost_unit
+                )
+                db.add(system_supply_item)
 
         # 4. Оновлюємо загальний залишок сутності
         target_obj.stock_quantity = request.actual_quantity
@@ -10420,7 +10699,7 @@ class OrderService:
                         # Гібридний облік для варіанту (Manual або FIFO)
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        elif getattr(variant, 'costing_method', 'wac') == 'fifo':
+                        else:
                             InventoryService.deduct_fifo(db, 'variant', variant.id, item.quantity)
                         
                         variant.stock_quantity -= item.quantity
@@ -10449,8 +10728,8 @@ class OrderService:
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
                                     # Облік за методом FIFO або WAC
-                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                                    
+                                    InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     # Оновлюємо фізичний залишок інгредієнта
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
@@ -10494,8 +10773,8 @@ class OrderService:
                             c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                             qty_to_deduct = v_cons.quantity * item.quantity
                             
-                            if getattr(cons, 'costing_method', 'wac') == 'fifo':
-                                InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+                            
+                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                             if cons.stock_quantity is None: cons.stock_quantity = 0.0
                             cons.stock_quantity -= qty_to_deduct
@@ -10521,7 +10800,7 @@ class OrderService:
                         
                         if getattr(item, 'batch_id', None):
                             InventoryService.deduct_manual(db, item.batch_id, item.quantity)
-                        elif getattr(product, 'costing_method', 'wac') == 'fifo':
+                        else:
                             InventoryService.deduct_fifo(db, 'product', product.id, item.quantity)
 
                         product.stock_quantity = current_stock - item.quantity
@@ -10549,8 +10828,8 @@ class OrderService:
                                     
                                     i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                                     
-                                    if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                                    
+                                    InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                                     if ing.stock_quantity is None: ing.stock_quantity = 0.0
                                     ing.stock_quantity -= deduction
@@ -10571,8 +10850,8 @@ class OrderService:
                         i_old = ing.stock_quantity if ing.stock_quantity is not None else 0.0
                         deduction = p_ing.quantity * item.quantity
                         
-                        if getattr(ing, 'costing_method', 'wac') == 'fifo':
-                            InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
+                        
+                        InventoryService.deduct_fifo(db, 'ingredient', ing.id, deduction)
 
                         if ing.stock_quantity is None: ing.stock_quantity = 0.0
                         ing.stock_quantity -= deduction
@@ -10603,8 +10882,8 @@ class OrderService:
                         c_old = cons.stock_quantity if cons.stock_quantity is not None else 0.0
                         qty_to_deduct = p_cons.quantity * item.quantity
                         
-                        if getattr(cons, 'costing_method', 'wac') == 'fifo':
-                            InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
+                        
+                        InventoryService.deduct_fifo(db, 'consumable', cons.id, qty_to_deduct)
 
                         if cons.stock_quantity is None: cons.stock_quantity = 0.0
                         cons.stock_quantity -= qty_to_deduct
@@ -10628,8 +10907,8 @@ class OrderService:
                             i_old = mod_ing.stock_quantity if mod_ing.stock_quantity is not None else 0.0
                             deduction = modifier.quantity * item.quantity
                             
-                            if getattr(mod_ing, 'costing_method', 'wac') == 'fifo':
-                                InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
+                            
+                            InventoryService.deduct_fifo(db, 'ingredient', mod_ing.id, deduction)
 
                             if mod_ing.stock_quantity is None: mod_ing.stock_quantity = 0.0
                             mod_ing.stock_quantity -= deduction

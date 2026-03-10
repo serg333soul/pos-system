@@ -123,10 +123,12 @@ class ProcessOption(ProcessOptionCreate):
 class ProcessGroupCreate(BaseModel):
     name: str 
     options: List[ProcessOptionCreate] = []
+    parent_option_id: Optional[int] = None
 
 class ProcessGroup(BaseModel):
     id: int
     name: str
+    parent_option_id: Optional[int] = None
     options: List[ProcessOption] = []
     class Config: from_attributes = True
 
