@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 81
-Lines: 11042
-Tokens: ~117465
+Files: 88
+Lines: 12532
+Tokens: ~132790
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -22,6 +22,8 @@ services:
     restart: always
     ports:
       - "8001:8000"
+    volumes:                   
+      - ./product_service:/app
     environment:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
@@ -137,6 +139,12 @@ frontend\vite.config.js
   └── 📦 Default Export
 frontend\src\App.vue
   └── 💾 State (ref): currentPage
+  └── 💾 State (ref): openingBalance
+  └── 💾 State (ref): isTransactionModalOpen
+  └── 💾 State (ref): isCloseShiftModalOpen
+  └── 💾 State (ref): txForm
+  └── 💾 State (ref): closeForm
+  └── ƒ  getAccountId
   └── 💾 State (ref): isRoomModalOpen
   └── 💾 State (ref): selectedRoom
   └── ƒ  handleRoomClick
@@ -145,9 +153,6 @@ frontend\src\App.vue
   └── ƒ  handleItemClick
   └── 💾 State (computed): independentFilteredProducts
   └── 💾 State (ref): isCartOpen
-  └── 💾 State (ref): isModalOpen
-  └── 💾 State (ref): selectedProduct
-  └── ƒ  handleProductClick
 frontend\src\components\common\IngredientSelect.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -184,6 +189,11 @@ frontend\src\components\crm\Customers.vue
 frontend\src\components\crm\CustomersTable.vue
   └── 📥 Props defined
   └── 📤 Emits defined
+frontend\src\components\finance\Finance.vue
+  └── 💾 State (ref): activeTab
+  └── ƒ  getAccountIcon
+  └── ƒ  getAccountName
+  └── ƒ  formatDate
 frontend\src\components\pos\CartDrawer.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -402,6 +412,13 @@ frontend\src\composables\useCustomers.js
   └── 💾 State (ref): customerOrders
   └── ƒ  openCreateModal
   └── ƒ  openEditModal
+frontend\src\composables\useFinance.js
+  └── 💾 State (ref): accounts
+  └── 💾 State (ref): categories
+  └── 💾 State (ref): activeShift
+  └── 💾 State (ref): transactions
+  └── 💾 State (ref): isLoading
+  └── 💾 State (ref): pnlReport
 frontend\src\composables\useProducts.js
   └── 💾 State (ref): newProduct
   └── 💾 State (ref): editingId
@@ -501,6 +518,12 @@ product_service\schemas.py
   └── 🗄️ Model: Consumable
   └── 📦 Class: Config
   └── 📄 Schema: ProductIngredientLink
+product_service\alembic\env.py
+  └── ƒ  run_migrations_offline
+  └── ƒ  run_migrations_online
+product_service\alembic\versions\3c0490389ed9_add_finance_module.py
+  └── ƒ  upgrade
+  └── ƒ  downgrade
 product_service\routers\adjustments.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  adjust_stock
@@ -526,6 +549,22 @@ product_service\routers\customers.py
   └── ƒ  delete_customer
   └── 🌐 Endpoint: @router.get
   └── ƒ  read_customer_orders
+product_service\routers\finance.py
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_account
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_accounts
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  create_category
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_categories
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  open_shift
+  └── 🌐 Endpoint: @router.post
+  └── ƒ  close_shift
+  └── 🌐 Endpoint: @router.get
+  └── ƒ  get_active_shift
+  └── 🌐 Endpoint: @router.post
 product_service\routers\inventory.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_unit
@@ -547,6 +586,8 @@ product_service\routers\orders.py
   └── ƒ  checkout
   └── 🌐 Endpoint: @router.get
   └── ƒ  get_orders
+  └── 🌐 Endpoint: @router.delete
+  └── ƒ  delete_order
 product_service\routers\processes.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  create_process_group
@@ -613,6 +654,11 @@ product_service\routers\supplies.py
   └── ƒ  get_supplies
   └── 🌐 Endpoint: @router.get
   └── ƒ  get_available_batches
+product_service\services\finance_service.py
+  └── ƒ  create_transaction
+  └── ƒ  transfer_funds
+  └── ƒ  open_shift
+  └── ƒ  close_shift
 product_service\services\inventory_logger.py
   └── 📦 Class: InventoryLogger
   └── ƒ  log
@@ -691,6 +737,8 @@ product_service\tests\test_warehouse.py
                     📄 CustomerHistoryModal.vue
                     📄 Customers.vue
                     📄 CustomersTable.vue
+                📂 finance/
+                    📄 Finance.vue
                 📂 pos/
                     📄 CartDrawer.vue
                     📄 ProductCard.vue
@@ -722,6 +770,7 @@ product_service\tests\test_warehouse.py
             📂 composables/
                 📄 useCart.js
                 📄 useCustomers.js
+                📄 useFinance.js
                 📄 useProducts.js
                 📄 useStatistics.js
                 📄 useSupplies.js
@@ -733,6 +782,7 @@ product_service\tests\test_warehouse.py
         📄 schemas.py
     📂 product_service/
         📄 Dockerfile
+        📄 alembic.ini
         📄 database.py
         📄 db_audit.py
         📄 local_db_audit.txt
@@ -740,11 +790,16 @@ product_service\tests\test_warehouse.py
         📄 models.py
         📄 requirements.txt
         📄 schemas.py
+        📂 alembic/
+            📄 env.py
+            📂 versions/
+                📄 3c0490389ed9_add_finance_module.py
         📂 routers/
             📄 __init__.py
             📄 adjustments.py
             📄 categories.py
             📄 customers.py
+            📄 finance.py
             📄 inventory.py
             📄 orders.py
             📄 processes.py
@@ -754,6 +809,7 @@ product_service\tests\test_warehouse.py
             📄 supplies.py
         📂 services/
             📄 __init__.py
+            📄 finance_service.py
             📄 inventory_logger.py
             📄 inventory_service.py
             📄 order_service.py
@@ -799,6 +855,8 @@ services:
     restart: always
     ports:
       - "8001:8000"
+    volumes:                   
+      - ./product_service:/app
     environment:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
@@ -1137,11 +1195,13 @@ import ProductRoomModal from '@/components/pos/ProductRoomModal.vue'; // 🔥 І
 import Warehouse from '@/components/warehouse/Warehouse.vue'
 import Statistics from '@/components/stats/Statistics.vue'
 import Customers from '@/components/crm/Customers.vue'
+import Finance from '@/components/finance/Finance.vue'
 
 // --- Імпортуємо логіку (Composables) ---
 import { useProducts } from '@/composables/useProducts'
 import { useCart } from '@/composables/useCart'
 import { useWarehouse } from '@/composables/useWarehouse'
+import { useFinance } from '@/composables/useFinance'
 
 // Стан навігації
 const currentPage = ref('pos')
@@ -1160,6 +1220,86 @@ const {
   cartCount, 
   fetchCart // Щоб оновити лічильник при старті
 } = useCart()
+
+// 🔥 НОВЕ: Логіка фінансів та касової зміни
+const { 
+  activeShift, checkActiveShift, openShift, closeShift, 
+  createTransaction, accounts, fetchAccounts, isLoading: isFinanceLoading 
+} = useFinance()
+const openingBalance = ref('')
+
+// Стан для фінансових модалок
+const isTransactionModalOpen = ref(false)
+const isCloseShiftModalOpen = ref(false)
+
+// Форми даних
+const txForm = ref({ amount: '', type: 'EXPENSE', description: '' })
+const closeForm = ref({ actualBalance: '', transferToSafe: '' })
+
+// Допоміжна функція пошуку рахунків
+const getAccountId = (typeStr, nameStr = '') => {
+  const acc = accounts.value.find(a => a.type === typeStr || (nameStr && a.name.includes(nameStr)))
+  return acc ? acc.id : 1
+}
+
+// Обробка Внесення/Винесення
+const handleTransaction = async () => {
+  if (!txForm.value.amount || txForm.value.amount <= 0) return alert("Введіть коректну суму")
+  
+  const cashId = getAccountId('cash') // Знаходимо ID Каси
+  const amount = txForm.value.type === 'EXPENSE' ? -Math.abs(txForm.value.amount) : Math.abs(txForm.value.amount)
+
+  const payload = {
+    amount: amount,
+    account_id: cashId,
+    shift_id: activeShift.value.id,
+    user_id: 1, // Тимчасово, поки немає авторизації
+    description: txForm.value.description || (txForm.value.type === 'EXPENSE' ? 'Службове винесення' : 'Службове внесення')
+  }
+
+  const success = await createTransaction(payload)
+  if (success) {
+    isTransactionModalOpen.value = false
+    txForm.value = { amount: '', type: 'EXPENSE', description: '' }
+    // Можна додати тост-сповіщення "Успішно"
+  }
+}
+
+// Обробка Z-звіту
+const handleCloseShift = async () => {
+  if (closeForm.value.actualBalance === '') return alert("Введіть фактичну суму в касі")
+
+  const cashId = getAccountId('cash')
+  const safeId = getAccountId('safe', 'сейф') // Знаходимо ID Сейфу
+
+  const success = await closeShift(
+    activeShift.value.id,
+    Number(closeForm.value.actualBalance),
+    Number(closeForm.value.transferToSafe || 0),
+    cashId,
+    safeId,
+    1 // user_id
+  )
+
+  if (success) {
+    isCloseShiftModalOpen.value = false
+    closeForm.value = { actualBalance: '', transferToSafe: '' }
+    // Зміна закрита, activeShift стане null, і автоматично з'явиться екран блокування!
+  }
+}
+
+// Функція для кнопки "Відкрити зміну"
+const handleOpenShift = async () => {
+    if (openingBalance.value === '' || Number(openingBalance.value) < 0) {
+        alert("Введіть коректну суму розмінки")
+        return
+    }
+    // Передаємо user_id = 1 (в майбутньому тут буде ID авторизованого касира)
+    const success = await openShift(1, Number(openingBalance.value))
+    if (success) {
+        openingBalance.value = '' // Очищаємо поле після успішного відкриття
+    }
+}
 
 // Стан для кімнат
 const isRoomModalOpen = ref(false)
@@ -1234,6 +1374,8 @@ onMounted(async() => {
   // ВІДРАЗУ завантажуємо вміст кошика з сервера
   // Це наповнить cartItems і активує "м'яку броню" для ProductModal
   await fetchCart()
+  await checkActiveShift() 
+  await fetchAccounts() // Для фінансових операцій
 })
 </script>
 
@@ -1242,6 +1384,30 @@ onMounted(async() => {
     <Sidebar :current-page="currentPage" @change-page="(page) => currentPage = page" />
 
     <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
+      <div v-if="activeShift === null" class="absolute inset-0 z-50 bg-gray-50/95 backdrop-blur-sm flex flex-col items-center justify-center p-8">
+          <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-gray-100 animate-fade-in-up">
+              <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-500 text-3xl">
+                  <i class="fas fa-lock"></i>
+              </div>
+              <h2 class="text-3xl font-bold text-gray-800 mb-2">Зміна закрита</h2>
+              <p class="text-gray-500 mb-8 leading-relaxed">Для початку роботи каси введіть суму розмінної монети (готівку в шухляді на даний момент).</p>
+              
+              <div class="text-left mb-8">
+                  <label class="block text-xs font-bold text-gray-500 uppercase mb-3 text-center">Розмінна монета (Готівка, ₴)</label>
+                  <div class="relative">
+                      <span class="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xl">₴</span>
+                      <input v-model="openingBalance" type="number" min="0" placeholder="0" 
+                             class="w-full text-3xl font-black text-center border-2 border-gray-200 py-4 px-10 rounded-2xl bg-gray-50 focus:bg-white focus:border-indigo-500 outline-none transition-all shadow-inner">
+                  </div>
+              </div>
+
+              <button @click="handleOpenShift" :disabled="isFinanceLoading" 
+                      class="w-full bg-indigo-600 text-white text-lg py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 hover:-translate-y-1">
+                  <span v-if="isFinanceLoading"><i class="fas fa-spinner fa-spin mr-2"></i> Відкриття...</span>
+                  <span v-else>Відкрити зміну</span>
+              </button>
+          </div>
+      </div>
       <!-- Header залишаємо без змін, він працює добре -->
       <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200 px-8 py-4 flex justify-between items-center">
         <div>
@@ -1251,7 +1417,14 @@ onMounted(async() => {
              <input v-model="productSearch" type="text" placeholder="Пошук кави..." class="bg-transparent outline-none text-sm w-64">
           </div>
         </div>
-        
+        <div v-if="activeShift" class="flex items-center gap-2 border-r pr-4 border-gray-200">
+            <button @click="isTransactionModalOpen = true" class="text-gray-600 hover:bg-gray-100 px-4 py-2 rounded-xl font-medium transition">
+              <i class="fas fa-money-bill-transfer mr-2"></i> Внесення/Винесення
+            </button>
+            <button @click="isCloseShiftModalOpen = true" class="text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl font-bold transition">
+              <i class="fas fa-cash-register mr-2"></i> Z-Звіт
+            </button>
+        </div>
         <button @click="isCartOpen = true" class="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg flex items-center gap-3 active:scale-95">
           <i class="fas fa-shopping-cart"></i> <span>Кошик: {{ cartCount }}</span>
         </button>
@@ -1320,7 +1493,67 @@ onMounted(async() => {
     <Warehouse v-if="currentPage === 'warehouse'" />
     <Statistics v-if="currentPage === 'statistics'" />
     <Customers v-if="currentPage === 'customers'" />
+    <Finance v-if="currentPage === 'finance'" />
   </div>
+  <div v-if="isTransactionModalOpen" class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold">Службова операція</h3>
+            <button @click="isTransactionModalOpen = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+          </div>
+          
+          <div class="flex gap-2 mb-4">
+            <button @click="txForm.type = 'EXPENSE'" :class="txForm.type === 'EXPENSE' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500 border-transparent'" class="flex-1 py-3 border rounded-xl font-bold transition">Винесення</button>
+            <button @click="txForm.type = 'INCOME'" :class="txForm.type === 'INCOME' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-500 border-transparent'" class="flex-1 py-3 border rounded-xl font-bold transition">Внесення</button>
+          </div>
+
+          <div class="space-y-4 mb-6">
+            <div>
+              <label class="block text-sm text-gray-500 mb-1">Сума (₴)</label>
+              <input v-model="txForm.amount" type="number" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 text-lg font-bold">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-500 mb-1">Коментар</label>
+              <input v-model="txForm.description" type="text" placeholder="Наприклад: Оплата за воду" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500">
+            </div>
+          </div>
+
+          <button @click="handleTransaction" :disabled="isFinanceLoading" class="w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition disabled:opacity-50">
+            <span v-if="isFinanceLoading"><i class="fas fa-spinner fa-spin"></i></span>
+            <span v-else>Провести операцію</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="isCloseShiftModalOpen" class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 border-t-8 border-red-500">
+          <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl"><i class="fas fa-file-invoice-dollar"></i></div>
+            <h3 class="text-2xl font-bold text-gray-800">Закриття зміни (Z-Звіт)</h3>
+            <p class="text-gray-500 text-sm mt-1">Перерахуйте готівку в касі та заповніть поля</p>
+          </div>
+
+          <div class="space-y-4 mb-8">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">Фактично в касі (₴)</label>
+              <input v-model="closeForm.actualBalance" type="number" placeholder="0" class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-red-400 text-2xl text-center font-black">
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">Вилучити в сейф (Інкасація ₴)</label>
+              <input v-model="closeForm.transferToSafe" type="number" placeholder="Скільки забираєте з каси" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-red-400 text-lg text-center font-bold">
+              <p class="text-xs text-gray-400 text-center mt-2">Різниця залишиться як розмінка на наступний день</p>
+            </div>
+          </div>
+
+          <div class="flex gap-3">
+            <button @click="isCloseShiftModalOpen = false" class="flex-1 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition">Скасувати</button>
+            <button @click="handleCloseShift" :disabled="isFinanceLoading" class="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition disabled:opacity-50 shadow-lg shadow-red-200">
+              <span v-if="isFinanceLoading"><i class="fas fa-spinner fa-spin"></i></span>
+              <span v-else>Закрити зміну</span>
+            </button>
+          </div>
+        </div>
+      </div>
 </template>
 
 </file>
@@ -1487,6 +1720,12 @@ const menuItems = [
     label: 'Статистика', 
     icon: 'fas fa-chart-line', 
     activeClass: 'text-purple-400 border-l-4 border-purple-400 bg-gray-800' 
+  },
+  { 
+    id: 'finance', 
+    label: 'Фінанси', 
+    icon: 'fas fa-wallet', 
+    activeClass: 'text-indigo-400 border-l-4 border-indigo-400 bg-gray-800' 
   }
 ]
 
@@ -1984,6 +2223,233 @@ const emit = defineEmits(['edit', 'delete', 'history'])
         </tr>
       </tbody>
     </table>
+  </div>
+</template>
+</file>
+
+<file path="frontend\src\components\finance\Finance.vue" lang="vue">
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useFinance } from '@/composables/useFinance'
+
+const { accounts, transactions, pnlReport, fetchAccounts, fetchTransactions, fetchPnlReport, isLoading } = useFinance()
+
+// Вкладки: 'accounts' (Рахунки), 'transactions' (Історія), 'pnl' (Звіти)
+const activeTab = ref('accounts')
+
+onMounted(async () => {
+    await fetchAccounts()
+    await fetchTransactions()
+    await fetchPnlReport()
+})
+
+// Допоміжна функція для іконок рахунків
+const getAccountIcon = (type) => {
+    if (type === 'cash') return 'fa-cash-register text-green-500 bg-green-100'
+    if (type === 'bank') return 'fa-credit-card text-blue-500 bg-blue-100'
+    if (type === 'safe') return 'fa-vault text-purple-500 bg-purple-100'
+    return 'fa-wallet text-gray-500 bg-gray-100'
+}
+
+const getAccountName = (accountId) => {
+    const acc = accounts.value.find(a => a.id === accountId)
+    return acc ? acc.name : 'Невідомий рахунок'
+}
+
+const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    // Додаємо локальний час замість UTC
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    return localDate.toLocaleString('uk-UA', { 
+        day: '2-digit', month: '2-digit', year: 'numeric', 
+        hour: '2-digit', minute: '2-digit' 
+    })
+}
+</script>
+
+<template>
+  <div class="flex-1 ml-64 bg-gray-50 min-h-screen">
+    <header class="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 z-10">
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-3xl font-black text-gray-800">Управління фінансами</h2>
+          <p class="text-gray-500 mt-1">Контроль рахунків, транзакцій та прибутку</p>
+        </div>
+        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2">
+            <i class="fas fa-plus"></i> Новий рахунок
+        </button>
+      </div>
+
+      <div class="flex gap-8 border-b border-gray-100">
+        <button @click="activeTab = 'accounts'" :class="activeTab === 'accounts' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-800'" class="pb-4 font-bold border-b-2 transition">Рахунки та Баланси</button>
+        <button @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-800'" class="pb-4 font-bold border-b-2 transition">Історія (Ledger)</button>
+        <button @click="activeTab = 'pnl'" :class="activeTab === 'pnl' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-800'" class="pb-4 font-bold border-b-2 transition">P&L (Прибутки і збитки)</button>
+      </div>
+    </header>
+
+    <main class="p-8">
+      
+      <div v-if="activeTab === 'accounts'" class="animate-fade-in-up">
+        <div v-if="isLoading" class="text-center py-20 text-gray-400">
+          <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+          <p>Завантаження рахунків...</p>
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div v-for="account in accounts" :key="account.id" class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition">
+            <div class="flex items-start justify-between mb-8">
+              <div :class="getAccountIcon(account.type)" class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl">
+                <i class="fas" :class="getAccountIcon(account.type).split(' ')[0]"></i>
+              </div>
+              <span class="bg-gray-100 text-gray-600 text-xs font-bold px-3 py-1 rounded-full uppercase">{{ account.type }}</span>
+            </div>
+            
+            <h3 class="text-xl font-bold text-gray-800 mb-1">{{ account.name }}</h3>
+            <p class="text-sm text-gray-400 mb-4">ID Рахунку: #{{ account.id }}</p>
+            
+            <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+              <span class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Поточний баланс</span>
+              <div class="flex items-baseline gap-1">
+                <span class="text-3xl font-black text-gray-900">{{ Number(account.balance).toLocaleString('uk-UA') }}</span>
+                <span class="text-lg font-bold text-gray-500">{{ account.currency }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'transactions'" class="bg-white rounded-3xl p-10 text-center border border-gray-100 text-gray-400">
+        <i class="fas fa-list text-6xl mb-4 opacity-20"></i>
+        <h3 class="text-xl font-bold text-gray-600">Історія транзакцій</h3>
+        <div v-if="activeTab === 'transactions'" class="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm animate-fade-in-up">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-gray-800">Історія операцій</h3>
+            <button @click="fetchTransactions()" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-2 transition">
+                <i class="fas fa-sync-alt" :class="{'fa-spin': isLoading}"></i> Оновити
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-500 text-sm border-b border-gray-100">
+                        <th class="p-4 font-bold rounded-tl-2xl">Дата та Час</th>
+                        <th class="p-4 font-bold">Рахунок</th>
+                        <th class="p-4 font-bold">Деталі транзакції</th>
+                        <th class="p-4 font-bold text-right rounded-tr-2xl">Сума</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="tx in transactions" :key="tx.id" class="border-b border-gray-50 hover:bg-gray-50 transition group">
+                        
+                        <td class="p-4 text-sm text-gray-500 font-medium">
+                            {{ formatDate(tx.timestamp) }}
+                        </td>
+                        
+                        <td class="p-4">
+                            <span class="font-bold text-gray-700 bg-white px-3 py-1 border border-gray-200 rounded-lg shadow-sm">
+                                {{ getAccountName(tx.account_id) }}
+                            </span>
+                        </td>
+                        
+                        <td class="p-4">
+                            <div class="text-sm font-bold text-gray-800 mb-1">
+                                {{ tx.description || 'Системна операція' }}
+                            </div>
+                            <div class="flex gap-2">
+                                <span v-if="tx.reference_type === 'order'" class="text-[10px] font-bold uppercase tracking-wider bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded cursor-pointer hover:bg-yellow-200">
+                                    Чек #{{ tx.reference_id }}
+                                </span>
+                                <span v-if="tx.reference_type === 'supply'" class="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-200">
+                                    Постачання #{{ tx.reference_id }}
+                                </span>
+                            </div>
+                        </td>
+                        
+                        <td class="p-4 text-right">
+                            <span :class="tx.amount > 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'" 
+                                  class="px-3 py-1 rounded-xl font-black text-lg inline-block min-w-[100px] text-center">
+                                {{ tx.amount > 0 ? '+' : '' }}{{ Number(tx.amount).toLocaleString('uk-UA') }} ₴
+                            </span>
+                        </td>
+                    </tr>
+                    
+                    <tr v-if="transactions.length === 0">
+                        <td colspan="4" class="p-12 text-center text-gray-400">
+                            <i class="fas fa-receipt text-5xl mb-4 opacity-20"></i>
+                            <p class="text-lg">Транзакцій поки немає</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+      </div>
+      </div>
+
+      <div v-if="activeTab === 'pnl'" class="bg-white rounded-3xl p-10 text-center border border-gray-100 text-gray-400">
+        <i class="fas fa-chart-pie text-6xl mb-4 opacity-20"></i>
+        <h3 class="text-xl font-bold text-gray-600">Звіт P&L</h3>
+        <div v-if="activeTab === 'pnl'" class="animate-fade-in-up">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-gray-800">Фінансовий звіт (P&L)</h3>
+            <button @click="fetchPnlReport()" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-2 transition">
+                <i class="fas fa-sync-alt" :class="{'fa-spin': isLoading}"></i> Оновити
+            </button>
+        </div>
+
+        <div v-if="pnlReport" class="space-y-6">
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <span class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 block">Загальний дохід</span>
+              <div class="text-3xl font-black text-green-600">{{ Number(pnlReport.total_income).toLocaleString('uk-UA') }} ₴</div>
+            </div>
+            
+            <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <span class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 block">Загальні витрати</span>
+              <div class="text-3xl font-black text-red-600">-{{ Number(pnlReport.total_expense).toLocaleString('uk-UA') }} ₴</div>
+            </div>
+
+            <div class="bg-indigo-600 rounded-3xl p-6 shadow-lg shadow-indigo-200 text-white">
+              <span class="text-sm font-bold text-indigo-200 uppercase tracking-wider mb-2 block">Чистий прибуток (Net Profit)</span>
+              <div class="text-4xl font-black">
+                {{ pnlReport.net_profit > 0 ? '+' : '' }}{{ Number(pnlReport.net_profit).toLocaleString('uk-UA') }} ₴
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <h4 class="text-lg font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2"><i class="fas fa-arrow-down text-green-500 mr-2"></i> Структура доходів</h4>
+              <ul class="space-y-3">
+                <li v-for="(amount, categoryName) in pnlReport.income" :key="categoryName" class="flex justify-between items-center bg-gray-50 px-4 py-3 rounded-xl">
+                  <span class="font-medium text-gray-700">{{ categoryName }}</span>
+                  <span class="font-bold text-green-600">{{ Number(amount).toLocaleString('uk-UA') }} ₴</span>
+                </li>
+                <li v-if="Object.keys(pnlReport.income).length === 0" class="text-gray-400 text-center py-4 text-sm">Доходів поки немає</li>
+              </ul>
+            </div>
+
+            <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <h4 class="text-lg font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2"><i class="fas fa-arrow-up text-red-500 mr-2"></i> Структура витрат</h4>
+              <ul class="space-y-3">
+                <li v-for="(amount, categoryName) in pnlReport.expense" :key="categoryName" class="flex justify-between items-center bg-gray-50 px-4 py-3 rounded-xl">
+                  <span class="font-medium text-gray-700">{{ categoryName }}</span>
+                  <span class="font-bold text-red-600">-{{ Number(amount).toLocaleString('uk-UA') }} ₴</span>
+                </li>
+                <li v-if="Object.keys(pnlReport.expense).length === 0" class="text-gray-400 text-center py-4 text-sm">Витрат поки немає</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      </div>
+
+    </main>
   </div>
 </template>
 </file>
@@ -7587,6 +8053,165 @@ export function useCustomers() {
 }
 </file>
 
+<file path="frontend\src\composables\useFinance.js" lang="js">
+import { ref } from 'vue'
+
+export function useFinance() {
+    const accounts = ref([])
+    const categories = ref([])
+    const activeShift = ref(null)
+    const transactions = ref([])
+    const isLoading = ref(false)
+    const pnlReport = ref(null)
+
+    // --- БАЗОВІ ДАНІ ---
+    const fetchAccounts = async () => {
+        try {
+            const res = await fetch('/api/finance/accounts/')
+            if (res.ok) accounts.value = await res.json()
+        } catch (e) { console.error("Помилка завантаження рахунків:", e) }
+    }
+
+    const fetchCategories = async () => {
+        try {
+            const res = await fetch('/api/finance/categories/')
+            if (res.ok) categories.value = await res.json()
+        } catch (e) { console.error("Помилка завантаження категорій:", e) }
+    }
+
+    // 🔥 НОВА ФУНКЦІЯ: Завантаження історії транзакцій
+    const fetchTransactions = async (accountId = null) => {
+        isLoading.value = true
+        try {
+            let url = '/api/finance/transactions/'
+            if (accountId) url += `?account_id=${accountId}`
+            
+            const res = await fetch(url)
+            if (res.ok) {
+                transactions.value = await res.json()
+            }
+        } catch (e) { 
+            console.error("Помилка завантаження транзакцій:", e) 
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    const fetchPnlReport = async () => {
+        isLoading.value = true
+        try {
+            const res = await fetch('/api/finance/report/pnl')
+            if (res.ok) {
+                pnlReport.value = await res.json()
+            }
+        } catch (e) { 
+            console.error("Помилка завантаження P&L:", e) 
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    // --- КАСОВІ ЗМІНИ ---
+    const checkActiveShift = async () => {
+        try {
+            const res = await fetch('/api/finance/shifts/active')
+            if (res.ok) {
+                const data = await res.json()
+                activeShift.value = data || null // null, якщо зміна закрита
+            }
+        } catch (e) { console.error("Помилка перевірки зміни:", e) }
+    }
+
+    const openShift = async (userId, openingBalance) => {
+        isLoading.value = true
+        try {
+            const res = await fetch('/api/finance/shifts/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, opening_balance: openingBalance })
+            })
+            if (res.ok) {
+                activeShift.value = await res.json()
+                return true
+            }
+            const error = await res.json()
+            alert(`Помилка: ${error.detail}`)
+            return false
+        } catch (e) {
+            console.error("Помилка відкриття зміни:", e)
+            return false
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    const closeShift = async (shiftId, actualBalance, transferToSafe, cashAccountId, safeAccountId, userId) => {
+        isLoading.value = true
+        try {
+            const res = await fetch(`/api/finance/shifts/${shiftId}/close?cash_account_id=${cashAccountId}&safe_account_id=${safeAccountId}&user_id=${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    closing_balance_actual: actualBalance,
+                    transfer_to_safe_amount: transferToSafe
+                })
+            })
+            if (res.ok) {
+                activeShift.value = null
+                return true
+            }
+            const error = await res.json()
+            alert(`Помилка: ${error.detail}`)
+            return false
+        } catch (e) {
+            console.error("Помилка закриття зміни:", e)
+            return false
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    // --- ТРАНЗАКЦІЇ (СЛУЖБОВЕ ВНЕСЕННЯ/ВИНЕСЕННЯ) ---
+    const createTransaction = async (payload) => {
+        isLoading.value = true
+        try {
+            const res = await fetch('/api/finance/transactions/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            if (res.ok) return true
+            
+            const error = await res.json()
+            alert(`Помилка транзакції: ${error.detail}`)
+            return false
+        } catch (e) {
+            console.error("Помилка транзакції:", e)
+            return false
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    return {
+        accounts,
+        categories,
+        activeShift,
+        transactions,
+        pnlReport,
+        isLoading,
+        fetchAccounts,
+        fetchCategories,
+        checkActiveShift,
+        openShift,
+        closeShift,
+        createTransaction,
+        fetchTransactions,
+        fetchPnlReport
+    }
+}
+</file>
+
 <file path="frontend\src\composables\useProducts.js" lang="js">
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
@@ -8400,6 +9025,157 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 </file>
 
+<file path="product_service\alembic.ini" lang="ini">
+# A generic, single database configuration.
+
+[alembic]
+# path to migration scripts.
+# this is typically a path given in POSIX (e.g. forward slashes)
+# format, relative to the token %(here)s which refers to the location of this
+# ini file
+script_location = %(here)s/alembic
+
+# template used to generate migration file names; The default value is %%(rev)s_%%(slug)s
+# Uncomment the line below if you want the files to be prepended with date and time
+# see https://alembic.sqlalchemy.org/en/latest/tutorial.html#editing-the-ini-file
+# for all available tokens
+# file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+
+# sys.path path, will be prepended to sys.path if present.
+# defaults to the current working directory.  for multiple paths, the path separator
+# is defined by "path_separator" below.
+prepend_sys_path = .
+
+
+# timezone to use when rendering the date within the migration file
+# as well as the filename.
+# If specified, requires the python>=3.9 or backports.zoneinfo library and tzdata library.
+# Any required deps can installed by adding `alembic[tz]` to the pip requirements
+# string value is passed to ZoneInfo()
+# leave blank for localtime
+# timezone =
+
+# max length of characters to apply to the "slug" field
+# truncate_slug_length = 40
+
+# set to 'true' to run the environment during
+# the 'revision' command, regardless of autogenerate
+# revision_environment = false
+
+# set to 'true' to allow .pyc and .pyo files without
+# a source .py file to be detected as revisions in the
+# versions/ directory
+# sourceless = false
+
+# version location specification; This defaults
+# to <script_location>/versions.  When using multiple version
+# directories, initial revisions must be specified with --version-path.
+# The path separator used here should be the separator specified by "path_separator"
+# below.
+# version_locations = %(here)s/bar:%(here)s/bat:%(here)s/alembic/versions
+
+# path_separator; This indicates what character is used to split lists of file
+# paths, including version_locations and prepend_sys_path within configparser
+# files such as alembic.ini.
+# The default rendered in new alembic.ini files is "os", which uses os.pathsep
+# to provide os-dependent path splitting.
+#
+# Note that in order to support legacy alembic.ini files, this default does NOT
+# take place if path_separator is not present in alembic.ini.  If this
+# option is omitted entirely, fallback logic is as follows:
+#
+# 1. Parsing of the version_locations option falls back to using the legacy
+#    "version_path_separator" key, which if absent then falls back to the legacy
+#    behavior of splitting on spaces and/or commas.
+# 2. Parsing of the prepend_sys_path option falls back to the legacy
+#    behavior of splitting on spaces, commas, or colons.
+#
+# Valid values for path_separator are:
+#
+# path_separator = :
+# path_separator = ;
+# path_separator = space
+# path_separator = newline
+#
+# Use os.pathsep. Default configuration used for new projects.
+path_separator = os
+
+# set to 'true' to search source files recursively
+# in each "version_locations" directory
+# new in Alembic version 1.10
+# recursive_version_locations = false
+
+# the output encoding used when revision files
+# are written from script.py.mako
+# output_encoding = utf-8
+
+# database URL.  This is consumed by the user-maintained env.py script only.
+# other means of configuring database URLs may be customized within the env.py
+# file.
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+
+[post_write_hooks]
+# post_write_hooks defines scripts or Python functions that are run
+# on newly generated revision scripts.  See the documentation for further
+# detail and examples
+
+# format using "black" - use the console_scripts runner, against the "black" entrypoint
+# hooks = black
+# black.type = console_scripts
+# black.entrypoint = black
+# black.options = -l 79 REVISION_SCRIPT_FILENAME
+
+# lint with attempts to fix using "ruff" - use the module runner, against the "ruff" module
+# hooks = ruff
+# ruff.type = module
+# ruff.module = ruff
+# ruff.options = check --fix REVISION_SCRIPT_FILENAME
+
+# Alternatively, use the exec runner to execute a binary found on your PATH
+# hooks = ruff
+# ruff.type = exec
+# ruff.executable = ruff
+# ruff.options = check --fix REVISION_SCRIPT_FILENAME
+
+# Logging configuration.  This is also consumed by the user-maintained
+# env.py script only.
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARNING
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARNING
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
+
+</file>
+
 <file path="product_service\database.py" lang="py">
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -8669,7 +9445,8 @@ from routers import (
     orders,
     product_rooms,
     supplies,
-    adjustments
+    adjustments,
+    finance
 )
 
 app = FastAPI(title="HITS POS Product Service", version="2.0.0")
@@ -8698,6 +9475,7 @@ app.include_router(customers.router)
 app.include_router(product_rooms.router)
 app.include_router(supplies.router)
 app.include_router(adjustments.router)
+app.include_router(finance.router)     # /finance/accounts, /finance/categories, /finance/transactions, /finance/transfers
 
 @app.get("/")
 def read_root():
@@ -8709,7 +9487,7 @@ def read_root():
 </file>
 
 <file path="product_service\models.py" lang="py">
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON, Numeric, Text
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
@@ -9024,7 +9802,108 @@ class SupplyItem(Base):
     total_cost = Column(Float)    # Загальна вартість рядка
     
     supply = relationship("Supply", back_populates="items")
+
+# ==========================================
+# ФІНАНСОВИЙ МОДУЛЬ (LEDGER)
+# ==========================================
+
+class Account(Base):
+    """
+    Таблиця Рахунків. 
+    Фізичні або віртуальні місця, де зберігаються гроші.
+    """
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # Назва (напр. "Каса 1", "Головний сейф")
+    type = Column(String) # Тип: 'cash' (готівка), 'bank' (еквайринг/банк), 'safe' (сейф)
+    currency = Column(String, default="UAH") # Мультивалютність (UAH, USD, EUR)
     
+    # Використовуємо Numeric(12, 2) для грошей: 12 цифр всього, 2 після коми.
+    # Це кешований баланс для швидкого виведення на фронтенді.
+    # Реальний баланс завжди можна перерахувати як суму всіх транзакцій.
+    balance = Column(Numeric(12, 2), default=0.00) 
+    is_active = Column(Boolean, default=True) # Чи можна використовувати цей рахунок
+
+    # Зв'язок з транзакціями (один рахунок має багато транзакцій)
+    transactions = relationship("Transaction", back_populates="account")
+
+
+class TransactionCategory(Base):
+    """
+    Таблиця Категорій транзакцій (Статті витрат/доходів).
+    Необхідна для побудови P&L звітів.
+    """
+    __tablename__ = "transaction_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String) # Напр. "Оренда", "Продаж товарів", "Інкасація"
+    type = Column(String) # 'INCOME' (Дохід), 'EXPENSE' (Витрата), 'SERVICE' (Службове)
+    
+    # Для створення дерева категорій (напр. Витрати -> Зарплата -> ЗП Бариста)
+    parent_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="SET NULL"), nullable=True)
+    
+    transactions = relationship("Transaction", back_populates="category")
+
+
+class Shift(Base):
+    """
+    Таблиця Касових змін.
+    Прив'язує фінансові рухи до конкретного робочого дня та касира.
+    """
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True) # ID користувача (касира), який відкрив зміну
+    opened_at = Column(DateTime, default=datetime.utcnow) # Час відкриття
+    closed_at = Column(DateTime, nullable=True) # Час закриття (якщо null - зміна триває)
+    
+    # Фінансові показники зміни
+    opening_balance = Column(Numeric(12, 2), default=0.00) # Гроші в касі на ранок (розмінка)
+    closing_balance_expected = Column(Numeric(12, 2), nullable=True) # Скільки має бути по системі
+    closing_balance_actual = Column(Numeric(12, 2), nullable=True) # Скільки касир перерахував руками
+    discrepancy = Column(Numeric(12, 2), default=0.00) # Нестача (-) або Лишок (+)
+
+    transactions = relationship("Transaction", back_populates="shift")
+
+
+class Transaction(Base):
+    """
+    Таблиця Транзакцій (Ledger / Регістр).
+    СЕРЦЕ системи. Записи тут є незмінними (immutable).
+    """
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Сума транзакції. Може бути позитивною (дохід) або негативною (витрата)
+    amount = Column(Numeric(12, 2), nullable=False)
+    
+    # Зовнішні ключі для зв'язків
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="RESTRICT"))
+    category_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="RESTRICT"), nullable=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(Integer) # Хто ініціював транзакцію
+    
+    # Поліморфний зв'язок (Polymorphic Association)
+    # Зберігає ЧОМУ виникла транзакція. Напр: type='order', id=105 (Чек №105)
+    reference_type = Column(String, index=True, nullable=True) 
+    reference_id = Column(Integer, index=True, nullable=True)
+    
+    # Мультивалютність: курс валюти на момент здійснення операції (щоб історія не ламалась при зміні курсу)
+    exchange_rate = Column(Numeric(10, 4), default=1.0000)
+    
+    # Зв'язок для переміщень (Transfer). 
+    # При інкасації створюються 2 транзакції (-500 з Каси, +500 в Сейф). Вони посилаються одна на одну.
+    linked_transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
+    
+    description = Column(Text, nullable=True) # Коментар касира ("Заплатив за молоко")
+
+    # Встановлення зв'язків з об'єктами
+    account = relationship("Account", back_populates="transactions")
+    category = relationship("TransactionCategory", back_populates="transactions")
+    shift = relationship("Shift", back_populates="transactions")    
 </file>
 
 <file path="product_service\requirements.txt" lang="txt">
@@ -9042,6 +9921,7 @@ alembic
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
+from decimal import Decimal
 
 # --- BASIC ---
 class Category(BaseModel):
@@ -9389,6 +10269,9 @@ class SupplyCreate(BaseModel):
     notes: Optional[str] = None
     items: List[SupplyItemCreate]
 
+    payment_account_id: Optional[int] = None # ID рахунку, з якого платимо (напр. Каса 1 або ФОП)
+    paid_amount: Optional[Decimal] = Decimal('0.00') # Скільки саме заплатили (може бути часткова оплата)
+
 class SupplyResponse(BaseModel):
     id: int
     supplier_id: Optional[int] = None
@@ -9419,6 +10302,220 @@ class InventoryAdjustRequest(BaseModel):
     actual_quantity: float  # Фактичний залишок, який ввів менеджер
     reason: str             # Причина коригування
     batch_id: Optional[int] = None  # ID партії (опціонально, якщо це FIFO)
+
+# --- РАХУНКИ (ACCOUNTS) ---
+class AccountBase(BaseModel):
+    name: str
+    type: str # 'cash', 'bank', 'safe'
+    currency: Optional[str] = "UAH"
+    is_active: Optional[bool] = True
+
+class AccountCreate(AccountBase):
+    initial_balance: Optional[Decimal] = Decimal('0.00') # Можливість задати стартовий баланс
+
+class AccountResponse(AccountBase):
+    id: int
+    balance: Decimal
+    
+    class Config:
+        from_attributes = True
+
+# --- КАТЕГОРІЇ ТРАНЗАКЦІЙ ---
+class TransactionCategoryCreate(BaseModel):
+    name: str
+    type: str # 'INCOME', 'EXPENSE', 'SERVICE'
+    parent_id: Optional[int] = None
+
+class TransactionCategoryResponse(TransactionCategoryCreate):
+    id: int
+    class Config:
+        from_attributes = True
+
+# --- ЗМІНИ (SHIFTS) ---
+class ShiftCreate(BaseModel):
+    user_id: int
+    opening_balance: Decimal
+
+class ShiftClose(BaseModel):
+    closing_balance_actual: Decimal # Скільки реально нарахував касир
+    transfer_to_safe_amount: Optional[Decimal] = Decimal('0.00') # Скільки він забирає в сейф на ніч
+
+class ShiftResponse(BaseModel):
+    id: int
+    user_id: int
+    opened_at: datetime
+    closed_at: Optional[datetime]
+    opening_balance: Decimal
+    closing_balance_expected: Optional[Decimal]
+    closing_balance_actual: Optional[Decimal]
+    discrepancy: Decimal
+    
+    class Config:
+        from_attributes = True
+
+# --- ТРАНЗАКЦІЇ (TRANSACTIONS) ---
+class TransactionCreate(BaseModel):
+    amount: Decimal = Field(..., description="Позитивна або негативна сума")
+    account_id: int
+    category_id: Optional[int] = None
+    shift_id: Optional[int] = None
+    user_id: int
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    description: Optional[str] = None
+
+class TransferCreate(BaseModel):
+    """Спеціальна схема для операції переміщення (Інкасації)"""
+    from_account_id: int
+    to_account_id: int
+    amount: Decimal = Field(..., gt=0, description="Сума переказу має бути більшою за 0")
+    user_id: int
+    shift_id: Optional[int] = None
+    description: Optional[str] = "Переміщення коштів"
+
+class TransactionResponse(BaseModel):
+    id: int
+    timestamp: datetime
+    amount: Decimal
+    account_id: int
+    category_id: Optional[int]
+    reference_type: Optional[str]
+    description: Optional[str]
+    
+    class Config:
+        from_attributes = True
+</file>
+
+<file path="product_service\alembic\env.py" lang="py">
+import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
+
+from alembic import context
+
+# 🔥 ДОДАНО: Вказуємо шлях до кореневої папки, щоб Alembic бачив ваші файли
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# 🔥 ДОДАНО: Імпортуємо Base та самі моделі
+from database import Base
+import models  # Обов'язково імпортуємо файл з моделями, щоб SQLAlchemy їх "побачила"
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# 🔥 ДОДАНО: Читаємо URL бази даних з Docker (DevOps Best Practice)
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# add your model's MetaData object here
+# for 'autogenerate' support
+# from myapp import mymodel
+# target_metadata = mymodel.Base.metadata
+target_metadata = Base.metadata
+
+# other values from the config, defined by the needs of env.py,
+# can be acquired:
+# my_important_option = config.get_main_option("my_important_option")
+# ... etc.
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection, target_metadata=target_metadata
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+</file>
+
+<file path="product_service\alembic\versions\3c0490389ed9_add_finance_module.py" lang="py">
+"""add_finance_module
+
+Revision ID: 3c0490389ed9
+Revises: 
+Create Date: 2026-03-13 21:18:37.220335
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '3c0490389ed9'
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    pass
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    pass
+    # ### end Alembic commands ###
+
 </file>
 
 <file path="product_service\routers\__init__.py" lang="py">
@@ -9571,6 +10668,195 @@ def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db
         .filter(models.Order.customer_id == customer_id)\
         .order_by(models.Order.created_at.desc())\
         .all()
+</file>
+
+<file path="product_service\routers\finance.py" lang="py">
+# FILE: product_service/routers/finance.py
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import List, Optional
+from datetime import datetime
+from decimal import Decimal
+
+import database, schemas, models
+from services import finance_service
+
+router = APIRouter(prefix="/finance", tags=["Finance"])
+
+# ==========================================
+# 1. РАХУНКИ (ACCOUNTS)
+# ==========================================
+
+@router.post("/accounts/", response_model=schemas.AccountResponse)
+def create_account(account_data: schemas.AccountCreate, db: Session = Depends(database.get_db)):
+    """Створення нового фінансового рахунку (каса, сейф, банк)."""
+    new_account = models.Account(
+        name=account_data.name,
+        type=account_data.type,
+        currency=account_data.currency,
+        balance=account_data.initial_balance,
+        is_active=account_data.is_active
+    )
+    db.add(new_account)
+    db.commit()
+    db.refresh(new_account)
+    return new_account
+
+@router.get("/accounts/", response_model=List[schemas.AccountResponse])
+def get_accounts(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    """Отримання списку всіх рахунків."""
+    return db.query(models.Account).offset(skip).limit(limit).all()
+
+# ==========================================
+# 2. КАТЕГОРІЇ ТРАНЗАКЦІЙ (CATEGORIES)
+# ==========================================
+
+@router.post("/categories/", response_model=schemas.TransactionCategoryResponse)
+def create_category(category_data: schemas.TransactionCategoryCreate, db: Session = Depends(database.get_db)):
+    """Створення нової категорії доходів/витрат."""
+    new_category = models.TransactionCategory(
+        name=category_data.name,
+        type=category_data.type,
+        parent_id=category_data.parent_id
+    )
+    db.add(new_category)
+    db.commit()
+    db.refresh(new_category)
+    return new_category
+
+@router.get("/categories/", response_model=List[schemas.TransactionCategoryResponse])
+def get_categories(type: Optional[str] = None, db: Session = Depends(database.get_db)):
+    """Отримання списку категорій (опціонально з фільтром по типу)."""
+    query = db.query(models.TransactionCategory)
+    if type:
+        query = query.filter(models.TransactionCategory.type == type)
+    return query.all()
+
+# ==========================================
+# 3. КАСОВІ ЗМІНИ (SHIFTS)
+# ==========================================
+
+@router.post("/shifts/open", response_model=schemas.ShiftResponse)
+def open_shift(shift_data: schemas.ShiftCreate, db: Session = Depends(database.get_db)):
+    """Відкриття нової касової зміни."""
+    return finance_service.open_shift(db=db, shift_data=shift_data)
+
+@router.post("/shifts/{shift_id}/close", response_model=schemas.ShiftResponse)
+def close_shift(
+    shift_id: int, 
+    close_data: schemas.ShiftClose,
+    cash_account_id: int = Query(..., description="ID рахунку Готівкової Каси"),
+    safe_account_id: int = Query(..., description="ID рахунку Головного Сейфу"),
+    user_id: int = Query(..., description="ID касира, який закриває зміну"),
+    db: Session = Depends(database.get_db)
+):
+    """Закриття касової зміни (Z-звіт) з інкасацією."""
+    return finance_service.close_shift(
+        db=db,
+        shift_id=shift_id,
+        close_data=close_data,
+        cash_account_id=cash_account_id,
+        safe_account_id=safe_account_id,
+        user_id=user_id
+    )
+
+@router.get("/shifts/active", response_model=Optional[schemas.ShiftResponse])
+def get_active_shift(db: Session = Depends(database.get_db)):
+    """Отримання поточної відкритої зміни (якщо є)."""
+    return db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+
+# ==========================================
+# 4. ТРАНЗАКЦІЇ ТА ПЕРЕКАЗИ (TRANSACTIONS)
+# ==========================================
+
+@router.post("/transactions/", response_model=schemas.TransactionResponse)
+def create_transaction(trans_data: schemas.TransactionCreate, db: Session = Depends(database.get_db)):
+    """
+    Створення ручної транзакції.
+    (Наприклад: внесення розмінної монети, оплата кур'єру з каси).
+    """
+    return finance_service.create_transaction(db=db, trans_data=trans_data)
+
+@router.post("/transactions/transfer")
+def transfer_funds(transfer_data: schemas.TransferCreate, db: Session = Depends(database.get_db)):
+    """
+    Переміщення коштів між рахунками (Інкасація або поповнення).
+    """
+    return finance_service.transfer_funds(db=db, transfer_data=transfer_data)
+
+@router.get("/transactions/", response_model=List[schemas.TransactionResponse])
+def get_transactions(
+    account_id: Optional[int] = None,
+    shift_id: Optional[int] = None,
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db)
+):
+    """Отримання історії транзакцій (Ledger) з можливістю фільтрації."""
+    query = db.query(models.Transaction)
+    if account_id:
+        query = query.filter(models.Transaction.account_id == account_id)
+    if shift_id:
+        query = query.filter(models.Transaction.shift_id == shift_id)
+    
+    return query.order_by(models.Transaction.timestamp.desc()).offset(skip).limit(limit).all()
+
+# ==========================================
+# 5. ЗВІТИ (REPORTS)
+# ==========================================
+
+@router.get("/report/pnl")
+def get_pnl_report(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(database.get_db)
+):
+    """
+    Генерує звіт P&L (Прибутки та збитки) згрупований по категоріях.
+    """
+    # Будуємо запит: об'єднуємо транзакції з категоріями і рахуємо суму
+    query = db.query(
+        models.TransactionCategory.name,
+        models.TransactionCategory.type,
+        func.sum(models.Transaction.amount).label('total')
+    ).join(
+        models.Transaction, models.Transaction.category_id == models.TransactionCategory.id
+    )
+
+    # Фільтри по даті (для майбутнього масштабування, щоб дивитись звіт за місяць)
+    if start_date:
+        query = query.filter(models.Transaction.timestamp >= start_date)
+    if end_date:
+        query = query.filter(models.Transaction.timestamp <= end_date)
+
+    # Групуємо за категорією
+    results = query.group_by(models.TransactionCategory.name, models.TransactionCategory.type).all()
+
+    # Формуємо структуру звіту
+    report = {
+        "income": {},          # Деталізація доходів
+        "expense": {},         # Деталізація витрат
+        "total_income": 0.0,
+        "total_expense": 0.0,
+        "net_profit": 0.0      # Чистий прибуток
+    }
+
+    for name, cat_type, total in results:
+        amount = float(total)
+        if cat_type == 'INCOME':
+            report["income"][name] = amount
+            report["total_income"] += amount
+        elif cat_type == 'EXPENSE':
+            # Транзакції витрат у нас з мінусом, тому беремо модулі (abs) для красивого відображення
+            report["expense"][name] = abs(amount)
+            report["total_expense"] += abs(amount)
+
+    # Рахуємо чистий прибуток
+    report["net_profit"] = report["total_income"] - report["total_expense"]
+
+    return report
 </file>
 
 <file path="product_service\routers\inventory.py" lang="py">
@@ -9726,12 +11012,59 @@ from typing import List
 import database, schemas, models
 from services.order_service import OrderService
 
+# 🔥 ДОДАНО ІМПОРТ ФІНАНСОВОГО СЕРВІСУ
+from services import finance_service
+
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 @router.post("/checkout/")
 def checkout(order_data: schemas.OrderCreate, db: Session = Depends(database.get_db)):
-    # Вся логіка тепер тут 👇
+    # Вся логіка створення замовлення
     new_order = OrderService.process_checkout(db, order_data)
+    
+    # ==========================================
+    # 🔥 ІНТЕГРАЦІЯ З ФІНАНСАМИ (АВТОМАТИЧНИЙ ДОХІД)
+    # ==========================================
+    try:
+        # 1. Шукаємо активну касову зміну
+        active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+        shift_id = active_shift.id if active_shift else None
+
+        # 2. Визначаємо рахунок (готівка чи картка)
+        # За замовчуванням ставимо 'cash' (готівка). 
+        # Якщо у вашій схемі OrderCreate є payment_method, перевіряємо його:
+        payment_type = 'cash'
+        if hasattr(order_data, 'payment_method') and order_data.payment_method == 'card':
+            payment_type = 'bank'
+            
+        account = db.query(models.Account).filter(
+            models.Account.type == payment_type, 
+            models.Account.is_active == True
+        ).first()
+
+        # 3. Знаходимо категорію доходу
+        category = db.query(models.TransactionCategory).filter(models.TransactionCategory.name == "Продаж товарів").first()
+
+        if account:
+            # Обробляємо user_id: беремо з замовлення, або ставимо 1 (якщо поки немає авторизації)
+            user_id = getattr(new_order, 'user_id', 1)
+
+            tx_data = schemas.TransactionCreate(
+                amount=new_order.total_price,  # Сума чека
+                account_id=account.id,
+                category_id=category.id if category else None,
+                shift_id=shift_id,
+                user_id=user_id,
+                reference_type='order',
+                reference_id=new_order.id,
+                description=f"Оплата замовлення #{new_order.id}"
+            )
+            # Створюємо транзакцію в Регістрі!
+            finance_service.create_transaction(db, tx_data)
+    except Exception as e:
+        # Логуємо помилку, але НЕ скасовуємо створення чека (щоб клієнт не чекав через збій у фінансах)
+        print(f"⚠️ Помилка створення фінансової транзакції: {e}")
+
     # Повертаємо ID та пораховану ціну
     return {
         "status": "ok", 
@@ -9753,16 +11086,24 @@ def get_orders(
     # Отримуємо замовлення для поточної сторінки
     orders = db.query(models.Order)\
         .order_by(models.Order.created_at.desc())\
-        .offset(skip)\
-        .limit(limit)\
-        .all()
-    
+        .offset(skip).limit(limit).all()
+        
     return {
-        "total": total_orders,
         "items": orders,
+        "total": total_orders,
         "page": page,
-        "pages": (total_orders + limit - 1) // limit # Округлення вгору
+        "size": limit,
+        "pages": (total_orders + limit - 1) // limit
     }
+
+@router.delete("/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(database.get_db)):
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        return {"error": "Not found"}
+    db.delete(order)
+    db.commit()
+    return {"status": "deleted"}
 </file>
 
 <file path="product_service\routers\processes.py" lang="py">
@@ -10379,6 +11720,8 @@ import schemas
 import database
 from services.supply_service import SupplyService
 
+from services import finance_service # 🔥 Імпорт фінансового сервісу для інтеграції з транзакціями
+
 router = APIRouter(
     prefix="/supplies",
     tags=["Supplies"]
@@ -10401,7 +11744,45 @@ def create_supply(data: schemas.SupplyCreate, db: Session = Depends(database.get
     """
     Створює нове постачання (накладну), формує партії та перераховує собівартість.
     """
-    return SupplyService.create_supply(db, data)
+    # 1. Зберігаємо накладну і всі товари через ваш існуючий сервіс
+    new_supply = SupplyService.create_supply(db, data)
+    
+    # ==========================================
+    # 🔥 ІНТЕГРАЦІЯ З ФІНАНСАМИ (АВТОМАТИЧНА ВИТРАТА)
+    # ==========================================
+    # Перевіряємо, чи передали з фронтенду рахунок для оплати та суму
+    payment_account_id = getattr(data, 'payment_account_id', None)
+    paid_amount = getattr(data, 'paid_amount', 0)
+    
+    if payment_account_id and paid_amount > 0:
+        try:
+            # Шукаємо активну зміну
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            shift_id = active_shift.id if active_shift else None
+            
+            # Шукаємо категорію
+            category = db.query(models.TransactionCategory).filter(models.TransactionCategory.name == "Закупівля товару").first()
+            
+            # Обробляємо user_id: беремо з постачання, або ставимо 1
+            user_id = getattr(new_supply, 'user_id', 1)
+
+            tx_data = schemas.TransactionCreate(
+                amount=-abs(paid_amount),  # 🔥 ОБОВ'ЯЗКОВО МІНУС (це витрата з рахунку!)
+                account_id=payment_account_id,
+                category_id=category.id if category else None,
+                shift_id=shift_id,
+                user_id=user_id,
+                reference_type='supply',
+                reference_id=new_supply.id,
+                description=f"Оплата постачання #{new_supply.id} від постачальника"
+            )
+            # Створюємо транзакцію списання коштів!
+            finance_service.create_transaction(db, tx_data)
+        except Exception as e:
+            # Логуємо помилку, але постачання все одно зберігається
+            print(f"⚠️ Помилка створення витратної транзакції: {e}")
+
+    return new_supply
 
 @router.get("/", response_model=List[schemas.SupplyResponse])
 def get_supplies(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
@@ -10460,6 +11841,195 @@ def get_available_batches(
 
 <file path="product_service\services\__init__.py" lang="py">
 
+</file>
+
+<file path="product_service\services\finance_service.py" lang="py">
+# FILE: product_service/services/finance_service.py
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from fastapi import HTTPException
+from decimal import Decimal
+import models, schemas
+from datetime import datetime
+
+def create_transaction(db: Session, trans_data: schemas.TransactionCreate) -> models.Transaction:
+    """
+    Створення базової транзакції у Ledger.
+    Це єдиний правильний спосіб змінити баланс рахунку.
+    """
+    # 1. Знаходимо рахунок
+    account = db.query(models.Account).filter(models.Account.id == trans_data.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Рахунок не знайдено")
+    
+    if not account.is_active:
+        raise HTTPException(status_code=400, detail="Цей рахунок деактивовано")
+
+    # 2. Створюємо запис транзакції
+    new_transaction = models.Transaction(
+        amount=trans_data.amount,
+        account_id=account.id,
+        category_id=trans_data.category_id,
+        shift_id=trans_data.shift_id,
+        user_id=trans_data.user_id,
+        reference_type=trans_data.reference_type,
+        reference_id=trans_data.reference_id,
+        description=trans_data.description
+    )
+    
+    db.add(new_transaction)
+    
+    # 3. Оновлюємо кешований баланс рахунку (+= працює і для мінусових сум)
+    # Наприклад, якщо amount = -50, то balance += -50 зменшить його.
+    account.balance += trans_data.amount
+    
+    db.commit()
+    db.refresh(new_transaction)
+    
+    return new_transaction
+
+
+def transfer_funds(db: Session, transfer_data: schemas.TransferCreate) -> dict:
+    """
+    Переміщення коштів (Інкасація).
+    Атомарно знімає гроші з одного рахунку і кладе на інший.
+    """
+    if transfer_data.from_account_id == transfer_data.to_account_id:
+        raise HTTPException(status_code=400, detail="Не можна переказати гроші на той самий рахунок")
+
+    if transfer_data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Сума переказу має бути більшою за 0")
+
+    # 1. Знаходимо категорію "Службове переміщення" (або створюємо її, якщо немає)
+    transfer_category = db.query(models.TransactionCategory).filter(
+        models.TransactionCategory.name == "Переміщення коштів",
+        models.TransactionCategory.type == "SERVICE"
+    ).first()
+    
+    if not transfer_category:
+        transfer_category = models.TransactionCategory(name="Переміщення коштів", type="SERVICE")
+        db.add(transfer_category)
+        db.commit()
+        db.refresh(transfer_category)
+
+    # 2. Створюємо транзакцію СПИСАННЯ (Мінус)
+    expense_data = schemas.TransactionCreate(
+        amount=-transfer_data.amount, # Від'ємна сума
+        account_id=transfer_data.from_account_id,
+        category_id=transfer_category.id,
+        user_id=transfer_data.user_id,
+        shift_id=transfer_data.shift_id,
+        description=f"Переказ на рахунок #{transfer_data.to_account_id}: {transfer_data.description}"
+    )
+    out_tx = create_transaction(db, expense_data)
+
+    # 3. Створюємо транзакцію ЗАРАХУВАННЯ (Плюс)
+    income_data = schemas.TransactionCreate(
+        amount=transfer_data.amount, # Позитивна сума
+        account_id=transfer_data.to_account_id,
+        category_id=transfer_category.id,
+        user_id=transfer_data.user_id,
+        shift_id=transfer_data.shift_id,
+        description=f"Переказ з рахунку #{transfer_data.from_account_id}: {transfer_data.description}"
+    )
+    in_tx = create_transaction(db, income_data)
+
+    # 4. Пов'язуємо їх між собою (щоб знати, що це одна операція)
+    out_tx.linked_transaction_id = in_tx.id
+    in_tx.linked_transaction_id = out_tx.id
+    db.commit()
+
+    return {
+        "status": "success",
+        "transferred_amount": transfer_data.amount,
+        "from_transaction_id": out_tx.id,
+        "to_transaction_id": in_tx.id
+    }
+
+def open_shift(db: Session, shift_data: schemas.ShiftCreate) -> models.Shift:
+    """
+    Відкриття касової зміни (X-Звіт на початок дня).
+    """
+    # 1. Перевірка: чи немає вже відкритої зміни? (Захист від дублів)
+    active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    if active_shift:
+        raise HTTPException(status_code=400, detail="Вже є відкрита зміна. Спочатку закрийте її (зробіть Z-звіт).")
+
+    # 2. Створюємо зміну з початковим залишком (розмінка в шухляді)
+    new_shift = models.Shift(
+        user_id=shift_data.user_id,
+        opening_balance=shift_data.opening_balance,
+        opened_at=datetime.utcnow()
+    )
+    
+    db.add(new_shift)
+    db.commit()
+    db.refresh(new_shift)
+    
+    return new_shift
+
+
+def close_shift(
+    db: Session, 
+    shift_id: int, 
+    close_data: schemas.ShiftClose, 
+    cash_account_id: int, 
+    safe_account_id: int, 
+    user_id: int
+) -> models.Shift:
+    """
+    Закриття касової зміни (Z-Звіт).
+    Рахує очікувані гроші, фіксує різницю та робить інкасацію в сейф.
+    """
+    # 1. Знаходимо зміну і перевіряємо її статус
+    shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Зміну не знайдено")
+    if shift.closed_at:
+        raise HTTPException(status_code=400, detail="Ця зміна вже була закрита раніше")
+
+    # 2. РАХУЄМО ОЧІКУВАНИЙ ЗАЛИШОК КАСТИ
+    # Беремо суму всіх транзакцій за цю зміну для конкретного рахунку (Готівка Каса)
+    cash_flow = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.shift_id == shift.id,
+        models.Transaction.account_id == cash_account_id
+    ).scalar() or Decimal('0.00')
+
+    # Очікувані гроші = Розмінка на ранок + (Доходи - Витрати за день)
+    expected_balance = shift.opening_balance + cash_flow
+
+    # 3. ФІКСУЄМО ПОКАЗНИКИ
+    shift.closing_balance_expected = expected_balance
+    shift.closing_balance_actual = close_data.closing_balance_actual
+    # Різниця: Від'ємна = Нестача, Позитивна = Лишок
+    shift.discrepancy = close_data.closing_balance_actual - expected_balance 
+    shift.closed_at = datetime.utcnow()
+
+    db.commit()
+
+    # 4. АВТОМАТИЧНА ІНКАСАЦІЯ (Передача в сейф)
+    if close_data.transfer_to_safe_amount > 0:
+        # Захист: не можна здати в сейф більше грошей, ніж реально нарахував касир
+        if close_data.transfer_to_safe_amount > close_data.closing_balance_actual:
+            raise HTTPException(
+                status_code=400, 
+                detail="Сума інкасації не може перевищувати фактичний наявний залишок в касі"
+            )
+
+        # Використовуємо нашу функцію переміщення з Етапу 2.1
+        transfer_data = schemas.TransferCreate(
+            from_account_id=cash_account_id,
+            to_account_id=safe_account_id,
+            amount=close_data.transfer_to_safe_amount,
+            user_id=user_id,
+            shift_id=shift.id,
+            description="Інкасація при закритті зміни (Z-звіт)"
+        )
+        transfer_funds(db, transfer_data)
+
+    db.refresh(shift)
+    return shift
 </file>
 
 <file path="product_service\services\inventory_logger.py" lang="py">
