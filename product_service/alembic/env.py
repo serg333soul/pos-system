@@ -1,3 +1,5 @@
+import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -5,9 +7,21 @@ from sqlalchemy import pool
 
 from alembic import context
 
+# 🔥 ДОДАНО: Вказуємо шлях до кореневої папки, щоб Alembic бачив ваші файли
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# 🔥 ДОДАНО: Імпортуємо Base та самі моделі
+from database import Base
+import models  # Обов'язково імпортуємо файл з моделями, щоб SQLAlchemy їх "побачила"
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# 🔥 ДОДАНО: Читаємо URL бази даних з Docker (DevOps Best Practice)
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -18,7 +32,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

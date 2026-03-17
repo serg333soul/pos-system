@@ -8,6 +8,8 @@ services:
     restart: always
     ports:
       - "8001:8000"
+    volumes:                   
+      - ./product_service:/app
     environment:
       # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
       - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
