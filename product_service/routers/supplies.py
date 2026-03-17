@@ -8,6 +8,8 @@ import schemas
 import database
 from services.supply_service import SupplyService
 
+from services import finance_service # 🔥 Імпорт фінансового сервісу для інтеграції з транзакціями
+
 router = APIRouter(
     prefix="/supplies",
     tags=["Supplies"]
@@ -30,7 +32,45 @@ def create_supply(data: schemas.SupplyCreate, db: Session = Depends(database.get
     """
     Створює нове постачання (накладну), формує партії та перераховує собівартість.
     """
-    return SupplyService.create_supply(db, data)
+    # 1. Зберігаємо накладну і всі товари через ваш існуючий сервіс
+    new_supply = SupplyService.create_supply(db, data)
+    
+    # ==========================================
+    # 🔥 ІНТЕГРАЦІЯ З ФІНАНСАМИ (АВТОМАТИЧНА ВИТРАТА)
+    # ==========================================
+    # Перевіряємо, чи передали з фронтенду рахунок для оплати та суму
+    payment_account_id = getattr(data, 'payment_account_id', None)
+    paid_amount = getattr(data, 'paid_amount', 0)
+    
+    if payment_account_id and paid_amount > 0:
+        try:
+            # Шукаємо активну зміну
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            shift_id = active_shift.id if active_shift else None
+            
+            # Шукаємо категорію
+            category = db.query(models.TransactionCategory).filter(models.TransactionCategory.name == "Закупівля товару").first()
+            
+            # Обробляємо user_id: беремо з постачання, або ставимо 1
+            user_id = getattr(new_supply, 'user_id', 1)
+
+            tx_data = schemas.TransactionCreate(
+                amount=-abs(paid_amount),  # 🔥 ОБОВ'ЯЗКОВО МІНУС (це витрата з рахунку!)
+                account_id=payment_account_id,
+                category_id=category.id if category else None,
+                shift_id=shift_id,
+                user_id=user_id,
+                reference_type='supply',
+                reference_id=new_supply.id,
+                description=f"Оплата постачання #{new_supply.id} від постачальника"
+            )
+            # Створюємо транзакцію списання коштів!
+            finance_service.create_transaction(db, tx_data)
+        except Exception as e:
+            # Логуємо помилку, але постачання все одно зберігається
+            print(f"⚠️ Помилка створення витратної транзакції: {e}")
+
+    return new_supply
 
 @router.get("/", response_model=List[schemas.SupplyResponse])
 def get_supplies(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):

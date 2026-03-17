@@ -32,6 +32,12 @@ const menuItems = [
     label: 'Статистика', 
     icon: 'fas fa-chart-line', 
     activeClass: 'text-purple-400 border-l-4 border-purple-400 bg-gray-800' 
+  },
+  { 
+    id: 'finance', 
+    label: 'Фінанси', 
+    icon: 'fas fa-wallet', 
+    activeClass: 'text-indigo-400 border-l-4 border-indigo-400 bg-gray-800' 
   }
 ]
 

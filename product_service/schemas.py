@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
+from decimal import Decimal
 
 # --- BASIC ---
 class Category(BaseModel):
@@ -348,6 +349,9 @@ class SupplyCreate(BaseModel):
     notes: Optional[str] = None
     items: List[SupplyItemCreate]
 
+    payment_account_id: Optional[int] = None # ID рахунку, з якого платимо (напр. Каса 1 або ФОП)
+    paid_amount: Optional[Decimal] = Decimal('0.00') # Скільки саме заплатили (може бути часткова оплата)
+
 class SupplyResponse(BaseModel):
     id: int
     supplier_id: Optional[int] = None
@@ -378,3 +382,85 @@ class InventoryAdjustRequest(BaseModel):
     actual_quantity: float  # Фактичний залишок, який ввів менеджер
     reason: str             # Причина коригування
     batch_id: Optional[int] = None  # ID партії (опціонально, якщо це FIFO)
+
+# --- РАХУНКИ (ACCOUNTS) ---
+class AccountBase(BaseModel):
+    name: str
+    type: str # 'cash', 'bank', 'safe'
+    currency: Optional[str] = "UAH"
+    is_active: Optional[bool] = True
+
+class AccountCreate(AccountBase):
+    initial_balance: Optional[Decimal] = Decimal('0.00') # Можливість задати стартовий баланс
+
+class AccountResponse(AccountBase):
+    id: int
+    balance: Decimal
+    
+    class Config:
+        from_attributes = True
+
+# --- КАТЕГОРІЇ ТРАНЗАКЦІЙ ---
+class TransactionCategoryCreate(BaseModel):
+    name: str
+    type: str # 'INCOME', 'EXPENSE', 'SERVICE'
+    parent_id: Optional[int] = None
+
+class TransactionCategoryResponse(TransactionCategoryCreate):
+    id: int
+    class Config:
+        from_attributes = True
+
+# --- ЗМІНИ (SHIFTS) ---
+class ShiftCreate(BaseModel):
+    user_id: int
+    opening_balance: Decimal
+
+class ShiftClose(BaseModel):
+    closing_balance_actual: Decimal # Скільки реально нарахував касир
+    transfer_to_safe_amount: Optional[Decimal] = Decimal('0.00') # Скільки він забирає в сейф на ніч
+
+class ShiftResponse(BaseModel):
+    id: int
+    user_id: int
+    opened_at: datetime
+    closed_at: Optional[datetime]
+    opening_balance: Decimal
+    closing_balance_expected: Optional[Decimal]
+    closing_balance_actual: Optional[Decimal]
+    discrepancy: Decimal
+    
+    class Config:
+        from_attributes = True
+
+# --- ТРАНЗАКЦІЇ (TRANSACTIONS) ---
+class TransactionCreate(BaseModel):
+    amount: Decimal = Field(..., description="Позитивна або негативна сума")
+    account_id: int
+    category_id: Optional[int] = None
+    shift_id: Optional[int] = None
+    user_id: int
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    description: Optional[str] = None
+
+class TransferCreate(BaseModel):
+    """Спеціальна схема для операції переміщення (Інкасації)"""
+    from_account_id: int
+    to_account_id: int
+    amount: Decimal = Field(..., gt=0, description="Сума переказу має бути більшою за 0")
+    user_id: int
+    shift_id: Optional[int] = None
+    description: Optional[str] = "Переміщення коштів"
+
+class TransactionResponse(BaseModel):
+    id: int
+    timestamp: datetime
+    amount: Decimal
+    account_id: int
+    category_id: Optional[int]
+    reference_type: Optional[str]
+    description: Optional[str]
+    
+    class Config:
+        from_attributes = True
