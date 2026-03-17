@@ -21,6 +21,7 @@ import { useFinance } from '@/composables/useFinance'
 
 // Стан навігації
 const currentPage = ref('pos')
+const activeWarehouseTab = ref('supplies') // Новий стан для вкладок складу
 const { products, productRooms, loading, fetchWarehouseData } = useWarehouse()
 
 // --- Логіка POS (Каси) ---
@@ -197,9 +198,15 @@ onMounted(async() => {
 
 <template>
   <div class="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
-    <Sidebar :current-page="currentPage" @change-page="(page) => currentPage = page" />
+    <Sidebar 
+      :current-page="currentPage" 
+      :active-sub-page="activeWarehouseTab"
+      @change-page="(page) => currentPage = page"
+      @change-sub-page="(tab) => activeWarehouseTab = tab"
+    />
 
     <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
+      <!-- ... (код для POS сторінки не змінюється) ... -->
       <div v-if="activeShift === null" class="absolute inset-0 z-50 bg-gray-50/95 backdrop-blur-sm flex flex-col items-center justify-center p-8">
           <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-gray-100 animate-fade-in-up">
               <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-500 text-3xl">
@@ -306,7 +313,7 @@ onMounted(async() => {
       />
     </main>
 
-    <Warehouse v-if="currentPage === 'warehouse'" />
+    <Warehouse v-if="currentPage === 'warehouse'" :current-tab="activeWarehouseTab" />
     <Statistics v-if="currentPage === 'statistics'" />
     <Customers v-if="currentPage === 'customers'" />
     <Finance v-if="currentPage === 'finance'" />
