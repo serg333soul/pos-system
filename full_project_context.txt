@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 88
-Lines: 12532
-Tokens: ~132790
+Files: 103
+Lines: 13613
+Tokens: ~142004
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -139,6 +139,7 @@ frontend\vite.config.js
   └── 📦 Default Export
 frontend\src\App.vue
   └── 💾 State (ref): currentPage
+  └── 💾 State (ref): activeWarehouseTab
   └── 💾 State (ref): openingBalance
   └── 💾 State (ref): isTransactionModalOpen
   └── 💾 State (ref): isCloseShiftModalOpen
@@ -152,7 +153,6 @@ frontend\src\App.vue
   └── 💾 State (computed): filteredRooms
   └── ƒ  handleItemClick
   └── 💾 State (computed): independentFilteredProducts
-  └── 💾 State (ref): isCartOpen
 frontend\src\components\common\IngredientSelect.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -168,6 +168,7 @@ frontend\src\components\common\Sidebar.vue
   └── 📥 Props defined
   └── 📤 Emits defined
   └── ƒ  navigate
+  └── ƒ  navigateSub
 frontend\src\components\crm\CustomerHistoryModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -240,7 +241,7 @@ frontend\src\components\stats\SalesTable.vue
 frontend\src\components\stats\Statistics.vue
   └── ƒ  formatDate
 frontend\src\components\warehouse\Warehouse.vue
-  └── 💾 State (ref): activeTab
+  └── 📥 Props defined
 frontend\src\components\warehouse\modals\AdjustmentModal.vue
   └── 📥 Props defined
   └── 📤 Emits defined
@@ -486,7 +487,7 @@ product_service\db_audit.py
 product_service\main.py
   └── 🌐 Endpoint: @app.get
   └── ƒ  read_root
-product_service\models.py
+product_service\models_old.py
   └── 🗄️ Model: Category
   └── 🗄️ Model: Unit
   └── 🗄️ Model: Ingredient
@@ -502,7 +503,7 @@ product_service\models.py
   └── 🗄️ Model: ProductRoom
   └── 🗄️ Model: ProductVariantIngredient
   └── 🗄️ Model: ProductVariantConsumable
-product_service\schemas.py
+product_service\schemas_old.py
   └── 📄 Schema: Category
   └── 📦 Class: Config
   └── 📄 Schema: CategoryCreate
@@ -521,9 +522,45 @@ product_service\schemas.py
 product_service\alembic\env.py
   └── ƒ  run_migrations_offline
   └── ƒ  run_migrations_online
+product_service\alembic\versions\3123d228513b_test_refactoring.py
+  └── ƒ  upgrade
+  └── ƒ  downgrade
 product_service\alembic\versions\3c0490389ed9_add_finance_module.py
   └── ƒ  upgrade
   └── ƒ  downgrade
+product_service\alembic\versions\ee6667d8b951_decouple_orders_and_crm.py
+  └── ƒ  upgrade
+  └── ƒ  downgrade
+product_service\models\crm.py
+  └── 🗄️ Model: Customer
+product_service\models\finance.py
+  └── 🗄️ Model: Account
+  └── 🗄️ Model: TransactionCategory
+  └── 🗄️ Model: Shift
+  └── 🗄️ Model: Transaction
+product_service\models\inventory.py
+  └── 🗄️ Model: Category
+  └── 🗄️ Model: Unit
+  └── 🗄️ Model: Ingredient
+  └── 🗄️ Model: Consumable
+  └── 🗄️ Model: MasterRecipe
+  └── 🗄️ Model: MasterRecipeItem
+  └── 🗄️ Model: ProcessGroup
+  └── 🗄️ Model: ProcessOption
+  └── 🗄️ Model: ProductConsumable
+  └── 🗄️ Model: ProductIngredient
+  └── 🗄️ Model: Product
+  └── 🗄️ Model: ProductVariant
+  └── 🗄️ Model: ProductRoom
+  └── 🗄️ Model: ProductVariantIngredient
+  └── 🗄️ Model: ProductVariantConsumable
+product_service\models\orders.py
+  └── 🗄️ Model: Order
+  └── 🗄️ Model: OrderItem
+product_service\models\supply.py
+  └── 🗄️ Model: Supplier
+  └── 🗄️ Model: Supply
+  └── 🗄️ Model: SupplyItem
 product_service\routers\adjustments.py
   └── 🌐 Endpoint: @router.post
   └── ƒ  adjust_stock
@@ -654,6 +691,65 @@ product_service\routers\supplies.py
   └── ƒ  get_supplies
   └── 🌐 Endpoint: @router.get
   └── ƒ  get_available_batches
+product_service\schemas\crm.py
+  └── 📄 Schema: CustomerCreate
+  └── 📄 Schema: Customer
+  └── 📦 Class: Config
+product_service\schemas\finance.py
+  └── 📄 Schema: AccountBase
+  └── 🗄️ Model: AccountCreate
+  └── 🗄️ Model: AccountResponse
+  └── 📦 Class: Config
+  └── 📄 Schema: TransactionCategoryCreate
+  └── 📄 Schema: TransactionCategoryResponse
+  └── 📦 Class: Config
+  └── 📄 Schema: ShiftCreate
+  └── 📄 Schema: ShiftClose
+  └── 📄 Schema: ShiftResponse
+  └── 📦 Class: Config
+  └── 📄 Schema: TransactionCreate
+  └── 📄 Schema: TransferCreate
+  └── 📄 Schema: TransactionResponse
+  └── 📦 Class: Config
+product_service\schemas\inventory.py
+  └── 📄 Schema: Category
+  └── 📄 Schema: CategoryCreate
+  └── 📄 Schema: Unit
+  └── 📄 Schema: UnitCreate
+  └── 📄 Schema: IngredientCreate
+  └── 📄 Schema: Ingredient
+  └── 📄 Schema: ConsumableBase
+  └── 🗄️ Model: ConsumableCreate
+  └── 🗄️ Model: Consumable
+  └── 📄 Schema: ProcessOptionCreate
+  └── 📦 Class: ProcessOption
+  └── 📄 Schema: ProcessGroupCreate
+  └── 📄 Schema: ProcessGroup
+  └── 📄 Schema: MasterRecipeItemCreate
+  └── 📦 Class: MasterRecipeItem
+product_service\schemas\orders.py
+  └── 📄 Schema: SoldItemModifier
+  └── 📦 Class: Config
+  └── 📄 Schema: ConsumableOverride
+  └── 📄 Schema: SoldItem
+  └── 📄 Schema: OrderCreate
+  └── 📦 Class: Config
+  └── 📄 Schema: OrderItemRead
+  └── 📦 Class: Config
+  └── 📄 Schema: OrderRead
+  └── 📦 Class: Config
+  └── 📄 Schema: OrderPaginationResponse
+  └── 📦 Class: Config
+product_service\schemas\supply.py
+  └── 📄 Schema: SupplierCreate
+  └── 📄 Schema: Supplier
+  └── 📦 Class: Config
+  └── 📄 Schema: SupplyItemCreate
+  └── 📄 Schema: SupplyItemResponse
+  └── 📦 Class: Config
+  └── 📄 Schema: SupplyCreate
+  └── 📄 Schema: SupplyResponse
+  └── 📦 Class: Config
 product_service\services\finance_service.py
   └── ƒ  create_transaction
   └── ƒ  transfer_funds
@@ -787,13 +883,23 @@ product_service\tests\test_warehouse.py
         📄 db_audit.py
         📄 local_db_audit.txt
         📄 main.py
-        📄 models.py
+        📄 models_old.py
         📄 requirements.txt
-        📄 schemas.py
+        📄 schemas_old.py
         📂 alembic/
             📄 env.py
             📂 versions/
+                📄 3123d228513b_test_refactoring.py
                 📄 3c0490389ed9_add_finance_module.py
+                📄 ee6667d8b951_decouple_orders_and_crm.py
+        📂 models/
+            📄 __init__.py
+            📄 base.py
+            📄 crm.py
+            📄 finance.py
+            📄 inventory.py
+            📄 orders.py
+            📄 supply.py
         📂 routers/
             📄 __init__.py
             📄 adjustments.py
@@ -807,6 +913,13 @@ product_service\tests\test_warehouse.py
             📄 products.py
             📄 recipes.py
             📄 supplies.py
+        📂 schemas/
+            📄 __init__.py
+            📄 crm.py
+            📄 finance.py
+            📄 inventory.py
+            📄 orders.py
+            📄 supply.py
         📂 services/
             📄 __init__.py
             📄 finance_service.py
@@ -1205,6 +1318,7 @@ import { useFinance } from '@/composables/useFinance'
 
 // Стан навігації
 const currentPage = ref('pos')
+const activeWarehouseTab = ref('supplies') // Новий стан для вкладок складу
 const { products, productRooms, loading, fetchWarehouseData } = useWarehouse()
 
 // --- Логіка POS (Каси) ---
@@ -1381,9 +1495,15 @@ onMounted(async() => {
 
 <template>
   <div class="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
-    <Sidebar :current-page="currentPage" @change-page="(page) => currentPage = page" />
+    <Sidebar 
+      :current-page="currentPage" 
+      :active-sub-page="activeWarehouseTab"
+      @change-page="(page) => currentPage = page"
+      @change-sub-page="(tab) => activeWarehouseTab = tab"
+    />
 
     <main v-if="currentPage === 'pos'" class="flex-1 ml-64 flex flex-col h-screen relative">
+      <!-- ... (код для POS сторінки не змінюється) ... -->
       <div v-if="activeShift === null" class="absolute inset-0 z-50 bg-gray-50/95 backdrop-blur-sm flex flex-col items-center justify-center p-8">
           <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-gray-100 animate-fade-in-up">
               <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-500 text-3xl">
@@ -1490,7 +1610,7 @@ onMounted(async() => {
       />
     </main>
 
-    <Warehouse v-if="currentPage === 'warehouse'" />
+    <Warehouse v-if="currentPage === 'warehouse'" :current-tab="activeWarehouseTab" />
     <Statistics v-if="currentPage === 'statistics'" />
     <Customers v-if="currentPage === 'customers'" />
     <Finance v-if="currentPage === 'finance'" />
@@ -1687,13 +1807,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 
 <file path="frontend\src\components\common\Sidebar.vue" lang="vue">
 <script setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 
 const props = defineProps({
-  currentPage: { type: String, required: true }
+  currentPage: { type: String, required: true },
+  activeSubPage: { type: String, default: '' } // Новий prop для активної під-сторінки
 })
 
-const emit = defineEmits(['change-page'])
+const emit = defineEmits(['change-page', 'change-sub-page'])
 
 // Конфігурація меню. Легко розширювати.
 const menuItems = [
@@ -1707,7 +1828,20 @@ const menuItems = [
     id: 'warehouse', 
     label: 'Склад', 
     icon: 'fas fa-boxes', 
-    activeClass: 'text-blue-400 border-l-4 border-blue-400 bg-gray-800' 
+    activeClass: 'text-blue-400 border-l-4 border-blue-400 bg-gray-800',
+    // Додаємо під-меню для складу
+    children: [
+      { id: 'supplies', label: 'Постачання', icon: 'fas fa-truck-loading' },
+      { id: 'stock', label: 'Залишки', icon: 'fas fa-clipboard-check' },
+      { id: 'products', label: 'Товари', icon: 'fas fa-cube' },
+      { id: 'recipes', label: 'Рецепти', icon: 'fas fa-book-open' },
+      { id: 'ingredients', label: 'Інгредієнти', icon: 'fas fa-pepper-hot' },
+      { id: 'processes', label: 'Процеси', icon: 'fas fa-cogs' },
+      { id: 'consumables', label: 'Матеріали', icon: 'fas fa-box-open' },
+      { id: 'units', label: 'Одиниці', icon: 'fas fa-ruler-vertical' },
+      { id: 'categories', label: 'Категорії', icon: 'fas fa-tags' },
+      { id: 'rooms', label: 'Кімнати', icon: 'fas fa-door-open' },
+    ]
   },
   { 
     id: 'customers', 
@@ -1732,6 +1866,12 @@ const menuItems = [
 const navigate = (pageId) => {
   emit('change-page', pageId)
 }
+
+// Нова функція для навігації по під-меню
+const navigateSub = (mainPageId, subPageId) => {
+  emit('change-page', mainPageId) // Переконуємось, що головна сторінка активна
+  emit('change-sub-page', subPageId) // Змінюємо активну вкладку
+}
 </script>
 
 <template>
@@ -1743,19 +1883,35 @@ const navigate = (pageId) => {
     </div>
 
     <nav class="flex-1 py-6 space-y-1">
-      <a 
-        v-for="item in menuItems" 
-        :key="item.id"
-        href="#" 
-        @click.prevent="navigate(item.id)"
-        class="flex items-center px-6 py-3 font-bold transition-all group"
-        :class="currentPage === item.id ? item.activeClass : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
-      >
-        <i 
-          :class="[item.icon, 'w-6 text-center mr-2 transition-transform', currentPage !== item.id && 'group-hover:scale-110']"
-        ></i> 
-        {{ item.label }}
-      </a>
+      <template v-for="item in menuItems" :key="item.id">
+        <a 
+          href="#" 
+          @click.prevent="navigate(item.id)"
+          class="flex items-center justify-between px-6 py-3 font-bold transition-all group"
+          :class="currentPage === item.id ? item.activeClass : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+        >
+          <div class="flex items-center">
+            <i 
+              :class="[item.icon, 'w-6 text-center mr-3 transition-transform', currentPage !== item.id && 'group-hover:scale-110']"
+            ></i> 
+            {{ item.label }}
+          </div>
+          <i v-if="item.children" class="fas fa-chevron-down text-xs transition-transform" :class="{'rotate-180': currentPage === item.id}"></i>
+        </a>
+        <!-- Розгорнуте під-меню -->
+        <div v-if="item.children && currentPage === item.id" class="pl-10 pr-4 py-2 space-y-1 bg-gray-800/50">
+          <a 
+            v-for="child in item.children" 
+            :key="child.id"
+            href="#"
+            @click.prevent="navigateSub(item.id, child.id)"
+            class="flex items-center px-4 py-2 text-sm rounded-lg transition-all"
+            :class="activeSubPage === child.id ? 'bg-blue-500/20 text-blue-300 font-bold' : 'text-gray-400 hover:bg-gray-700 hover:text-white'"
+          >
+            <i :class="[child.icon, 'w-5 text-center mr-2 opacity-70']"></i> {{ child.label }}
+          </a>
+        </div>
+      </template>
     </nav>
 
     <div class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center">
@@ -2268,7 +2424,7 @@ const formatDate = (dateString) => {
 </script>
 
 <template>
-  <div class="flex-1 ml-64 bg-gray-50 min-h-screen">
+  <div class="flex-1 ml-64 bg-gray-50 h-screen overflow-y-auto">
     <header class="bg-white border-b border-gray-200 px-8 py-6 sticky top-0 z-10">
       <div class="flex justify-between items-center mb-6">
         <div>
@@ -3701,7 +3857,7 @@ onMounted(() => {
 
 <file path="frontend\src\components\warehouse\Warehouse.vue" lang="vue">
 <script setup>
-import { ref, onMounted, defineAsyncComponent } from 'vue'
+import { onMounted, defineAsyncComponent, computed } from 'vue'
 import { useWarehouse } from '@/composables/useWarehouse'
 
 // --- НОВИЙ ІМПОРТ ---
@@ -3716,8 +3872,10 @@ const CategoriesTab = defineAsyncComponent(() => import('./tabs/CategoriesTab.vu
 const RoomsTab = defineAsyncComponent(() => import('./tabs/RoomsTab.vue')) // Додано для вкладки кімнат
 const SupplyTab = defineAsyncComponent(() => import('./tabs/SupplyTab.vue'))
 
-// Змінимо дефолтну вкладку на 'stock'
-const activeTab = ref('stock')
+const props = defineProps({
+  currentTab: { type: String, required: true }
+})
+
 const { fetchData, loading } = useWarehouse()
 
 // --- ДОДАЄМО В ОБ'ЄКТ ---
@@ -3735,6 +3893,20 @@ const tabs = {
 
 }
 
+// Об'єкт для заголовків, щоб не писати їх в App.vue
+const tabTitles = {
+  supplies: '🚚 Постачання',
+  stock: '📋 Залишки на складі',
+  products: '📦 Товари',
+  recipes: '📖 Рецепти та техкарти',
+  ingredients: '🌶️ Інгредієнти',
+  processes: '⚙️ Процеси приготування',
+  consumables: '🥤 Витратні матеріали',
+  units: '📏 Одиниці виміру',
+  categories: '🏷️ Категорії',
+  rooms: '🚪 Кімнати та групи',
+}
+
 onMounted(() => {
     fetchData()
 })
@@ -3742,36 +3914,14 @@ onMounted(() => {
 
 <template>
   <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
-    <div class="flex justify-between items-center mb-8">
-      <h2 class="text-3xl font-bold text-gray-800">📦 Управління складом</h2>
-      <button @click="fetchData" class="text-blue-600 hover:bg-blue-50 p-2 rounded-full">
+    <header class="flex justify-between items-center mb-8">
+      <h2 class="text-3xl font-bold text-gray-800">{{ tabTitles[props.currentTab] || '📦 Управління складом' }}</h2>
+      <button @click="fetchData" class="text-blue-600 hover:bg-blue-100 p-3 rounded-full transition-colors">
         <i class="fas fa-sync-alt" :class="{'fa-spin': loading}"></i>
       </button>
-    </div>
+    </header>
 
-    <div class="flex space-x-1 bg-gray-200 p-1 rounded-xl w-fit mb-8 overflow-x-auto">
-      <button 
-        @click="activeTab = 'supplies'" 
-        :class="activeTab === 'supplies' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'"
-        class="px-4 py-2 text-xs font-bold rounded-lg transition-all"
-      >
-        🚚 Постачання
-      </button>
-      <button @click="activeTab='stock'" :class="activeTab==='stock'?'bg-white text-green-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-clipboard-check mr-2"></i>Залишки</button>
-      
-      <button @click="activeTab='recipes'" :class="activeTab==='recipes'?'bg-white text-orange-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-book-open mr-2"></i>Рецепти</button>
-      <button @click="activeTab='products'" :class="activeTab==='products'?'bg-white text-purple-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Товари</button>
-      <button @click="activeTab='processes'" :class="activeTab==='processes'?'bg-white text-indigo-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-tasks mr-2"></i>Процеси</button>
-      
-      <button @click="activeTab='ingredients'" :class="activeTab==='ingredients'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Інгрідієнти</button>
-      <button @click="activeTab='consumables'" :class="activeTab==='consumables'?'bg-white text-teal-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all"><i class="fas fa-box-open mr-2"></i>Витратні матеріали</button>
-      
-      <button @click="activeTab='units'" :class="activeTab==='units'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Одиниці</button>
-      <button @click="activeTab='categories'" :class="activeTab==='categories'?'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">Категорії</button>
-      <button @click="activeTab = 'rooms'" :class="activeTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm':''" class="px-6 py-2 rounded-lg font-bold transition-all">📂 Кімнати</button>
-    </div>
-
-    <component :is="tabs[activeTab]" />
+    <component :is="tabs[props.currentTab]" />
     
   </div>
 </template>
@@ -9486,7 +9636,7 @@ def read_root():
     }
 </file>
 
-<file path="product_service\models.py" lang="py">
+<file path="product_service\models_old.py" lang="py">
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON, Numeric, Text
 from sqlalchemy.orm import relationship, backref
 from database import Base
@@ -9917,7 +10067,7 @@ httpx==0.26.0
 alembic
 </file>
 
-<file path="product_service\schemas.py" lang="py">
+<file path="product_service\schemas_old.py" lang="py">
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
@@ -10399,9 +10549,9 @@ from alembic import context
 # 🔥 ДОДАНО: Вказуємо шлях до кореневої папки, щоб Alembic бачив ваші файли
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# 🔥 ДОДАНО: Імпортуємо Base та самі моделі
-from database import Base
-import models  # Обов'язково імпортуємо файл з моделями, щоб SQLAlchemy їх "побачила"
+# 🔥 ЗМІНЕНО: Імпортуємо Base безпосередньо через наш новий Фасад. 
+# Це гарантує, що SQLAlchemy побачить абсолютно всі таблиці з усіх файлів.
+from models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -10482,6 +10632,42 @@ else:
 
 </file>
 
+<file path="product_service\alembic\versions\3123d228513b_test_refactoring.py" lang="py">
+"""test_refactoring
+
+Revision ID: 3123d228513b
+Revises: 3c0490389ed9
+Create Date: 2026-03-20 18:32:07.663652
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '3123d228513b'
+down_revision: Union[str, Sequence[str], None] = '3c0490389ed9'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    pass
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    pass
+    # ### end Alembic commands ###
+
+</file>
+
 <file path="product_service\alembic\versions\3c0490389ed9_add_finance_module.py" lang="py">
 """add_finance_module
 
@@ -10515,6 +10701,537 @@ def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
     pass
     # ### end Alembic commands ###
+
+</file>
+
+<file path="product_service\alembic\versions\ee6667d8b951_decouple_orders_and_crm.py" lang="py">
+"""decouple_orders_and_crm
+
+Revision ID: ee6667d8b951
+Revises: 3123d228513b
+Create Date: 2026-03-21 07:31:49.552660
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = 'ee6667d8b951'
+down_revision: Union[str, Sequence[str], None] = '3123d228513b'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_index(op.f('ix_orders_customer_id'), 'orders', ['customer_id'], unique=False)
+    op.drop_constraint(op.f('orders_customer_id_fkey'), 'orders', type_='foreignkey')
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_foreign_key(op.f('orders_customer_id_fkey'), 'orders', 'customers', ['customer_id'], ['id'])
+    op.drop_index(op.f('ix_orders_customer_id'), table_name='orders')
+    # ### end Alembic commands ###
+
+</file>
+
+<file path="product_service\models\__init__.py" lang="py">
+# Експортуємо Base
+from .base import Base
+
+# Експортуємо всі моделі з усіх доменів
+from .inventory import *
+from .crm import *
+from .supply import *
+from .orders import *
+from .finance import *
+</file>
+
+<file path="product_service\models\base.py" lang="py">
+from database import Base
+</file>
+
+<file path="product_service\models\crm.py" lang="py">
+from sqlalchemy import Column, Integer, String, DateTime
+from datetime import datetime
+from .base import Base
+
+# 1. class Customer(Base):
+# --- КЛІЄНТИ (CRM) ---
+class Customer(Base):
+    __tablename__ = "customers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    phone = Column(String, unique=True, index=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+</file>
+
+<file path="product_service\models\finance.py" lang="py">
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Numeric, Boolean, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from .base import Base
+
+# 1. class Account(Base):
+class Account(Base):
+    """
+    Таблиця Рахунків. 
+    Фізичні або віртуальні місця, де зберігаються гроші.
+    """
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # Назва (напр. "Каса 1", "Головний сейф")
+    type = Column(String) # Тип: 'cash' (готівка), 'bank' (еквайринг/банк), 'safe' (сейф)
+    currency = Column(String, default="UAH") # Мультивалютність (UAH, USD, EUR)
+    
+    # Використовуємо Numeric(12, 2) для грошей: 12 цифр всього, 2 після коми.
+    # Це кешований баланс для швидкого виведення на фронтенді.
+    # Реальний баланс завжди можна перерахувати як суму всіх транзакцій.
+    balance = Column(Numeric(12, 2), default=0.00) 
+    is_active = Column(Boolean, default=True) # Чи можна використовувати цей рахунок
+
+    # Зв'язок з транзакціями (один рахунок має багато транзакцій)
+    transactions = relationship("Transaction", back_populates="account")
+
+# 2. class TransactionCategory(Base):
+class TransactionCategory(Base):
+    """
+    Таблиця Категорій транзакцій (Статті витрат/доходів).
+    Необхідна для побудови P&L звітів.
+    """
+    __tablename__ = "transaction_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String) # Напр. "Оренда", "Продаж товарів", "Інкасація"
+    type = Column(String) # 'INCOME' (Дохід), 'EXPENSE' (Витрата), 'SERVICE' (Службове)
+    
+    # Для створення дерева категорій (напр. Витрати -> Зарплата -> ЗП Бариста)
+    parent_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="SET NULL"), nullable=True)
+    
+    transactions = relationship("Transaction", back_populates="category")
+
+# 3. class Shift(Base):
+class Shift(Base):
+    """
+    Таблиця Касових змін.
+    Прив'язує фінансові рухи до конкретного робочого дня та касира.
+    """
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True) # ID користувача (касира), який відкрив зміну
+    opened_at = Column(DateTime, default=datetime.utcnow) # Час відкриття
+    closed_at = Column(DateTime, nullable=True) # Час закриття (якщо null - зміна триває)
+    
+    # Фінансові показники зміни
+    opening_balance = Column(Numeric(12, 2), default=0.00) # Гроші в касі на ранок (розмінка)
+    closing_balance_expected = Column(Numeric(12, 2), nullable=True) # Скільки має бути по системі
+    closing_balance_actual = Column(Numeric(12, 2), nullable=True) # Скільки касир перерахував руками
+    discrepancy = Column(Numeric(12, 2), default=0.00) # Нестача (-) або Лишок (+)
+
+    transactions = relationship("Transaction", back_populates="shift")
+
+# 4. class Transaction(Base):
+class Transaction(Base):
+    """
+    Таблиця Транзакцій (Ledger / Регістр).
+    СЕРЦЕ системи. Записи тут є незмінними (immutable).
+    """
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Сума транзакції. Може бути позитивною (дохід) або негативною (витрата)
+    amount = Column(Numeric(12, 2), nullable=False)
+    
+    # Зовнішні ключі для зв'язків
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="RESTRICT"))
+    category_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="RESTRICT"), nullable=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(Integer) # Хто ініціював транзакцію
+    
+    # Поліморфний зв'язок (Polymorphic Association)
+    # Зберігає ЧОМУ виникла транзакція. Напр: type='order', id=105 (Чек №105)
+    reference_type = Column(String, index=True, nullable=True) 
+    reference_id = Column(Integer, index=True, nullable=True)
+    
+    # Мультивалютність: курс валюти на момент здійснення операції (щоб історія не ламалась при зміні курсу)
+    exchange_rate = Column(Numeric(10, 4), default=1.0000)
+    
+    # Зв'язок для переміщень (Transfer). 
+    # При інкасації створюються 2 транзакції (-500 з Каси, +500 в Сейф). Вони посилаються одна на одну.
+    linked_transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
+    
+    description = Column(Text, nullable=True) # Коментар касира ("Заплатив за молоко")
+
+    # Встановлення зв'язків з об'єктами
+    account = relationship("Account", back_populates="transactions")
+    category = relationship("TransactionCategory", back_populates="transactions")
+    shift = relationship("Shift", back_populates="transactions")    
+</file>
+
+<file path="product_service\models\inventory.py" lang="py">
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Table, JSON, Numeric, Text
+from sqlalchemy.orm import relationship, backref
+from datetime import datetime
+from .base import Base
+
+# 1. product_process_groups (Table)
+# --- АСОЦІАТИВНА ТАБЛИЦЯ: ТОВАР <-> ГРУПИ ПРОЦЕСІВ ---
+product_process_groups = Table(
+    'product_process_groups_link', Base.metadata,
+    Column('product_id', Integer, ForeignKey('products.id')),
+    Column('process_group_id', Integer, ForeignKey('process_groups.id'))
+)
+# 2. class Category(Base):
+# --- КАТЕГОРІЇ ---
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    slug = Column(String, unique=True)
+    color = Column(String, default="#ffffff")
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    children = relationship("Category", backref=backref("parent", remote_side=[id]), cascade="all, delete-orphan")
+# 3. class Unit(Base):
+# --- ОДИНИЦІ ---
+class Unit(Base):
+    __tablename__ = "units"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True)
+    symbol = Column(String)
+# 4. class Ingredient(Base):
+# --- СКЛАД (ІНГРЕДІЄНТИ) ---
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    cost_per_unit = Column(Float)
+    stock_quantity = Column(Float, default=0.0)
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    costing_method = Column(String, default='wac')
+    
+    unit = relationship("Unit")
+    category = relationship("Category")
+# 5. class Consumable(Base):
+# --- СКЛАД (ВИТРАТНІ МАТЕРІАЛИ) ---
+class Consumable(Base):
+    __tablename__ = "consumables"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    cost_per_unit = Column(Float)
+    stock_quantity = Column(Integer, default=0)
+    
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
+    costing_method = Column(String, default='wac')
+    
+    category = relationship("Category")
+    unit = relationship("Unit")
+# 6. class MasterRecipe(Base):
+# --- ТЕХНОЛОГІЧНІ КАРТИ (РЕЦЕПТИ) ---
+class MasterRecipe(Base):
+    __tablename__ = "master_recipes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String, nullable=True)
+    items = relationship("MasterRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
+# 7. class MasterRecipeItem(Base):
+class MasterRecipeItem(Base):
+    __tablename__ = "master_recipe_items"
+    id = Column(Integer, primary_key=True, index=True)
+    recipe_id = Column(Integer, ForeignKey("master_recipes.id"))
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    quantity = Column(Float) # Кількість (г або %)
+    is_percentage = Column(Boolean, default=False) # True = % від ваги виходу, False = грами
+    
+    recipe = relationship("MasterRecipe", back_populates="items")
+    ingredient = relationship("Ingredient")
+# 8. class ProcessGroup(Base):
+# --- ПРОЦЕСИ ---
+class ProcessGroup(Base):
+    __tablename__ = "process_groups"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String) # "Помол", "Молоко"
+
+    # 🔥 НОВЕ: Група може залежати від конкретної опції іншої групи
+    parent_option_id = Column(Integer, ForeignKey("process_options.id", ondelete="CASCADE"), nullable=True)
+
+    # Зв'язки
+    options = relationship("ProcessOption", foreign_keys="[ProcessOption.group_id]", back_populates="group", cascade="all, delete-orphan")
+    parent_option = relationship("ProcessOption", foreign_keys=[parent_option_id], back_populates="child_groups")
+# 9. class ProcessOption(Base):
+# --- ОПЦІЇ ПРОЦЕСІВ ---
+class ProcessOption(Base):
+    __tablename__ = "process_options"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("process_groups.id"))
+    name = Column(String) # "Дрібний", "Зерно"
+    # Зв'язки
+    group = relationship("ProcessGroup", foreign_keys=[group_id], back_populates="options")
+    # 🔥 Зворотний зв'язок: Групи, які з'являються ТІЛЬКИ якщо обрано цю опцію
+    child_groups = relationship("ProcessGroup", foreign_keys="[ProcessGroup.parent_option_id]", back_populates="parent_option")
+# 10. class ProductConsumable(Base):
+# --- ВИТРАТНІ МАТЕРІАЛИ В ТОВАРАХ ---
+# Зв'язок Товар -> Витратний матеріал (Стаканчик)
+class ProductConsumable(Base):
+    __tablename__ = "product_consumables"
+    product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
+    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
+    quantity = Column(Float, default=1.0)
+    
+    product = relationship("Product", back_populates="consumables")
+    consumable = relationship("Consumable")
+# 11. class ProductIngredient(Base):
+# 🔥 НОВЕ: Зв'язок Товар -> Інгредієнт (для простих товарів)
+class ProductIngredient(Base):
+    __tablename__ = "product_ingredients"
+    product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    quantity = Column(Float) # Скільки грам йде на цей товар
+    
+    product = relationship("Product", back_populates="ingredients")
+    ingredient = relationship("Ingredient")
+# 12. class Product(Base):
+# --- ТОВАРИ ---
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String, nullable=True)
+    price = Column(Float)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    
+    # Прапорець: чи є варіанти (S/M/L) чи це простий товар
+    has_variants = Column(Boolean, default=False)
+    
+    # Для простих товарів:
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    output_weight = Column(Float, default=0.0) # Вага готового виробу (для розрахунку %)
+    
+    # Складський облік готового виробу (наприклад, десерти в холодильнику)
+    track_stock = Column(Boolean, default=False)
+    stock_quantity = Column(Float, default=0.0)
+
+    # 🔥 НОВЕ: Зовнішній ключ для зв'язку з кімнатою
+    room_id = Column(Integer, ForeignKey("product_rooms.id"), nullable=True)
+    room = relationship("ProductRoom", back_populates="products")
+
+    category = relationship("Category")
+    master_recipe = relationship("MasterRecipe")
+    
+    variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
+    modifier_groups = relationship("ProductModifierGroup", back_populates="product", cascade="all, delete-orphan")
+    
+    consumables = relationship("ProductConsumable", back_populates="product", cascade="all, delete-orphan")
+    # 🔥 НОВЕ: Зв'язок з інгредієнтами
+    ingredients = relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
+    
+    process_groups = relationship("ProcessGroup", secondary=product_process_groups)
+
+# 13. class ProductVariant(Base):
+# --- ВАРІАНТИ ТОВАРІВ (S/M/L) ---
+class ProductVariant(Base):
+    __tablename__ = "product_variants"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    name = Column(String) # "S", "M", "L" або "На мигдальному"
+    price = Column(Float)
+    sku = Column(String, nullable=True)
+    
+    master_recipe_id = Column(Integer, ForeignKey("master_recipes.id"), nullable=True)
+    output_weight = Column(Float, default=0.0)
+    
+    stock_quantity = Column(Float, default=0.0) # Якщо ведемо облік по варіантах
+
+    master_recipe = relationship("MasterRecipe")
+    product = relationship("Product", back_populates="variants")
+    
+    ingredients = relationship("ProductVariantIngredient", back_populates="variant", cascade="all, delete-orphan")
+    consumables = relationship("ProductVariantConsumable", back_populates="variant", cascade="all, delete-orphan")
+
+# 14. class ProductRoom(Base):
+# --- КІМНАТИ (для групування товарів) ---
+class ProductRoom(Base):
+    __tablename__ = "product_rooms"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # Напр: "Кава Delicate"
+    description = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    
+    # Зв'язок: одна кімната має багато товарів
+    products = relationship("Product", back_populates="room")
+
+# 15. class ProductVariantIngredient(Base):
+# 🔥 НОВЕ: Зв'язок Варіант товару -> Інгредієнт (для варіантів)
+class ProductVariantIngredient(Base):
+    __tablename__ = "product_variant_ingredients"
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    quantity = Column(Float)
+    
+    variant = relationship("ProductVariant", back_populates="ingredients")
+    ingredient = relationship("Ingredient")
+
+# 16. class ProductVariantConsumable(Base):
+# 🔥 НОВЕ: Зв'язок Варіант товару -> Витратний матеріал (для варіантів)
+class ProductVariantConsumable(Base):
+    __tablename__ = "product_variant_consumables"
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
+    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
+    quantity = Column(Integer, default=1)
+    
+    variant = relationship("ProductVariant", back_populates="consumables")
+    consumable = relationship("Consumable")
+
+# 17. class ProductModifierGroup(Base):
+# --- ГРУПИ МОДИФІКАТОРІВ (наприклад, "Молоко" з опціями "Коров'яче", "Мигдальне") ---
+class ProductModifierGroup(Base):
+    __tablename__ = "product_modifier_groups"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    name = Column(String) # "Вибір молока", "Сироп"
+    is_required = Column(Boolean, default=False)
+    
+    product = relationship("Product", back_populates="modifier_groups")
+    modifiers = relationship("Modifier", back_populates="group", cascade="all, delete-orphan")
+
+# 18. class Modifier(Base):
+# --- МОДИФІКАТОРИ (опції в групах модифікаторів) ---
+class Modifier(Base):
+    __tablename__ = "modifiers"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("product_modifier_groups.id"))
+    name = Column(String) # "Кокосове", "Карамельний"
+    price_change = Column(Float, default=0.0)
+    
+    # Що списувати при виборі цього модифікатора
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=True)
+    quantity = Column(Float, default=0.0) # Скільки списувати
+    
+    group = relationship("ProductModifierGroup", back_populates="modifiers")
+    ingredient = relationship("Ingredient")
+
+# 19. class InventoryTransaction(Base):
+# --- ТРАНЗАКЦІЇ СКЛАДУ (для історії змін) ---
+class InventoryTransaction(Base):
+    __tablename__ = "inventory_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String, index=True) 
+    entity_id = Column(Integer, index=True)
+    entity_name = Column(String)
+    change_amount = Column(Float)
+    balance_after = Column(Float)
+    reason = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+</file>
+
+<file path="product_service\models\orders.py" lang="py">
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON, Numeric, Float
+from sqlalchemy.orm import relationship, foreign
+from datetime import datetime
+from .base import Base
+
+
+# 1. class Order(Base):
+class Order(Base):
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    total_price = Column(Float)
+    payment_method = Column(String)
+
+    #customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    # 🔥 НОВИЙ М'ЯКИЙ ЗВ'ЯЗОК (Soft Link)
+    # Ми прибираємо ForeignKey, залишаємо просто число (і додаємо індекс для швидкості)
+    customer_id = Column(Integer, index=True, nullable=True)
+
+    #customer = relationship("Customer")
+    # 🔥 Ми кажемо SQLAlchemy: "Зв'язок є логічно, але фізично в базі його не шукай"
+    customer = relationship(
+        "Customer", 
+        primaryjoin="Order.customer_id == foreign(Customer.id)")
+
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+# 2. class OrderItem(Base):
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    product_name = Column(String)
+    quantity = Column(Integer)
+    price_at_moment = Column(Float)
+    details = Column(String, nullable=True) 
+    consumable_overrides = Column(JSON, nullable=True, default=list)
+    order = relationship("Order", back_populates="items")
+
+</file>
+
+<file path="product_service\models\supply.py" lang="py">
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Numeric, Float, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from .base import Base
+
+# 1. class Supplier(Base):
+# --- ПОСТАЧАННЯ ТА ПАРТІЇ ---
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True) # Твій "коментар"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# 2. class Supply(Base):
+class Supply(Base):
+    __tablename__ = "supplies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    total_cost = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True) # Нове поле
+    supplier_name = Column(String, nullable=True) # Залишаємо для історії (snapshot)
+    
+    items = relationship("SupplyItem", back_populates="supply", cascade="all, delete-orphan")
+    supplier = relationship("Supplier")
+
+# 3. class SupplyItem(Base):
+class SupplyItem(Base):
+    __tablename__ = "supply_items"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    supply_id = Column(Integer, ForeignKey("supplies.id"))
+    
+    entity_type = Column(String)  # 'ingredient', 'consumable', 'simple_product'
+    entity_id = Column(Integer)
+    entity_name = Column(String) 
+    
+    quantity = Column(Float)      # Скільки приїхало початково
+    remaining_quantity = Column(Float, default=0.0) # Залишок для FIFO та Manual Batch
+    
+    cost_per_unit = Column(Float) # Ціна закупівлі одиниці в ЦІЙ партії
+    total_cost = Column(Float)    # Загальна вартість рядка
+    
+    supply = relationship("Supply", back_populates="items")
 
 </file>
 
@@ -11837,6 +12554,533 @@ def get_available_batches(
             } for b in batches
         ]
     }
+</file>
+
+<file path="product_service\schemas\__init__.py" lang="py">
+from .crm import *
+from .finance import *
+from .inventory import *
+from .supply import *
+from .orders import *
+</file>
+
+<file path="product_service\schemas\crm.py" lang="py">
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class Customer(BaseModel):
+    id: int
+    name: str
+    phone: str
+    email: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    class Config: 
+        from_attributes = True
+</file>
+
+<file path="product_service\schemas\finance.py" lang="py">
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+from decimal import Decimal
+
+# --- РАХУНКИ (ACCOUNTS) ---
+class AccountBase(BaseModel):
+    name: str
+    type: str
+    currency: str = "UAH"
+    is_active: bool = True
+
+class AccountCreate(AccountBase):
+    initial_balance: Decimal = Decimal('0.00')
+
+class AccountResponse(AccountBase):
+    id: int
+    balance: Decimal
+    class Config: from_attributes = True
+
+
+# --- КАТЕГОРІЇ ТРАНЗАКЦІЙ ---
+class TransactionCategoryCreate(BaseModel):
+    name: str
+    type: str
+    parent_id: Optional[int] = None
+
+class TransactionCategoryResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    parent_id: Optional[int] = None  # 🔥 Додано = None
+    class Config: from_attributes = True
+
+
+# --- КАСОВІ ЗМІНИ (SHIFTS) ---
+class ShiftCreate(BaseModel):
+    user_id: int
+    opening_balance: Decimal = Decimal('0.00')
+
+class ShiftClose(BaseModel):
+    closing_balance_actual: Decimal
+    transfer_to_safe_amount: Optional[Decimal] = Decimal('0.00')
+
+class ShiftResponse(BaseModel):
+    id: int
+    user_id: int
+    opened_at: datetime
+    closed_at: Optional[datetime] = None               # 🔥 Додано = None
+    opening_balance: Decimal
+    closing_balance_expected: Optional[Decimal] = None # 🔥 Додано = None
+    closing_balance_actual: Optional[Decimal] = None   # 🔥 Додано = None
+    discrepancy: Decimal
+    class Config: from_attributes = True
+
+
+# --- ТРАНЗАКЦІЇ (TRANSACTIONS) ---
+class TransactionCreate(BaseModel):
+    amount: Decimal = Field(..., description="Позитивна або негативна сума")
+    account_id: int
+    category_id: Optional[int] = None
+    shift_id: Optional[int] = None
+    user_id: int
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    description: Optional[str] = None
+
+class TransferCreate(BaseModel):
+    from_account_id: int
+    to_account_id: int
+    amount: Decimal = Field(..., gt=0, description="Сума переказу має бути більшою за 0")
+    user_id: int
+    shift_id: Optional[int] = None
+    description: Optional[str] = None
+
+class TransactionResponse(BaseModel):
+    id: int
+    timestamp: datetime
+    amount: Decimal
+    account_id: int
+    category_id: Optional[int] = None           # 🔥 Додано = None
+    shift_id: Optional[int] = None              # 🔥 Додано = None
+    user_id: int
+    reference_type: Optional[str] = None        # 🔥 Додано = None
+    reference_id: Optional[int] = None          # 🔥 Додано = None
+    description: Optional[str] = None           # 🔥 Додано = None
+    linked_transaction_id: Optional[int] = None # 🔥 Додано = None
+    class Config: from_attributes = True
+</file>
+
+<file path="product_service\schemas\inventory.py" lang="py">
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+
+# --- КАТЕГОРІЇ ТА ОДИНИЦІ ---
+class Category(BaseModel):
+    id: int
+    name: str
+    slug: str
+    color: Optional[str] = '#ffffff'
+    parent_id: Optional[int] = None
+    class Config(): from_attributes = True
+
+class CategoryCreate(BaseModel):
+    name: str
+    slug: str
+    color: Optional[str] = '#ffffff'
+    parent_id: Optional[int] = None
+
+class Unit(BaseModel):
+    id: int
+    name: str
+    symbol: str
+    class Config(): from_attributes = True
+
+class UnitCreate(BaseModel):
+    name: str
+    symbol: str
+
+# --- ІНГРЕДІЄНТИ ТА ВИТРАТНИКИ ---
+class IngredientCreate(BaseModel):
+    name: str
+    costing_method: str = 'wac'
+    unit_id: int
+    category_id: Optional[int] = None
+
+class Ingredient(BaseModel):
+    id: int
+    name: str
+    cost_per_unit: Optional[float] = 0.0
+    stock_quantity: Optional[float] = 0.0
+    unit_id: Optional[int] = None
+    unit: Optional[Unit] = None
+    category_id: Optional[int] = None
+    category: Optional[Category] = None
+    costing_method: str
+    class Config():
+        from_attributes = True
+        extra = 'ignore'
+
+class ConsumableBase(BaseModel):
+    name: str
+    cost_per_unit: Optional[float] = 0.0
+    stock_quantity: Optional[float] = 0.0
+    costing_method: str = 'wac'
+
+class ConsumableCreate(ConsumableBase):
+    category_id: Optional[int] = None
+    unit_id: Optional[int] = None
+
+class Consumable(ConsumableBase):
+    id: int
+    category_id: Optional[int] = None
+    category: Optional[Category] = None
+    unit_id: Optional[int] = None
+    unit: Optional[Unit] = None
+    class Config(): from_attributes = True
+
+# --- ПРОЦЕСИ ---
+class ProcessOptionCreate(BaseModel):
+    name: str
+
+class ProcessOption(ProcessOptionCreate):
+    id: int
+    group_id: int
+    class Config(): from_attributes = True
+
+class ProcessGroupCreate(BaseModel):
+    name: str
+    options: List[ProcessOptionCreate] = []
+    parent_option_id: Optional[int] = None
+
+class ProcessGroup(BaseModel):
+    id: int
+    name: str
+    parent_option_id: Optional[int] = None
+    options: List[ProcessOption] = []
+    class Config(): from_attributes = True
+
+# --- ТЕХНОЛОГІЧНІ КАРТИ ---
+class MasterRecipeItemCreate(BaseModel):
+    ingredient_id: int
+    quantity: float
+    is_percentage: bool = False
+
+class MasterRecipeItem(MasterRecipeItemCreate):
+    id: int
+    ingredient_name: Optional[str] = None
+    class Config(): from_attributes = True
+
+class MasterRecipeCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    items: List[MasterRecipeItemCreate] = []
+
+class MasterRecipe(MasterRecipeCreate):
+    id: int
+    items: List[MasterRecipeItem] = []
+    class Config(): from_attributes = True
+
+# --- МОДИФІКАТОРИ ---
+class ModifierCreate(BaseModel):
+    name: str
+    price_change: float = 0.0
+    ingredient_id: Optional[int] = None
+    quantity: float = 0.0
+
+class Modifier(ModifierCreate):
+    id: int
+    class Config(): from_attributes = True
+
+class ModifierGroupCreate(BaseModel):
+    name: str
+    is_required: bool = False
+    modifiers: List[ModifierCreate] = []
+
+class ModifierGroup(ModifierGroupCreate):
+    id: int
+    modifiers: List[Modifier] = []
+    class Config(): from_attributes = True
+
+# --- ЗВ'ЯЗКИ ТОВАРІВ ---
+class ProductIngredientLink(BaseModel):
+    ingredient_id: int
+    quantity: float
+    class Config(): extra = 'ignore'
+
+class ProductIngredientRead(BaseModel):
+    ingredient_id: int
+    quantity: float
+    ingredient_name: Optional[str] = None
+    name: Optional[str] = Field(default=None, alias='ingredient_name')
+    class Config():
+        from_attributes = True
+        populate_by_name = True
+
+class ProductConsumableLink(BaseModel):
+    consumable_id: int
+    quantity: float = 1.0
+    class Config(): extra = 'ignore'
+
+class ProductConsumableRead(BaseModel):
+    consumable_id: int
+    quantity: float
+    consumable_name: Optional[str] = None
+    name: Optional[str] = Field(default=None, alias='consumable_name')
+    class Config():
+        from_attributes = True
+        populate_by_name = True
+
+class ProductCostCheck(BaseModel):
+    master_recipe_id: Optional[int] = None
+    output_weight: float = 0.0
+    ingredients: List[ProductIngredientLink] = []
+    consumables: List[ProductConsumableLink] = []
+
+# --- ТОВАРИ ТА ВАРІАНТИ ---
+class VariantCreate(BaseModel):
+    name: str
+    price: float
+    sku: Optional[str] = None
+    output_weight: float = 0.0
+    master_recipe_id: Optional[int] = None
+    stock_quantity: float = 0.0
+    consumables: List[ProductConsumableLink] = []
+    ingredients: List[ProductIngredientLink] = []
+    class Config(): extra = 'ignore'
+
+class Variant(VariantCreate):
+    id: int
+    consumables: List[ProductConsumableRead] = []
+    ingredients: List[ProductIngredientRead] = []
+    master_recipe: Optional[MasterRecipe] = None
+    cost_price: Optional[float] = 0.0
+    margin: Optional[float] = 0.0
+    class Config(): from_attributes = True
+
+class ProductBase(BaseModel):
+    name: str = Field(..., min_length=1, description="Назва товару обов'язкова")
+    description: Optional[str] = None
+    category_id: Optional[int] = None
+    has_variants: bool = False
+    price: float = 0.0
+    output_weight: float = 0.0
+    master_recipe_id: Optional[int] = None
+    track_stock: bool = False
+    stock_quantity: float = 0.0
+    room_id: Optional[int] = None
+
+class ProductCreate(ProductBase):
+    variants: List[VariantCreate] = []
+    modifier_groups: List[ModifierGroupCreate] = []
+    consumables: List[ProductConsumableLink] = []
+    ingredients: List[ProductIngredientLink] = []
+    process_group_ids: List[int] = []
+    class Config(): extra = 'ignore'
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1)
+    description: Optional[str] = None
+    category_id: Optional[int] = None
+    has_variants: Optional[bool] = None
+    price: Optional[float] = None
+    output_weight: Optional[float] = None
+    master_recipe_id: Optional[int] = None
+    track_stock: Optional[bool] = None
+    stock_quantity: Optional[float] = None
+    room_id: Optional[int] = None
+
+class Product(ProductBase):
+    id: int
+    category: Optional[Category] = None
+    variants: List[Variant] = []
+    modifier_groups: List[ModifierGroup] = []
+    master_recipe: Optional[MasterRecipe] = None
+    consumables: List[ProductConsumableRead] = []
+    ingredients: List[ProductIngredientRead] = []
+    cost_price: Optional[float] = 0.0
+    margin: Optional[float] = 0.0
+    process_groups: List[ProcessGroup] = []
+    class Config(): from_attributes = True
+
+class ProductRoomCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class ProductRoomRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    products: List[Product] = []
+    class Config(): from_attributes = True
+
+# --- КАЛЬКУЛЯЦІЯ ТА СКЛАД ---
+class StockDeductionItem(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    quantity: float
+    order_id: int
+
+class InventoryTransactionRead(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    entity_name: str
+    change_amount: float
+    balance_after: float
+    reason: Optional[str] = None
+    created_at: datetime
+    class Config(): from_attributes = True
+
+class InventoryAdjustRequest(BaseModel):
+    entity_type: str
+    entity_id: int
+    actual_quantity: float
+    reason: str
+    batch_id: Optional[int] = None
+</file>
+
+<file path="product_service\schemas\orders.py" lang="py">
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
+
+# 🔥 Імпортуємо тільки Customer (залежності від inventory більше немає!)
+from .crm import Customer
+
+# --- МОДИФІКАТОРИ ТА ПАКУВАННЯ ---
+class SoldItemModifier(BaseModel):
+    modifier_id: int
+    
+    class Config: 
+        extra = 'ignore'
+
+class ConsumableOverride(BaseModel):
+    original_id: int           
+    new_id: Optional[int] = None 
+
+# --- СТВОРЕННЯ ЧЕКА (ВІД КАСИРА) ---
+class SoldItem(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    modifiers: List[SoldItemModifier] = []
+    quantity: int
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
+
+class OrderCreate(BaseModel):
+    items: List[SoldItem]
+    payment_method: str
+    customer_id: Optional[int] = None
+    
+    class Config: 
+        extra = 'ignore'
+
+# --- ВІДОБРАЖЕННЯ ЧЕКА (ДЛЯ ІСТОРІЇ/ЗВІТІВ) ---
+class OrderItemRead(BaseModel):
+    product_name: str
+    quantity: int
+    price_at_moment: float
+    details: Optional[str] = None
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
+    
+    class Config: 
+        from_attributes = True
+
+class OrderRead(BaseModel):
+    id: int
+    created_at: datetime
+    total_price: float
+    payment_method: str
+    items: List[OrderItemRead] = []
+    customer: Optional[Customer] = None
+    
+    class Config: 
+        from_attributes = True
+
+# --- ПАГІНАЦІЯ ДЛЯ СПИСКУ ЧЕКІВ ---
+class OrderPaginationResponse(BaseModel):
+    total: int
+    items: List[OrderRead] = []
+    page: int
+    pages: int
+
+    class Config:
+        from_attributes = True
+</file>
+
+<file path="product_service\schemas\supply.py" lang="py">
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
+from decimal import Decimal
+
+# --- ПОСТАЧАЛЬНИКИ ---
+class SupplierCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class Supplier(BaseModel):
+    id: int
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    class Config: 
+        from_attributes = True
+
+# --- ТОВАРИ В НАКЛАДНІЙ ---
+class SupplyItemCreate(BaseModel):
+    entity_type: str
+    entity_id: int
+    quantity: float
+    cost_per_unit: float
+
+class SupplyItemResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    quantity: float
+    cost_per_unit: float
+    entity_name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+# --- САМА НАКЛАДНА (ПОСТАЧАННЯ) ---
+class SupplyCreate(BaseModel):
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+    items: List[SupplyItemCreate]
+    payment_account_id: Optional[int] = None 
+    paid_amount: Optional[Decimal] = Decimal('0.00')
+
+class SupplyResponse(BaseModel):
+    id: int
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+    total_cost: float
+    created_at: datetime
+    items: List[SupplyItemResponse] = []
+    supplier: Optional[Supplier] = None
+    
+    class Config:
+        from_attributes = True
 </file>
 
 <file path="product_service\services\__init__.py" lang="py">
