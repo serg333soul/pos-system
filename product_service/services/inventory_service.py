@@ -1,69 +1,24 @@
+# FILE: product_service/services/inventory_service.py
+
 from services.inventory_logger import InventoryLogger
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import models
 import schemas
 
+# 🔥 Єдиний місток до партій та накладних
+from services.supply_client import SupplyClient
+
 class InventoryService:
     
     @staticmethod
     def deduct_fifo(db: Session, entity_type: str, entity_id: int, quantity_needed: float) -> float:
-        """
-        Списує товар за методом FIFO (найстаріші партії перші) і повертає ТОЧНУ собівартість списаного.
-        """
-        if quantity_needed <= 0:
-            return 0.0
-
-        # Шукаємо партії з залишком, сортуємо за ID (що еквівалентно хронології)
-        batches = db.query(models.SupplyItem).filter(
-            models.SupplyItem.entity_type == entity_type,
-            models.SupplyItem.entity_id == entity_id,
-            models.SupplyItem.remaining_quantity > 0
-        ).order_by(models.SupplyItem.id.asc()).with_for_update().all()
-
-        total_cost_of_deducted = 0.0
-        qty_left_to_deduct = quantity_needed
-
-        for batch in batches:
-            if qty_left_to_deduct <= 0:
-                break
-            
-            take_from_batch = min(batch.remaining_quantity, qty_left_to_deduct)
-            total_cost_of_deducted += take_from_batch * batch.cost_per_unit
-            
-            batch.remaining_quantity -= take_from_batch
-            qty_left_to_deduct -= take_from_batch
-            db.add(batch)
-
-        # Якщо товару не вистачило в партіях (наприклад, продали в мінус)
-        if qty_left_to_deduct > 0:
-             last_price = batches[-1].cost_per_unit if batches else 0.0
-             total_cost_of_deducted += qty_left_to_deduct * last_price
-
-        return total_cost_of_deducted
+        # Делегуємо роботу з партіями Клієнту Закупівель
+        return SupplyClient.deduct_fifo(db, entity_type, entity_id, quantity_needed)
 
     @staticmethod
     def deduct_manual(db: Session, batch_id: int, quantity_needed: float) -> float:
-        """
-        Списує товар із конкретно обраної партії.
-        """
-        batch = db.query(models.SupplyItem).filter(
-            models.SupplyItem.id == batch_id
-        ).with_for_update().first()
-        
-        if not batch:
-            raise HTTPException(status_code=404, detail="Партію не знайдено")
-            
-        if batch.remaining_quantity < quantity_needed:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Недостатньо залишку в обраній партії (є {batch.remaining_quantity}, треба {quantity_needed})"
-            )
-            
-        batch.remaining_quantity -= quantity_needed
-        db.add(batch)
-        
-        return quantity_needed * batch.cost_per_unit
+        return SupplyClient.deduct_manual(db, batch_id, quantity_needed)
     
     @staticmethod
     def adjust_inventory(db: Session, request: schemas.InventoryAdjustRequest):
@@ -90,69 +45,25 @@ class InventoryService:
             
         transaction_reason = f"Коригування: {request.reason}"
         
-        # 2. Обробка за КОНКРЕТНОЮ ПАРТІЄЮ (Ручний вибір для FIFO)
+        # 2. ДЕЛЕГУЄМО РОБОТУ З ПАРТІЯМИ КЛІЄНТУ
         if request.batch_id:
-            batch = db.query(models.SupplyItem).filter(models.SupplyItem.id == request.batch_id).with_for_update().first()
-            if not batch:
-                raise HTTPException(status_code=404, detail="Партія не знайдена")
-                
-            if difference < 0:
-                # Нестача: списуємо з вибраної партії
-                deduct_amount = abs(difference)
-                if batch.remaining_quantity < deduct_amount:
-                    raise HTTPException(status_code=400, detail="У вибраній партії недостатньо залишку для такого списання")
-                batch.remaining_quantity -= deduct_amount
-            else:
-                # Лишок: додаємо знайдений товар у вибрану партію
-                batch.remaining_quantity += difference
-                batch.quantity += difference # Оновлюємо початкову кількість партії
-            db.add(batch)
-            
-        # 3. Обробка БЕЗ партії (Автоматичне розподілення)
+            SupplyClient.adjust_batch(db, request.batch_id, difference)
         else:
             if difference < 0:
                 deduct_amount = abs(difference)
-                # 🔥 ВИПРАВЛЕННЯ: Списуємо з найстаріших партій ЗАВЖДИ (і для FIFO, і для WAC), 
-                # щоб сума в партіях дорівнювала stock_quantity
-                InventoryService.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
+                SupplyClient.deduct_fifo(db, request.entity_type, request.entity_id, deduct_amount)
             else:
-                # 🔥 ВИПРАВЛЕННЯ: Якщо це Лишок - створюємо НОВУ системну партію ЗАВЖДИ 
-                # (і для FIFO, і для WAC), щоб ця кількість з'явилась у випадаючих списках
-                
-                # Шукаємо останню ціну закупівлі цього товару для адекватної оцінки лишку
-                last_batch = db.query(models.SupplyItem).filter(
-                    models.SupplyItem.entity_type == request.entity_type,
-                    models.SupplyItem.entity_id == request.entity_id
-                ).order_by(models.SupplyItem.id.desc()).first()
-                
-                cost_unit = last_batch.cost_per_unit if last_batch else getattr(target_obj, 'cost_per_unit', 0.0)
-                
-                # Створюємо системну поставку-документ
-                system_supply = models.Supply(
-                    notes=f"Системна накладна (Коригування: {request.reason})",
-                    total_cost=difference * cost_unit
+                entity_name = getattr(target_obj, 'name', 'Unknown')
+                fallback_cost = getattr(target_obj, 'cost_per_unit', 0.0)
+                SupplyClient.create_system_adjustment(
+                    db, request.entity_type, request.entity_id, entity_name, difference, fallback_cost
                 )
-                db.add(system_supply)
-                db.flush() # робимо flush, щоб отримати system_supply.id
-                
-                # Створюємо сам рядок партії
-                system_supply_item = models.SupplyItem(
-                    supply_id=system_supply.id,
-                    entity_type=request.entity_type,
-                    entity_id=request.entity_id,
-                    entity_name=getattr(target_obj, 'name', 'Unknown'),
-                    quantity=difference,
-                    remaining_quantity=difference,
-                    cost_per_unit=cost_unit,
-                    total_cost=difference * cost_unit
-                )
-                db.add(system_supply_item)
 
-        # 4. Оновлюємо загальний залишок сутності
+        # 3. Оновлюємо загальний залишок сутності на складі
         target_obj.stock_quantity = request.actual_quantity
         db.add(target_obj)
         
-        # 5. Логування в Історію
+        # 4. Логування в Історію Складу
         InventoryLogger.log(
             db=db,
             entity_type=request.entity_type,

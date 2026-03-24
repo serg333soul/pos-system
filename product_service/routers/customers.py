@@ -38,10 +38,15 @@ def update_customer(id: int, data: schemas.CustomerCreate, db: Session = Depends
     return c
 
 @router.delete("/{id}")
-def delete_customer(id: int, db: Session = Depends(database.get_db)): 
-    c = db.query(models.Customer).filter(models.Customer.id==id).first()
-    if c: db.delete(c); db.commit()
-    return {"status": "deleted"}
+def delete_customer(id: int, db: Session = Depends(database.get_db)):
+    c = db.query(models.Customer).filter(models.Customer.id == id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Клієнта не знайдено")
+    
+    # М'яке видалення: клієнт залишається в базі для історії чеків, але зникає з пошуку
+    c.is_active = False 
+    db.commit()
+    return {"status": "archived"}
 
 @router.get("/{customer_id}/orders/", response_model=List[schemas.OrderRead])
 def read_customer_orders(customer_id: int, db: Session = Depends(database.get_db)):

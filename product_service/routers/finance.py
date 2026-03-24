@@ -18,7 +18,6 @@ router = APIRouter(prefix="/finance", tags=["Finance"])
 
 @router.post("/accounts/", response_model=schemas.AccountResponse)
 def create_account(account_data: schemas.AccountCreate, db: Session = Depends(database.get_db)):
-    """Створення нового фінансового рахунку (каса, сейф, банк)."""
     new_account = models.Account(
         name=account_data.name,
         type=account_data.type,
@@ -33,7 +32,6 @@ def create_account(account_data: schemas.AccountCreate, db: Session = Depends(da
 
 @router.get("/accounts/", response_model=List[schemas.AccountResponse])
 def get_accounts(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    """Отримання списку всіх рахунків."""
     return db.query(models.Account).offset(skip).limit(limit).all()
 
 # ==========================================
@@ -41,21 +39,19 @@ def get_accounts(skip: int = 0, limit: int = 100, db: Session = Depends(database
 # ==========================================
 
 @router.post("/categories/", response_model=schemas.TransactionCategoryResponse)
-def create_category(category_data: schemas.TransactionCategoryCreate, db: Session = Depends(database.get_db)):
-    """Створення нової категорії доходів/витрат."""
-    new_category = models.TransactionCategory(
-        name=category_data.name,
-        type=category_data.type,
-        parent_id=category_data.parent_id
+def create_category(cat_data: schemas.TransactionCategoryCreate, db: Session = Depends(database.get_db)):
+    new_cat = models.TransactionCategory(
+        name=cat_data.name,
+        type=cat_data.type,
+        description=cat_data.description
     )
-    db.add(new_category)
+    db.add(new_cat)
     db.commit()
-    db.refresh(new_category)
-    return new_category
+    db.refresh(new_cat)
+    return new_cat
 
 @router.get("/categories/", response_model=List[schemas.TransactionCategoryResponse])
 def get_categories(type: Optional[str] = None, db: Session = Depends(database.get_db)):
-    """Отримання списку категорій (опціонально з фільтром по типу)."""
     query = db.query(models.TransactionCategory)
     if type:
         query = query.filter(models.TransactionCategory.type == type)
@@ -67,51 +63,44 @@ def get_categories(type: Optional[str] = None, db: Session = Depends(database.ge
 
 @router.post("/shifts/open", response_model=schemas.ShiftResponse)
 def open_shift(shift_data: schemas.ShiftCreate, db: Session = Depends(database.get_db)):
-    """Відкриття нової касової зміни."""
-    return finance_service.open_shift(db=db, shift_data=shift_data)
+    return finance_service.open_shift(db, shift_data)
+
+@router.get("/shifts/active", response_model=schemas.ShiftResponse)
+def get_active_shift(db: Session = Depends(database.get_db)):
+    shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Немає активної зміни")
+    return shift
 
 @router.post("/shifts/{shift_id}/close", response_model=schemas.ShiftResponse)
-def close_shift(
-    shift_id: int, 
-    close_data: schemas.ShiftClose,
-    cash_account_id: int = Query(..., description="ID рахунку Готівкової Каси"),
-    safe_account_id: int = Query(..., description="ID рахунку Головного Сейфу"),
-    user_id: int = Query(..., description="ID касира, який закриває зміну"),
-    db: Session = Depends(database.get_db)
-):
-    """Закриття касової зміни (Z-звіт) з інкасацією."""
-    return finance_service.close_shift(
+def close_shift(shift_id: int, close_data: schemas.ShiftClose, db: Session = Depends(database.get_db)):
+    # 🔥 ВИПРАВЛЕНО: Шукаємо безпечно за ТИПОМ рахунку, а не за назвою, яку можуть змінити
+    cash_account = db.query(models.Account).filter(models.Account.type == "CASH").first()
+    safe_account = db.query(models.Account).filter(models.Account.type == "SAFE").first()
+
+    if not cash_account or not safe_account:
+        raise HTTPException(status_code=500, detail="Системна помилка: Не знайдено рахунок 'Каса' (CASH) або 'Сейф' (SAFE) у базі.")
+
+    # Користувача беремо з токена (поки хардкод 1)
+    current_user_id = 1 
+
+    closed_shift = finance_service.close_shift(
         db=db,
         shift_id=shift_id,
         close_data=close_data,
-        cash_account_id=cash_account_id,
-        safe_account_id=safe_account_id,
-        user_id=user_id
+        cash_account_id=cash_account.id,
+        safe_account_id=safe_account.id,
+        user_id=current_user_id
     )
-
-@router.get("/shifts/active", response_model=Optional[schemas.ShiftResponse])
-def get_active_shift(db: Session = Depends(database.get_db)):
-    """Отримання поточної відкритої зміни (якщо є)."""
-    return db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    return closed_shift
 
 # ==========================================
-# 4. ТРАНЗАКЦІЇ ТА ПЕРЕКАЗИ (TRANSACTIONS)
+# 4. ТРАНЗАКЦІЇ ТА ПЕРЕКАЗИ
 # ==========================================
 
 @router.post("/transactions/", response_model=schemas.TransactionResponse)
-def create_transaction(trans_data: schemas.TransactionCreate, db: Session = Depends(database.get_db)):
-    """
-    Створення ручної транзакції.
-    (Наприклад: внесення розмінної монети, оплата кур'єру з каси).
-    """
-    return finance_service.create_transaction(db=db, trans_data=trans_data)
-
-@router.post("/transactions/transfer")
-def transfer_funds(transfer_data: schemas.TransferCreate, db: Session = Depends(database.get_db)):
-    """
-    Переміщення коштів між рахунками (Інкасація або поповнення).
-    """
-    return finance_service.transfer_funds(db=db, transfer_data=transfer_data)
+def add_transaction(trans_data: schemas.TransactionCreate, db: Session = Depends(database.get_db)):
+    return finance_service.create_transaction(db, trans_data)
 
 @router.get("/transactions/", response_model=List[schemas.TransactionResponse])
 def get_transactions(
@@ -121,66 +110,37 @@ def get_transactions(
     limit: int = 100, 
     db: Session = Depends(database.get_db)
 ):
-    """Отримання історії транзакцій (Ledger) з можливістю фільтрації."""
     query = db.query(models.Transaction)
     if account_id:
         query = query.filter(models.Transaction.account_id == account_id)
     if shift_id:
         query = query.filter(models.Transaction.shift_id == shift_id)
-    
+        
     return query.order_by(models.Transaction.timestamp.desc()).offset(skip).limit(limit).all()
+
+@router.get("/transactions/{transaction_id}", response_model=schemas.TransactionResponse)
+def get_transaction(transaction_id: int, db: Session = Depends(database.get_db)):
+    tx = db.query(models.Transaction).filter(models.Transaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Транзакцію не знайдено")
+    return tx
+
+@router.post("/transfers/")
+def transfer_money(transfer_data: schemas.TransferCreate, db: Session = Depends(database.get_db)):
+    return finance_service.transfer_funds(db, transfer_data)
 
 # ==========================================
 # 5. ЗВІТИ (REPORTS)
 # ==========================================
 
-@router.get("/report/pnl")
-def get_pnl_report(
+@router.get("/reports/pnl")
+def get_profit_and_loss_report(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: Session = Depends(database.get_db)
 ):
     """
-    Генерує звіт P&L (Прибутки та збитки) згрупований по категоріях.
+    Звіт P&L (Прибутки та Збитки).
     """
-    # Будуємо запит: об'єднуємо транзакції з категоріями і рахуємо суму
-    query = db.query(
-        models.TransactionCategory.name,
-        models.TransactionCategory.type,
-        func.sum(models.Transaction.amount).label('total')
-    ).join(
-        models.Transaction, models.Transaction.category_id == models.TransactionCategory.id
-    )
-
-    # Фільтри по даті (для майбутнього масштабування, щоб дивитись звіт за місяць)
-    if start_date:
-        query = query.filter(models.Transaction.timestamp >= start_date)
-    if end_date:
-        query = query.filter(models.Transaction.timestamp <= end_date)
-
-    # Групуємо за категорією
-    results = query.group_by(models.TransactionCategory.name, models.TransactionCategory.type).all()
-
-    # Формуємо структуру звіту
-    report = {
-        "income": {},          # Деталізація доходів
-        "expense": {},         # Деталізація витрат
-        "total_income": 0.0,
-        "total_expense": 0.0,
-        "net_profit": 0.0      # Чистий прибуток
-    }
-
-    for name, cat_type, total in results:
-        amount = float(total)
-        if cat_type == 'INCOME':
-            report["income"][name] = amount
-            report["total_income"] += amount
-        elif cat_type == 'EXPENSE':
-            # Транзакції витрат у нас з мінусом, тому беремо модулі (abs) для красивого відображення
-            report["expense"][name] = abs(amount)
-            report["total_expense"] += abs(amount)
-
-    # Рахуємо чистий прибуток
-    report["net_profit"] = report["total_income"] - report["total_expense"]
-
-    return report
+    # 🔥 ВИПРАВЛЕНО: Роутер тепер чистий і лише викликає сервіс
+    return finance_service.generate_pnl_report(db, start_date, end_date)
