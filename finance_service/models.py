@@ -1,7 +1,9 @@
+# FILE: finance_service/models.py
+
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Numeric, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from .base import Base
+from database import Base # 🔥 Беремо Base з нашого нового файлу підключення
 
 # 1. class Account(Base):
 class Account(Base):
@@ -100,4 +102,4 @@ class Transaction(Base):
     # Встановлення зв'язків з об'єктами
     account = relationship("Account", back_populates="transactions")
     category = relationship("TransactionCategory", back_populates="transactions")
-    shift = relationship("Shift", back_populates="transactions")    
+    shift = relationship("Shift", back_populates="transactions")

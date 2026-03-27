@@ -49,6 +49,8 @@ class OrderService:
             new_order.total_price = round(total_price, 2)
             db.commit()
             db.refresh(new_order)
+            # 🔥 НОВИЙ РЯДОК: Відправляємо команду на списання складу в RabbitMQ
+            InventoryClient.deduct_stock_async(new_order.id, transaction_reason, order_data.items)
             print(f"✅ [CHECKOUT] Замовлення {new_order.id} успішно створено! Сума: {new_order.total_price}")
             return new_order
 

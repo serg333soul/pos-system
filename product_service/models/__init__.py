@@ -6,4 +6,4 @@ from .inventory import *
 from .crm import *
 from .supply import *
 from .orders import *
-from .finance import *
+#from .finance import *
