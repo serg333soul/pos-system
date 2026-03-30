@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 114
-Lines: 13918
-Tokens: ~143434
+Files: 121
+Lines: 14202
+Tokens: ~145628
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -62,6 +62,22 @@ services:
     depends_on:
       - finance_db
 
+# 🔥 НОВИЙ СЕРВІС: API Клієнтів (CRM)
+  customer_api:
+    build: ./customer_service
+    container_name: pos_customer_api
+    restart: always
+    ports:
+      - "8003:8003" # Сервіс працюватиме на порту 8003
+    volumes:
+      - ./customer_service:/app
+    environment:
+      # Підключаємося до нашої нової БД customer_db
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+
   # 🔥 ДРУГИЙ МІКРОСЕРВІС-ВОРКЕР (Склад)
   inventory_worker:
     build: ./product_service
@@ -111,6 +127,25 @@ services:
       - finance_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d finance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- БАЗА ДАНИХ КЛІЄНТІВ (CRM) ---
+  customer_db:
+    image: postgres:13
+    container_name: pos_customer_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: customers_db
+    ports:
+      - "5435:5432" # Прокидаємо на вільний порт 5435
+    volumes:
+      - customer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d customers_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -175,7 +210,20 @@ volumes:
   postgres_data:
   rabbitmq_data:
   finance_data:
+  customer_data:
 
+
+--- requirements.txt ---
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest==8.0.0
+httpx==0.26.0
+alembic
+pika==1.3.2
+requests==2.31.0
 
 --- requirements.txt ---
 fastapi==0.104.1
@@ -214,6 +262,17 @@ pydantic==2.5.2
 --- requirements.txt ---
 fastapi
 uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest==8.0.0
+httpx==0.26.0
+alembic
+pika==1.3.2
+
+--- requirements.txt ---
+fastapi
+uvicorn
 redis
 pydantic
 
@@ -232,6 +291,26 @@ pika==1.3.2
 
 🗺 ARCHITECTURE MAP (Key Symbols)
 ================================
+customer_service\database.py
+  └── ƒ  get_db
+customer_service\main.py
+  └── 📄 Schema: CustomerCreate
+  └── 📄 Schema: CustomerUpdate
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  get_customers
+  └── 🌐 Endpoint: @app.get
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  search_customers
+  └── 🌐 Endpoint: @app.post
+  └── ƒ  create_customer
+  └── 🌐 Endpoint: @app.put
+  └── ƒ  update_customer
+  └── 🌐 Endpoint: @app.delete
+  └── ƒ  delete_customer
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  get_customer_orders
+customer_service\models.py
+  └── 🗄️ Model: Customer
 finance_service\database.py
   └── ƒ  get_db
 finance_service\finance_worker.py
@@ -621,6 +700,8 @@ product_service\inventory_worker.py
 product_service\main.py
   └── 🌐 Endpoint: @app.get
   └── ƒ  read_root
+  └── 🌐 Endpoint: @app.get
+  └── ƒ  get_customer_order_history
 product_service\models_old.py
   └── 🗄️ Model: Category
   └── 🗄️ Model: Unit
@@ -953,6 +1034,12 @@ product_service\tests\test_warehouse.py
         📂 workflows/
             📄 deploy.yml
     📂 .tmp.driveupload/
+    📂 customer_service/
+        📄 Dockerfile
+        📄 database.py
+        📄 main.py
+        📄 models.py
+        📄 requirements.txt
     📂 finance_service/
         📄 Dockerfile
         📄 database.py
@@ -1020,6 +1107,9 @@ product_service\tests\test_warehouse.py
                 📄 useStatistics.js
                 📄 useSupplies.js
                 📄 useWarehouse.js
+    📂 inventory_service/
+        📄 Dockerfile
+        📄 requirements.txt
     📂 nginx/
         📄 nginx.conf
     📂 order_service/
@@ -1163,6 +1253,22 @@ services:
     depends_on:
       - finance_db
 
+# 🔥 НОВИЙ СЕРВІС: API Клієнтів (CRM)
+  customer_api:
+    build: ./customer_service
+    container_name: pos_customer_api
+    restart: always
+    ports:
+      - "8003:8003" # Сервіс працюватиме на порту 8003
+    volumes:
+      - ./customer_service:/app
+    environment:
+      # Підключаємося до нашої нової БД customer_db
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+
   # 🔥 ДРУГИЙ МІКРОСЕРВІС-ВОРКЕР (Склад)
   inventory_worker:
     build: ./product_service
@@ -1212,6 +1318,25 @@ services:
       - finance_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d finance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- БАЗА ДАНИХ КЛІЄНТІВ (CRM) ---
+  customer_db:
+    image: postgres:13
+    container_name: pos_customer_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: customers_db
+    ports:
+      - "5435:5432" # Прокидаємо на вільний порт 5435
+    volumes:
+      - customer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d customers_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -1276,6 +1401,7 @@ volumes:
   postgres_data:
   rabbitmq_data:
   finance_data:
+  customer_data:
 
 </file>
 
@@ -1369,6 +1495,219 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
+</file>
+
+<file path="customer_service\Dockerfile" lang="text">
+# FILE: customer_service/Dockerfile
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Запускаємо сервер FastAPI
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+</file>
+
+<file path="customer_service\database.py" lang="py">
+# FILE: customer_service/database.py
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+
+# 🔥 Читаємо готову адресу з docker-compose.yml
+# Якщо її немає, підключаємося до локальної бази (для тестів)
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql://user:password@localhost:5432/customers_db"
+)
+
+# Створюємо двигун (engine)
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# Створюємо фабрику сесій
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Базовий клас для моделей
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+</file>
+
+<file path="customer_service\main.py" lang="py">
+# FILE: customer_service/main.py
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
+from pydantic import BaseModel
+from typing import Optional
+import time
+import requests  # Бібліотека для спілкування з іншими мікросервісами
+
+import models
+from database import engine, get_db
+
+# DevOps: Захист при старті. Чекаємо, поки БД буде готова
+print("⏳ [Customer API] Очікування бази даних...")
+while True:
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        print("✅ [Customer API] База даних готова та таблиці створено!")
+        break
+    except OperationalError:
+        print("⏳ База ще завантажується... Повтор через 2 секунди.")
+        time.sleep(2)
+
+app = FastAPI(title="POS Customer API (CRM)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Схеми для валідації вхідних даних
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+class CustomerUpdate(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@app.get("/customers/")
+def get_customers(db: Session = Depends(get_db)):
+    return db.query(models.Customer).all()
+
+@app.get("/customers/search")
+@app.get("/customers/search/")
+def search_customers(q: str = "", db: Session = Depends(get_db)):
+    """
+    Пошук клієнтів за ім'ям або телефоном. 
+    Використовується на екрані каси (CartDrawer).
+    """
+    if not q:
+        return []
+    
+    # Використовуємо .ilike для пошуку без урахування регістру
+    search_term = f"%{q}%"
+    customers = db.query(models.Customer).filter(
+        (models.Customer.name.ilike(search_term)) | 
+        (models.Customer.phone.ilike(search_term))
+    ).all()
+    
+    return customers
+
+@app.post("/customers/")
+def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.phone == customer.phone).first()
+    if db_customer:
+        raise HTTPException(status_code=400, detail="Клієнт з таким номером телефону вже існує")
+    
+    new_customer = models.Customer(**customer.model_dump())
+    db.add(new_customer)
+    db.commit()
+    db.refresh(new_customer)
+    return new_customer
+
+@app.put("/customers/{customer_id}")
+def update_customer(customer_id: int, customer: CustomerUpdate, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Клієнт не знайдений")
+    
+    for key, value in customer.model_dump().items():
+        setattr(db_customer, key, value)
+        
+    db.commit()
+    db.refresh(db_customer)
+    return db_customer
+
+@app.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Клієнт не знайдений")
+    
+    db.delete(db_customer)
+    db.commit()
+    return {"status": "success"}
+
+# 🔥 НОВИЙ ЕНДПОІНТ: Мікросервісна взаємодія
+@app.get("/customers/{customer_id}/orders/")
+def get_customer_orders(customer_id: int, db: Session = Depends(get_db)):
+    """
+    Отримує історію замовлень шляхом запиту до сусіднього мікросервісу (product_service).
+    """
+    # 1. Перевіряємо, чи існує клієнт у НАШІЙ базі (customers_db)
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Клієнт не знайдений")
+
+    # 2. Робимо HTTP запит до мікросервісу замовлень по внутрішній Docker-мережі
+    # Звертаємося до pos_product_service на порт 8000
+    try:
+        # У майбутньому, коли ми винесемо замовлення, URL зміниться, але зараз він такий:
+        target_url = f"http://pos_product_service:8000/orders/history/{customer_id}"
+        response = requests.get(target_url, timeout=5.0)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return [] # Якщо у клієнта ще немає замовлень
+            
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ [Customer API] Помилка зв'язку з product_service: {e}")
+        # DevOps патерн "Resilience" (Стійкість): 
+        # Якщо сусідній сервіс впав, ми не кладемо свій сервіс, а повертаємо порожній масив.
+        return []
+</file>
+
+<file path="customer_service\models.py" lang="py">
+# FILE: customer_service/models.py
+from sqlalchemy import Column, Integer, String, DateTime
+from datetime import datetime
+from database import Base # Імпортуємо Base з нашого підключення до БД
+
+class Customer(Base):
+    __tablename__ = "customers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    phone = Column(String, unique=True, index=True)
+    email = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+</file>
+
+<file path="customer_service\requirements.txt" lang="txt">
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest==8.0.0
+httpx==0.26.0
+alembic
+pika==1.3.2
+requests==2.31.0
 </file>
 
 <file path="finance_service\Dockerfile" lang="text">
@@ -1861,6 +2200,22 @@ server {
         # Відрізаємо /api, залишаємо /cart
         rewrite ^/api/(.*) /$1 break;
         proxy_pass http://order_service:8000;
+        proxy_set_header Host $host;
+    }
+
+    # 🔥 3. НОВИЙ Проксі для ФІНАНСІВ (Finance API)
+    # Перенаправляє запити з /api/finance/... у новий мікросервіс
+    location /api/finance/ {
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://finance_api:8002;
+        proxy_set_header Host $host;
+    }
+
+    # 🔥 НОВИЙ Проксі для КЛІЄНТІВ (Customer API)
+    # Зверніть увагу: без слеша після customers
+    location /api/customers {
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://customer_api:8003;
         proxy_set_header Host $host;
     }
 
@@ -9685,6 +10040,34 @@ export function useWarehouse() {
 }
 </file>
 
+<file path="inventory_service\Dockerfile" lang="text">
+# FILE: inventory_service/Dockerfile
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Команда за замовчуванням
+CMD ["python", "-u", "inventory_worker.py"]
+</file>
+
+<file path="inventory_service\requirements.txt" lang="txt">
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest==8.0.0
+httpx==0.26.0
+alembic
+pika==1.3.2
+</file>
+
 <file path="nginx\nginx.conf" lang="conf">
 # FILE: nginx/nginx.conf
 
@@ -10549,10 +10932,11 @@ if __name__ == "__main__":
 <file path="product_service\main.py" lang="py">
 # FILE: product_service/main.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session  # 🔥 ДОДАНО: імпорт Session
 import database, models
-
+from database import get_db           # 🔥 ДОДАНО: імпорт get_db
 
 # Імпортуємо наші нові модульні роутери
 from routers import (
@@ -10561,7 +10945,6 @@ from routers import (
     categories, 
     recipes, 
     processes, 
-    customers, 
     orders,
     product_rooms,
     supplies,
@@ -10590,10 +10973,9 @@ app.include_router(inventory.router)   # /ingredients, /consumables, /units
 app.include_router(categories.router)
 app.include_router(recipes.router)
 app.include_router(processes.router)
-app.include_router(customers.router)
 app.include_router(product_rooms.router)
 app.include_router(supplies.router)
-app.include_router(adjustments.router)     # /finance/accounts, /finance/categories, /finance/transactions, /finance/transfers
+app.include_router(adjustments.router) # /finance/accounts, /finance/categories, /finance/transactions, /finance/transfers
 
 @app.get("/")
 def read_root():
@@ -10602,6 +10984,19 @@ def read_root():
         "architecture": "Clean Architecture (Router-Service-Repository)",
         "status": "Healthy"
     }
+
+# 🔥 СЛУЖБОВИЙ ЕНДПОІНТ ДЛЯ МІКРОСЕРВІСІВ (Inter-Service API)
+@app.get("/orders/history/{customer_id}")
+def get_customer_order_history(customer_id: int, db: Session = Depends(get_db)):
+    """
+    Цей маршрут викликається не фронтендом, а сусіднім мікросервісом customer_service,
+    щоб отримати історію чеків конкретного клієнта.
+    """
+    orders = db.query(models.Order).filter(
+        models.Order.customer_id == customer_id
+    ).order_by(models.Order.created_at.desc()).all()
+    
+    return orders
 </file>
 
 <file path="product_service\models_old.py" lang="py">

@@ -48,6 +48,22 @@ services:
     depends_on:
       - finance_db
 
+# 🔥 НОВИЙ СЕРВІС: API Клієнтів (CRM)
+  customer_api:
+    build: ./customer_service
+    container_name: pos_customer_api
+    restart: always
+    ports:
+      - "8003:8003" # Сервіс працюватиме на порту 8003
+    volumes:
+      - ./customer_service:/app
+    environment:
+      # Підключаємося до нашої нової БД customer_db
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+
   # 🔥 ДРУГИЙ МІКРОСЕРВІС-ВОРКЕР (Склад)
   inventory_worker:
     build: ./product_service
@@ -97,6 +113,25 @@ services:
       - finance_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d finance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- БАЗА ДАНИХ КЛІЄНТІВ (CRM) ---
+  customer_db:
+    image: postgres:13
+    container_name: pos_customer_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: customers_db
+    ports:
+      - "5435:5432" # Прокидаємо на вільний порт 5435
+    volumes:
+      - customer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d customers_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -161,3 +196,4 @@ volumes:
   postgres_data:
   rabbitmq_data:
   finance_data:
+  customer_data:
