@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
 from typing import List
 import database, schemas, models
-from services.inventory_logger import InventoryLogger
+#from services.inventory_logger import InventoryLogger
 
 router = APIRouter(tags=["Inventory"])
 
@@ -86,26 +86,17 @@ def read_consumables(db: Session = Depends(database.get_db)):
 @router.put("/consumables/{id}", response_model=schemas.Consumable)
 def update_consumable(id: int, item: schemas.ConsumableCreate, db: Session = Depends(database.get_db)):
     db_c = db.query(models.Consumable).filter(models.Consumable.id == id).first()
-    if not db_c: raise HTTPException(status_code=404)
+    if not db_c: raise HTTPException(status_code=404, detail="Consumable not found")
     
-    old_balance = db_c.stock_quantity # <-- Зберігаємо старе
+    # Оновлюємо тільки метадані (БЕЗ stock_quantity)
+    db_c.name = item.name
+    db_c.unit_id = item.unit_id
+    db_c.cost_per_unit = item.cost_per_unit
+    db_c.category_id = getattr(item, 'category_id', db_c.category_id)
+    db_c.costing_method = getattr(item, 'costing_method', db_c.costing_method)
 
-    # Оновлюємо все
-    for k, v in item.dict().items(): setattr(db_c, k, v)
-    
-    # ЛОГУВАННЯ
-    InventoryLogger.log(
-        db,
-        entity_type="consumable",
-        entity_id=db_c.id,
-        entity_name=db_c.name,
-        balance_before=old_balance,
-        balance_after=db_c.stock_quantity,
-        reason="manual_correction"
-    )
-    
-
-    db.commit(); db.refresh(db_c)
+    db.commit() 
+    db.refresh(db_c)
     return db_c
 
 @router.delete("/consumables/{id}")

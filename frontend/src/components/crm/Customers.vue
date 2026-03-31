@@ -15,7 +15,7 @@ const {
 } = useCustomers();
 
 // --- КОНФІГУРАЦІЯ API ---
-const API_URL = 'http://localhost:8001/customers/'
+const API_URL = '/api/customers/'
 
 // --- СТАН ---
 const customers = ref([])

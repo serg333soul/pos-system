@@ -16,15 +16,23 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      // 1. Запити до КОШИКА йдуть на order_service (8000)
+      // 1. Запити до КОШИКА йдуть на order_service
       '/api/cart': {
         target: 'http://order_service:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '') 
+        rewrite: (path) => path.replace(/^\/api/, '')
       },
-      // 2. Всі інші запити (Categories, Units, Products) йдуть на product_service (8001)
+      
+      // 🔥 НОВЕ ПРАВИЛО: Всі запити по фінансах йдуть на новий мікросервіс!
+      '/api/finance': {
+        target: 'http://finance_api:8002', // Вказуємо контейнер нашої нової БД
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+
+      // 3. Всі ІНШІ запити (Клієнти, Склад, Товари) йдуть на старий product_service
       '/api': {
-        target: 'http://product_service:8000', // Всередині Docker мережі вони всі слухають 8000
+        target: 'http://product_service:8000', 
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }

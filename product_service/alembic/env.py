@@ -10,9 +10,9 @@ from alembic import context
 # 🔥 ДОДАНО: Вказуємо шлях до кореневої папки, щоб Alembic бачив ваші файли
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# 🔥 ДОДАНО: Імпортуємо Base та самі моделі
-from database import Base
-import models  # Обов'язково імпортуємо файл з моделями, щоб SQLAlchemy їх "побачила"
+# 🔥 ЗМІНЕНО: Імпортуємо Base безпосередньо через наш новий Фасад. 
+# Це гарантує, що SQLAlchemy побачить абсолютно всі таблиці з усіх файлів.
+from models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

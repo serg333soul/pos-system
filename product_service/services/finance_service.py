@@ -7,7 +7,8 @@ from decimal import Decimal
 import models, schemas
 from datetime import datetime
 
-def create_transaction(db: Session, trans_data: schemas.TransactionCreate) -> models.Transaction:
+# 🔥 ДОДАНО: параметр auto_commit
+def create_transaction(db: Session, trans_data: schemas.TransactionCreate, auto_commit: bool = True) -> models.Transaction:
     """
     Створення базової транзакції у Ledger.
     Це єдиний правильний спосіб змінити баланс рахунку.
@@ -34,12 +35,15 @@ def create_transaction(db: Session, trans_data: schemas.TransactionCreate) -> mo
     
     db.add(new_transaction)
     
-    # 3. Оновлюємо кешований баланс рахунку (+= працює і для мінусових сум)
-    # Наприклад, якщо amount = -50, то balance += -50 зменшить його.
+    # 3. Оновлюємо кешований баланс рахунку
     account.balance += trans_data.amount
     
-    db.commit()
-    db.refresh(new_transaction)
+    # 🔥 ВИПРАВЛЕНО: Керуємо комітом для підтримки атомарності
+    if auto_commit:
+        db.commit()
+        db.refresh(new_transaction)
+    else:
+        db.flush() # Тільки фіксуємо ID (для зв'язків), але НЕ зберігаємо намертво
     
     return new_transaction
 
@@ -55,7 +59,6 @@ def transfer_funds(db: Session, transfer_data: schemas.TransferCreate) -> dict:
     if transfer_data.amount <= 0:
         raise HTTPException(status_code=400, detail="Сума переказу має бути більшою за 0")
 
-    # 1. Знаходимо категорію "Службове переміщення" (або створюємо її, якщо немає)
     transfer_category = db.query(models.TransactionCategory).filter(
         models.TransactionCategory.name == "Переміщення коштів",
         models.TransactionCategory.type == "SERVICE"
@@ -64,34 +67,35 @@ def transfer_funds(db: Session, transfer_data: schemas.TransferCreate) -> dict:
     if not transfer_category:
         transfer_category = models.TransactionCategory(name="Переміщення коштів", type="SERVICE")
         db.add(transfer_category)
-        db.commit()
-        db.refresh(transfer_category)
+        db.flush() # Використовуємо flush замість commit
 
-    # 2. Створюємо транзакцію СПИСАННЯ (Мінус)
+    # 🔥 ВИПРАВЛЕНО: Створюємо транзакції БЕЗ КОМІТУ
     expense_data = schemas.TransactionCreate(
-        amount=-transfer_data.amount, # Від'ємна сума
+        amount=-transfer_data.amount,
         account_id=transfer_data.from_account_id,
         category_id=transfer_category.id,
         user_id=transfer_data.user_id,
         shift_id=transfer_data.shift_id,
         description=f"Переказ на рахунок #{transfer_data.to_account_id}: {transfer_data.description}"
     )
-    out_tx = create_transaction(db, expense_data)
+    out_tx = create_transaction(db, expense_data, auto_commit=False)
 
-    # 3. Створюємо транзакцію ЗАРАХУВАННЯ (Плюс)
     income_data = schemas.TransactionCreate(
-        amount=transfer_data.amount, # Позитивна сума
+        amount=transfer_data.amount,
         account_id=transfer_data.to_account_id,
         category_id=transfer_category.id,
         user_id=transfer_data.user_id,
         shift_id=transfer_data.shift_id,
         description=f"Переказ з рахунку #{transfer_data.from_account_id}: {transfer_data.description}"
     )
-    in_tx = create_transaction(db, income_data)
+    in_tx = create_transaction(db, income_data, auto_commit=False)
 
-    # 4. Пов'язуємо їх між собою (щоб знати, що це одна операція)
+    # 4. Пов'язуємо їх між собою
     out_tx.linked_transaction_id = in_tx.id
     in_tx.linked_transaction_id = out_tx.id
+    
+    # 🔥 ВИПРАВЛЕНО: Єдиний коміт для всієї операції! 
+    # Тепер, якщо станеться помилка, гроші нікуди не зникнуть.
     db.commit()
 
     return {
@@ -102,15 +106,10 @@ def transfer_funds(db: Session, transfer_data: schemas.TransferCreate) -> dict:
     }
 
 def open_shift(db: Session, shift_data: schemas.ShiftCreate) -> models.Shift:
-    """
-    Відкриття касової зміни (X-Звіт на початок дня).
-    """
-    # 1. Перевірка: чи немає вже відкритої зміни? (Захист від дублів)
     active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
     if active_shift:
         raise HTTPException(status_code=400, detail="Вже є відкрита зміна. Спочатку закрийте її (зробіть Z-звіт).")
 
-    # 2. Створюємо зміну з початковим залишком (розмінка в шухляді)
     new_shift = models.Shift(
         user_id=shift_data.user_id,
         opening_balance=shift_data.opening_balance,
@@ -132,46 +131,35 @@ def close_shift(
     safe_account_id: int, 
     user_id: int
 ) -> models.Shift:
-    """
-    Закриття касової зміни (Z-Звіт).
-    Рахує очікувані гроші, фіксує різницю та робить інкасацію в сейф.
-    """
-    # 1. Знаходимо зміну і перевіряємо її статус
     shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Зміну не знайдено")
     if shift.closed_at:
         raise HTTPException(status_code=400, detail="Ця зміна вже була закрита раніше")
 
-    # 2. РАХУЄМО ОЧІКУВАНИЙ ЗАЛИШОК КАСТИ
-    # Беремо суму всіх транзакцій за цю зміну для конкретного рахунку (Готівка Каса)
     cash_flow = db.query(func.sum(models.Transaction.amount)).filter(
         models.Transaction.shift_id == shift.id,
         models.Transaction.account_id == cash_account_id
     ).scalar() or Decimal('0.00')
 
-    # Очікувані гроші = Розмінка на ранок + (Доходи - Витрати за день)
     expected_balance = shift.opening_balance + cash_flow
 
-    # 3. ФІКСУЄМО ПОКАЗНИКИ
     shift.closing_balance_expected = expected_balance
     shift.closing_balance_actual = close_data.closing_balance_actual
-    # Різниця: Від'ємна = Нестача, Позитивна = Лишок
     shift.discrepancy = close_data.closing_balance_actual - expected_balance 
     shift.closed_at = datetime.utcnow()
 
-    db.commit()
+    # 🔥 ВИПРАВЛЕНО: Робимо flush замість commit перед інкасацією, 
+    # щоб закриття зміни та передача в сейф збереглись як єдина транзакція
+    db.flush()
 
-    # 4. АВТОМАТИЧНА ІНКАСАЦІЯ (Передача в сейф)
     if close_data.transfer_to_safe_amount > 0:
-        # Захист: не можна здати в сейф більше грошей, ніж реально нарахував касир
         if close_data.transfer_to_safe_amount > close_data.closing_balance_actual:
             raise HTTPException(
                 status_code=400, 
                 detail="Сума інкасації не може перевищувати фактичний наявний залишок в касі"
             )
 
-        # Використовуємо нашу функцію переміщення з Етапу 2.1
         transfer_data = schemas.TransferCreate(
             from_account_id=cash_account_id,
             to_account_id=safe_account_id,
@@ -180,7 +168,50 @@ def close_shift(
             shift_id=shift.id,
             description="Інкасація при закритті зміни (Z-звіт)"
         )
+        # transfer_funds зробить фінальний db.commit() всередині
         transfer_funds(db, transfer_data)
+    else:
+        # Якщо інкасації немає, комітимо тут
+        db.commit()
 
     db.refresh(shift)
     return shift
+
+# ДОДАТИ В КІНЕЦЬ finance_service.py
+
+def generate_pnl_report(db: Session, start_date=None, end_date=None) -> dict:
+    """Генерація звіту Прибутки та Збитки (P&L)"""
+    query = db.query(
+        models.TransactionCategory.name,
+        models.TransactionCategory.type,
+        func.sum(models.Transaction.amount).label('total')
+    ).join(
+        models.Transaction, models.Transaction.category_id == models.TransactionCategory.id
+    )
+
+    if start_date:
+        query = query.filter(models.Transaction.timestamp >= start_date)
+    if end_date:
+        query = query.filter(models.Transaction.timestamp <= end_date)
+
+    results = query.group_by(models.TransactionCategory.name, models.TransactionCategory.type).all()
+
+    report = {
+        "income": {},          
+        "expense": {},         
+        "total_income": 0.0,
+        "total_expense": 0.0,
+        "net_profit": 0.0      
+    }
+
+    for name, cat_type, total in results:
+        amount = float(total)
+        if cat_type == 'INCOME':
+            report["income"][name] = amount
+            report["total_income"] += amount
+        elif cat_type == 'EXPENSE':
+            report["expense"][name] = abs(amount)
+            report["total_expense"] += abs(amount)
+
+    report["net_profit"] = report["total_income"] - report["total_expense"]
+    return report
