@@ -64,20 +64,57 @@ services:
     depends_on:
       - customer_db
 
-  # 🔥 ДРУГИЙ МІКРОСЕРВІС-ВОРКЕР (Склад)
+  # --- БАЗА ДАНИХ СКЛАДУ ---
+  inventory_db:
+    image: postgres:13
+    container_name: pos_inventory_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: inventory_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - inventory_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d inventory_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 🔥 API СКЛАДУ (Для фронтенду: меню складу, накладні)
+  inventory_api:
+    build: ./inventory_service
+    container_name: pos_inventory_api
+    restart: always
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./inventory_service:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@inventory_db:5432/inventory_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      inventory_db:
+        condition: service_healthy
+
+  # 🔥 ВОРКЕР СКЛАДУ (Слухає RabbitMQ і списує товари)
   inventory_worker:
-    build: ./product_service
+    build: ./inventory_service
     container_name: pos_inventory_worker
     restart: always
     command: python -u inventory_worker.py 
     volumes:
-      - ./product_service:/app
+      - ./inventory_service:/app
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+      - DATABASE_URL=postgresql://user:password@inventory_db:5432/inventory_db
       - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
     depends_on:
-      - postgres_db
-      - rabbitmq
+      inventory_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
 
   # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
   postgres_db:
@@ -197,3 +234,4 @@ volumes:
   rabbitmq_data:
   finance_data:
   customer_data:
+  inventory_data:

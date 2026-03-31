@@ -64,17 +64,20 @@ class MasterRecipe(Base):
     name = Column(String)
     description = Column(String, nullable=True)
     items = relationship("MasterRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
+
 # 7. class MasterRecipeItem(Base):
 class MasterRecipeItem(Base):
     __tablename__ = "master_recipe_items"
     id = Column(Integer, primary_key=True, index=True)
     recipe_id = Column(Integer, ForeignKey("master_recipes.id"))
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"))
+    
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("ingredients.id")
+    ingredient_id = Column(Integer) 
     quantity = Column(Float) # Кількість (г або %)
-    is_percentage = Column(Boolean, default=False) # True = % від ваги виходу, False = грами
+    is_percentage = Column(Boolean, default=False) 
     
     recipe = relationship("MasterRecipe", back_populates="items")
-    ingredient = relationship("Ingredient")
+    # 🔥 Видалено: ingredient = relationship("Ingredient")
 # 8. class ProcessGroup(Base):
 # --- ПРОЦЕСИ ---
 class ProcessGroup(Base):
@@ -99,27 +102,33 @@ class ProcessOption(Base):
     group = relationship("ProcessGroup", foreign_keys=[group_id], back_populates="options")
     # 🔥 Зворотний зв'язок: Групи, які з'являються ТІЛЬКИ якщо обрано цю опцію
     child_groups = relationship("ProcessGroup", foreign_keys="[ProcessGroup.parent_option_id]", back_populates="parent_option")
-# 10. class ProductConsumable(Base):
+
 # --- ВИТРАТНІ МАТЕРІАЛИ В ТОВАРАХ ---
 # Зв'язок Товар -> Витратний матеріал (Стаканчик)
+# 10. class ProductConsumable(Base):
 class ProductConsumable(Base):
     __tablename__ = "product_consumables"
     product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
-    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
+    
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("consumables.id")
+    consumable_id = Column(Integer, primary_key=True) 
     quantity = Column(Float, default=1.0)
     
     product = relationship("Product", back_populates="consumables")
-    consumable = relationship("Consumable")
-# 11. class ProductIngredient(Base):
+    # 🔥 Видалено: consumable = relationship("Consumable")
+
 # 🔥 НОВЕ: Зв'язок Товар -> Інгредієнт (для простих товарів)
+# 11. class ProductIngredient(Base):
 class ProductIngredient(Base):
     __tablename__ = "product_ingredients"
     product_id = Column(Integer, ForeignKey("products.id"), primary_key=True)
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
-    quantity = Column(Float) # Скільки грам йде на цей товар
+    
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("ingredients.id")
+    ingredient_id = Column(Integer, primary_key=True) 
+    quantity = Column(Float) 
     
     product = relationship("Product", back_populates="ingredients")
-    ingredient = relationship("Ingredient")
+    # 🔥 Видалено: ingredient = relationship("Ingredient")
 # 12. class Product(Base):
 # --- ТОВАРИ ---
 class Product(Base):
@@ -190,27 +199,31 @@ class ProductRoom(Base):
     # Зв'язок: одна кімната має багато товарів
     products = relationship("Product", back_populates="room")
 
-# 15. class ProductVariantIngredient(Base):
 # 🔥 НОВЕ: Зв'язок Варіант товару -> Інгредієнт (для варіантів)
+# 15. class ProductVariantIngredient(Base):
 class ProductVariantIngredient(Base):
     __tablename__ = "product_variant_ingredients"
     variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("ingredients.id")
+    ingredient_id = Column(Integer, primary_key=True) 
     quantity = Column(Float)
     
     variant = relationship("ProductVariant", back_populates="ingredients")
-    ingredient = relationship("Ingredient")
+    # 🔥 Видалено: ingredient = relationship("Ingredient")
 
-# 16. class ProductVariantConsumable(Base):
 # 🔥 НОВЕ: Зв'язок Варіант товару -> Витратний матеріал (для варіантів)
+# 16. class ProductVariantConsumable(Base):
 class ProductVariantConsumable(Base):
     __tablename__ = "product_variant_consumables"
     variant_id = Column(Integer, ForeignKey("product_variants.id"), primary_key=True)
-    consumable_id = Column(Integer, ForeignKey("consumables.id"), primary_key=True)
+    
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("consumables.id")
+    consumable_id = Column(Integer, primary_key=True) 
     quantity = Column(Integer, default=1)
     
     variant = relationship("ProductVariant", back_populates="consumables")
-    consumable = relationship("Consumable")
+    # 🔥 Видалено: consumable = relationship("Consumable")
 
 # 17. class ProductModifierGroup(Base):
 # --- ГРУПИ МОДИФІКАТОРІВ (наприклад, "Молоко" з опціями "Коров'яче", "Мигдальне") ---
@@ -224,22 +237,21 @@ class ProductModifierGroup(Base):
     product = relationship("Product", back_populates="modifier_groups")
     modifiers = relationship("Modifier", back_populates="group", cascade="all, delete-orphan")
 
-# 18. class Modifier(Base):
 # --- МОДИФІКАТОРИ (опції в групах модифікаторів) ---
+# 18. class Modifier(Base):
 class Modifier(Base):
     __tablename__ = "modifiers"
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("product_modifier_groups.id"))
-    name = Column(String) # "Кокосове", "Карамельний"
+    name = Column(String) 
     price_change = Column(Float, default=0.0)
     
-    # Що списувати при виборі цього модифікатора
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), nullable=True)
-    quantity = Column(Float, default=0.0) # Скільки списувати
+    # 🔥 М'ЯКЕ ПОСИЛАННЯ: Видалено ForeignKey("ingredients.id")
+    ingredient_id = Column(Integer, nullable=True) 
+    quantity = Column(Float, default=0.0) 
     
     group = relationship("ProductModifierGroup", back_populates="modifiers")
-    ingredient = relationship("Ingredient")
-
+    # 🔥 Видалено: ingredient = relationship("Ingredient")
 # 19. class InventoryTransaction(Base):
 # --- ТРАНЗАКЦІЇ СКЛАДУ (для історії змін) ---
 class InventoryTransaction(Base):
