@@ -87,6 +87,33 @@ def process_message(ch, method, properties, body):
             db.commit()
             print(f"✅ [Inventory Worker] Чек #{order_id} успішно списано з партій (FIFO)!")
 
+        # Всередині try-блоку process_message:
+        elif data.get("event_type") == "refund_bom":
+            order_id = data.get("order_id")
+            reason = data.get("reason", f"refund_order_{order_id}")
+            print(f"📦 [Inventory Worker] ПОВЕРНЕННЯ товарів для чека #{order_id}...")
+
+            for ing in data.get("ingredients", []):
+                db_ing = db.query(models.Ingredient).filter(models.Ingredient.id == ing["id"]).first()
+                if db_ing:
+                    db_ing.stock_quantity += ing["qty"] # ПЛЮСУЄМО назад
+                    # Повертаємо в останню партію
+                    batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "ingredient", models.SupplyItem.entity_id == ing["id"]).order_by(models.SupplyItem.id.desc()).first()
+                    if batch: batch.remaining_quantity += ing["qty"]
+                    
+                    db.add(models.InventoryTransaction(entity_type="ingredient", entity_id=ing["id"], entity_name=db_ing.name, change_amount=ing["qty"], balance_after=db_ing.stock_quantity, reason=reason))
+
+            for cons in data.get("consumables", []):
+                db_cons = db.query(models.Consumable).filter(models.Consumable.id == cons["id"]).first()
+                if db_cons:
+                    db_cons.stock_quantity += cons["qty"] # ПЛЮСУЄМО назад
+                    batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "consumable", models.SupplyItem.entity_id == cons["id"]).order_by(models.SupplyItem.id.desc()).first()
+                    if batch: batch.remaining_quantity += cons["qty"]
+                    
+                    db.add(models.InventoryTransaction(entity_type="consumable", entity_id=cons["id"], entity_name=db_cons.name, change_amount=cons["qty"], balance_after=db_cons.stock_quantity, reason=reason))
+            
+            db.commit()
+
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         db.rollback()

@@ -1,6 +1,6 @@
 # FILE: product_service/routers/orders.py
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import database, schemas, models
@@ -58,10 +58,14 @@ def get_orders(
 
 @router.delete("/{order_id}")
 def delete_order(order_id: int, db: Session = Depends(database.get_db)):
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        return {"error": "Not found"}
-    db.delete(order)
-    db.commit()
-    # P.S. У майбутньому тут теж треба буде повідомляти FinanceClient про відміну чеку!
-    return {"status": "deleted"}
+    """
+    Скасування чека. 
+    Викликає сервіс, який відправляє події в RabbitMQ для повернення фінансів та складу.
+    """
+    # Делегуємо всю складну логіку в OrderService
+    success = OrderService.cancel_order(db, order_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Чек не знайдено або неможливо скасувати")
+        
+    return {"status": "deleted", "message": f"Чек #{order_id} успішно скасовано, ресурси повертаються."}

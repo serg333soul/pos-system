@@ -110,6 +110,17 @@ def callback(ch, method, properties, body):
             process_order_paid(db, event_data)
         elif event_type == "supply_paid":
             process_supply_paid(db, event_data)
+        # 🔥 ДОДАНО
+        elif event_type == "order_refunded":
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            account = db.query(models.Account).filter(models.Account.type == ('bank' if event_data.get("payment_method") == 'card' else 'cash')).first()
+            if account:
+                create_transaction_internal(
+                    db=db,
+                    amount=-abs(float(event_data.get("amount"))), # Повернення - це відтік грошей
+                    account_id=account.id, category_id=None, shift_id=active_shift.id if active_shift else None,
+                    user_id=1, ref_type='refund', ref_id=event_data.get("order_id"), desc=f"Повернення чека #{event_data.get('order_id')}"
+                )
         else:
             print(f"⚠️ Невідомий тип події: {event_type}")
 

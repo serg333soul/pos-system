@@ -1,9 +1,9 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useStatistics } from '@/composables/useStatistics'
 import SalesTable from './SalesTable.vue'
 
-// 🔥 ВАЖЛИВО: Ми НЕ створюємо нові ref, а дістаємо їх із useStatistics
+// Дістаємо всі потрібні змінні та методи з composable
 const { 
   orders, 
   loading, 
@@ -11,10 +11,16 @@ const {
   currentPage, 
   pageSize, 
   fetchOrders, 
-  openDetails 
+  openDetails,
+  showDetailModal, // 🔥 Додано для модалки
+  selectedOrder,   // 🔥 Додано для модалки
+  closeDetails     // 🔥 Додано для модалки
 } = useStatistics()
 
-// Helper for date formatting (duplicate need for modal, can be util)
+// Стан для кнопки скасування
+const isCancelling = ref(false)
+
+// Helper for date formatting
 const formatDate = (dateString) => {
   return new Date(dateString).toLocaleString('uk-UA', {
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -22,7 +28,35 @@ const formatDate = (dateString) => {
   })
 }
 
-// Примусовий виклик при завантаженні для перестраховки
+// 🔥 НОВА ФУНКЦІЯ: Скасування чека
+const handleCancelOrder = async (orderId) => {
+  // Захист від випадкового натискання
+  if (!confirm(`⚠️ Ви впевнені, що хочете скасувати чек #${orderId}?\n\nЦя дія поверне інгредієнти на склад, а гроші будуть списані з каси.`)) {
+    return;
+  }
+  
+  isCancelling.value = true;
+  try {
+    // Звертаємось до ендпоінту, який ми щойно налаштували в orders.py
+    const res = await fetch(`/api/orders/${orderId}`, {
+      method: 'DELETE'
+    });
+    
+    if (res.ok) {
+      alert(`✅ Чек #${orderId} успішно скасовано!`);
+      closeDetails(); // Закриваємо модалку
+      fetchOrders();  // Оновлюємо таблицю, щоб чек зник (або змінив статус)
+    } else {
+      const data = await res.json();
+      alert(`❌ Помилка: ${data.detail || 'Не вдалося скасувати чек'}`);
+    }
+  } catch (error) {
+    alert(`❌ Помилка мережі: ${error.message}`);
+  } finally {
+    isCancelling.value = false;
+  }
+}
+
 onMounted(() => {
   console.log("📍 Компонент Statistics монтується");
   fetchOrders();
@@ -139,6 +173,17 @@ onMounted(() => {
                 <div class="flex justify-between items-center text-3xl font-bold text-gray-900 mt-2">
                     <span>Разом:</span>
                     <span>{{ selectedOrder.total_price }} ₴</span>
+                </div>
+
+                <div class="mt-6 flex justify-end border-t pt-4">
+                    <button 
+                        @click="handleCancelOrder(selectedOrder.id)"
+                        :disabled="isCancelling"
+                        class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                    >
+                        <i class="fas" :class="isCancelling ? 'fa-spinner fa-spin' : 'fa-trash-alt'"></i>
+                        {{ isCancelling ? 'Скасування...' : 'Скасувати чек' }}
+                    </button>
                 </div>
             </div>
 

@@ -4,9 +4,9 @@
 
 📊 PROJECT STATISTICS
 =====================
-Files: 124
-Lines: 14042
-Tokens: ~143928
+Files: 125
+Lines: 14330
+Tokens: ~147561
 
 🛠 KEY DEPENDENCIES
 ====================
@@ -325,6 +325,7 @@ pytest==8.0.0
 httpx==0.26.0
 alembic
 pika==1.3.2
+requests
 
 
 🗺 ARCHITECTURE MAP (Key Symbols)
@@ -779,6 +780,9 @@ product_service/alembic/versions/3123d228513b_test_refactoring.py
 product_service/alembic/versions/3c0490389ed9_add_finance_module.py
   └── ƒ  upgrade
   └── ƒ  downgrade
+product_service/alembic/versions/85b1cbaec4dd_add_product_and_variant_ids_to_order_.py
+  └── ƒ  upgrade
+  └── ƒ  downgrade
 product_service/alembic/versions/ee6667d8b951_decouple_orders_and_crm.py
   └── ƒ  upgrade
   └── ƒ  downgrade
@@ -986,6 +990,7 @@ product_service/services/finance_client.py
   └── 📦 Class: FinanceClient
   └── ƒ  register_order_income
   └── ƒ  register_supply_expense
+  └── ƒ  register_order_refund
 product_service/services/finance_service.py
   └── ƒ  create_transaction
   └── ƒ  transfer_funds
@@ -999,6 +1004,8 @@ product_service/services/inventory_client.py
   └── ƒ  receive_stock
   └── ƒ  get_product_history
   └── ƒ  get_costing_method
+  └── ƒ  get_all_stocks
+  └── ƒ  refund_stock_async
 product_service/services/inventory_logger.py
   └── 📦 Class: InventoryLogger
   └── ƒ  log
@@ -1009,6 +1016,7 @@ product_service/services/inventory_service.py
   └── ƒ  adjust_inventory
 product_service/services/order_service.py
   └── 📦 Class: OrderService
+  └── ƒ  cancel_order
   └── ƒ  process_checkout
 product_service/services/product_room_service.py
   └── 📦 Class: ProductRoomService
@@ -1018,6 +1026,7 @@ product_service/services/product_service.py
   └── 📦 Class: ProductService
   └── ƒ  calculate_product_cost
   └── ƒ  calculate_max_possible_stock
+  └── ƒ  update_max
   └── ƒ  create_product
   └── ƒ  update_product
   └── ƒ  delete_product
@@ -1171,6 +1180,7 @@ product_service/tests/test_warehouse.py
             📂 versions/
                 📄 3123d228513b_test_refactoring.py
                 📄 3c0490389ed9_add_finance_module.py
+                📄 85b1cbaec4dd_add_product_and_variant_ids_to_order_.py
                 📄 ee6667d8b951_decouple_orders_and_crm.py
         📂 models/
             📄 __init__.py
@@ -1943,6 +1953,17 @@ def callback(ch, method, properties, body):
             process_order_paid(db, event_data)
         elif event_type == "supply_paid":
             process_supply_paid(db, event_data)
+        # 🔥 ДОДАНО
+        elif event_type == "order_refunded":
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            account = db.query(models.Account).filter(models.Account.type == ('bank' if event_data.get("payment_method") == 'card' else 'cash')).first()
+            if account:
+                create_transaction_internal(
+                    db=db,
+                    amount=-abs(float(event_data.get("amount"))), # Повернення - це відтік грошей
+                    account_id=account.id, category_id=None, shift_id=active_shift.id if active_shift else None,
+                    user_id=1, ref_type='refund', ref_id=event_data.get("order_id"), desc=f"Повернення чека #{event_data.get('order_id')}"
+                )
         else:
             print(f"⚠️ Невідомий тип події: {event_type}")
 
@@ -3029,7 +3050,13 @@ const menuItems = [
 ]
 
 const navigate = (pageId) => {
-  emit('change-page', pageId)
+  // Якщо ми натискаємо на вже активний розділ (наприклад, Склад), 
+  // то повертаємо користувача на "Касу", що закриє підменю.
+  if (props.currentPage === pageId && pageId !== 'pos') {
+    emit('change-page', 'pos')
+  } else {
+    emit('change-page', pageId)
+  }
 }
 
 // Нова функція для навігації по під-меню
@@ -5078,7 +5105,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
+  <div class="flex-1 min-w-0 p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
     <header class="flex justify-between items-center mb-8">
       <h2 class="text-3xl font-bold text-gray-800">{{ tabTitles[props.currentTab] || '📦 Управління складом' }}</h2>
       <button @click="fetchData" class="text-blue-600 hover:bg-blue-100 p-3 rounded-full transition-colors">
@@ -7116,7 +7143,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="h-full flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="w-full h-full flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         
         <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center gap-4">
             <div class="flex p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -7145,7 +7172,7 @@ onMounted(() => {
                         <th class="p-4">Назва</th>
                         <th class="p-4 text-center">Тип</th>
                         <th class="p-4 text-right">Залишок</th>
-                        <th class="p-4 text-center">Дії</th>
+                        <th class="p-4 text-right">Дії</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -7155,7 +7182,6 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tbody class="divide-y divide-gray-100">
                     <template v-for="item in filteredItems" :key="item.type + '-' + item.id">
                         <!-- ОСНОВНИЙ РЯДОК -->
                         <tr 
@@ -7179,19 +7205,17 @@ onMounted(() => {
                             <span class="font-black text-gray-800">{{ item.stock_quantity }}</span>
                             <span class="ml-1 text-gray-400 text-xs">{{ item.unit_symbol }}</span>
                         </td>
-                        <td class="p-4 text-right">
-                            <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold">
-                            Історія
-                            </button>
+                        
+                        <td class="p-4">
+                            <div class="flex justify-end items-center gap-4">
+                                <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold whitespace-nowrap">
+                                    Історія
+                                </button>
+                                <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 transition" title="Коригування залишку">
+                                    <i class="fas fa-balance-scale"></i>
+                                </button>
+                            </div>
                         </td>
-
-                        <td class="p-4 text-center flex justify-center gap-2">
-                            <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 px-2 transition" title="Коригування залишку">
-                                <i class="fas fa-balance-scale"></i>
-                            </button>
-                            
-                        </td>
-
                         </tr>
 
                         <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
@@ -7242,7 +7266,6 @@ onMounted(() => {
                         </td>
                         </tr>
                     </template>
-                    </tbody>
                 </tbody>
             </table>
         </div>
@@ -10294,8 +10317,49 @@ def process_message(ch, method, properties, body):
                         change_amount=-cons["qty"], balance_after=db_cons.stock_quantity, reason=reason
                     ))
 
+            # 3. Реєструємо продаж самих товарів або варіантів для історії
+            # (Навіть якщо їх фізичний залишок у іншій БД, транзакція має бути тут для звітності)
+            for item in data.get("sold_items", []):
+                # Очікуємо в повідомленні: {"type": "variant", "id": 10, "name": "Latte", "qty": 1, "new_stock": 5}
+                db.add(models.InventoryTransaction(
+                    entity_type=item.get("type", "product"),
+                    entity_id=item.get("id"),
+                    entity_name=item.get("name", "Unknown Product"),
+                    change_amount=-item.get("qty", 0),
+                    # balance_after беремо з повідомлення, бо воркер не має прямого доступу до БД товарів
+                    balance_after=item.get("new_stock"), 
+                    reason=reason
+                ))
+
             db.commit()
             print(f"✅ [Inventory Worker] Чек #{order_id} успішно списано з партій (FIFO)!")
+
+        # Всередині try-блоку process_message:
+        elif data.get("event_type") == "refund_bom":
+            order_id = data.get("order_id")
+            reason = data.get("reason", f"refund_order_{order_id}")
+            print(f"📦 [Inventory Worker] ПОВЕРНЕННЯ товарів для чека #{order_id}...")
+
+            for ing in data.get("ingredients", []):
+                db_ing = db.query(models.Ingredient).filter(models.Ingredient.id == ing["id"]).first()
+                if db_ing:
+                    db_ing.stock_quantity += ing["qty"] # ПЛЮСУЄМО назад
+                    # Повертаємо в останню партію
+                    batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "ingredient", models.SupplyItem.entity_id == ing["id"]).order_by(models.SupplyItem.id.desc()).first()
+                    if batch: batch.remaining_quantity += ing["qty"]
+                    
+                    db.add(models.InventoryTransaction(entity_type="ingredient", entity_id=ing["id"], entity_name=db_ing.name, change_amount=ing["qty"], balance_after=db_ing.stock_quantity, reason=reason))
+
+            for cons in data.get("consumables", []):
+                db_cons = db.query(models.Consumable).filter(models.Consumable.id == cons["id"]).first()
+                if db_cons:
+                    db_cons.stock_quantity += cons["qty"] # ПЛЮСУЄМО назад
+                    batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "consumable", models.SupplyItem.entity_id == cons["id"]).order_by(models.SupplyItem.id.desc()).first()
+                    if batch: batch.remaining_quantity += cons["qty"]
+                    
+                    db.add(models.InventoryTransaction(entity_type="consumable", entity_id=cons["id"], entity_name=db_cons.name, change_amount=cons["qty"], balance_after=db_cons.stock_quantity, reason=reason))
+            
+            db.commit()
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
@@ -10326,7 +10390,7 @@ if __name__ == "__main__":
 
 <file path="inventory_service/main.py" lang="py">
 # FILE: inventory_service/main.py
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, desc
@@ -10336,6 +10400,9 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 import time
+import pika
+import json
+import os
 
 import models
 from database import engine, get_db
@@ -10526,14 +10593,45 @@ def delete_consumable(id: int, db: Session = Depends(get_db)):
 
 # ІСТОРІЯ РУХУ (Transactions)
 @app.get("/history/")
-def get_inventory_history(entity_type: str = None, entity_id: int = None, limit: int = 50, db: Session = Depends(get_db)):
+def get_inventory_history(
+    entity_type: Optional[str] = None, 
+    entity_id: Optional[int] = None, 
+    entity_ids: Optional[List[int]] = Query(None), # Для запиту списком (продукт + варіанти)
+    limit: int = 50, 
+    db: Session = Depends(get_db)
+):
     query = db.query(models.InventoryTransaction)
+    
     if entity_type:
         query = query.filter(models.InventoryTransaction.entity_type == entity_type)
-    if entity_id:
+        
+    if entity_ids:
+        query = query.filter(models.InventoryTransaction.entity_id.in_(entity_ids))
+    elif entity_id:
         query = query.filter(models.InventoryTransaction.entity_id == entity_id)
         
     return query.order_by(desc(models.InventoryTransaction.created_at)).limit(limit).all()
+
+def publish_finance_event(event_type: str, data: dict):
+    """Відправляє фінансову подію у RabbitMQ (Асинхронно)"""
+    try:
+        url = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@rabbitmq:5672/')
+        connection = pika.BlockingConnection(pika.URLParameters(url))
+        channel = connection.channel()
+        channel.queue_declare(queue='finance_queue', durable=True)
+        
+        payload = {"event_type": event_type, **data}
+        
+        channel.basic_publish(
+            exchange='',
+            routing_key='finance_queue',
+            body=json.dumps(payload),
+            properties=pika.BasicProperties(delivery_mode=2) # Persistent
+        )
+        connection.close()
+        print(f"💸 [RabbitMQ] Фінансову подію '{event_type}' успішно відправлено!")
+    except Exception as e:
+        print(f"⚠️ [RabbitMQ] Помилка відправки фінансів: {e}")
 
 # --- МАРШРУТИ ДЛЯ ПОСТАЧАЛЬНИКІВ ---
 @app.post("/suppliers/")
@@ -10615,6 +10713,16 @@ def create_supply(supply: SupplyCreate, db: Session = Depends(get_db)):
     db_supply.total_cost = total_supply_cost
     db.commit()
     db.refresh(db_supply)
+
+    # 🔥 НОВЕ: Відправляємо наказ списати гроші, якщо вказано рахунок оплати
+    if supply.payment_account_id and supply.paid_amount and supply.paid_amount > 0:
+        publish_finance_event("supply_paid", {
+            "supply_id": db_supply.id,
+            "account_id": supply.payment_account_id,
+            "amount": float(supply.paid_amount),
+            "user_id": 1 # Тимчасово, поки не додамо авторизацію
+        })
+
     return db_supply
 
 @app.get("/supplies/")
@@ -11731,6 +11839,7 @@ pytest==8.0.0
 httpx==0.26.0
 alembic
 pika==1.3.2
+requests
 </file>
 
 <file path="product_service/alembic/env.py" lang="py">
@@ -11901,6 +12010,44 @@ def downgrade() -> None:
 
 </file>
 
+<file path="product_service/alembic/versions/85b1cbaec4dd_add_product_and_variant_ids_to_order_.py" lang="py">
+"""add_product_and_variant_ids_to_order_items
+
+Revision ID: 85b1cbaec4dd
+Revises: ee6667d8b951
+Create Date: 2026-04-04 14:08:45.113258
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '85b1cbaec4dd'
+down_revision: Union[str, Sequence[str], None] = 'ee6667d8b951'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column('order_items', sa.Column('product_id', sa.Integer(), nullable=True))
+    op.add_column('order_items', sa.Column('variant_id', sa.Integer(), nullable=True))
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_column('order_items', 'variant_id')
+    op.drop_column('order_items', 'product_id')
+    # ### end Alembic commands ###
+
+</file>
+
 <file path="product_service/alembic/versions/ee6667d8b951_decouple_orders_and_crm.py" lang="py">
 """decouple_orders_and_crm
 
@@ -11925,8 +12072,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
-    op.create_index(op.f('ix_orders_customer_id'), 'orders', ['customer_id'], unique=False)
-    op.drop_constraint(op.f('orders_customer_id_fkey'), 'orders', type_='foreignkey')
+    #op.create_index(op.f('ix_orders_customer_id'), 'orders', ['customer_id'], unique=False)
+    #op.drop_constraint(op.f('orders_customer_id_fkey'), 'orders', type_='foreignkey')
     # ### end Alembic commands ###
 
 
@@ -11934,7 +12081,7 @@ def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.create_foreign_key(op.f('orders_customer_id_fkey'), 'orders', 'customers', ['customer_id'], ['id'])
-    op.drop_index(op.f('ix_orders_customer_id'), table_name='orders')
+    #op.drop_index(op.f('ix_orders_customer_id'), table_name='orders')
     # ### end Alembic commands ###
 
 </file>
@@ -12279,6 +12426,8 @@ class OrderItem(Base):
     __tablename__ = "order_items"
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"))
+    product_id = Column(Integer, nullable=True) 
+    variant_id = Column(Integer, nullable=True)
     product_name = Column(String)
     quantity = Column(Integer)
     price_at_moment = Column(Float)
@@ -12899,6 +13048,9 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
 
 @router.get("/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
+    # 🔥 СТЯГУЄМО ЗАЛИШКИ ЗІ СКЛАДУ ОДИН РАЗ ДЛЯ ВСІХ ТОВАРІВ
+    from services.inventory_client import InventoryClient
+    ing_stock, con_stock = InventoryClient.get_all_stocks()
     # 🔥 ВИПРАВЛЕНО: Видалені JOIN-и з базами складу!
     products = db.query(models.Product).options(
         joinedload(models.Product.category),
@@ -12930,7 +13082,8 @@ def read_products(db: Session = Depends(database.get_db)):
 
             if v.master_recipe_id and not p.track_stock:
                 try:
-                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                    # 🔥 ПЕРЕДАЄМО СЛОВНИКИ В КАЛЬКУЛЯТОР
+                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id, ing_stock, con_stock)
                 except Exception:
                     v.stock_quantity = 0.0
             
@@ -13776,6 +13929,20 @@ class FinanceClient:
             
         except Exception as e:
             print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (supply_expense): {e}")
+
+    @staticmethod
+    def register_order_refund(order_id: int, amount: float, payment_method: str):
+        """Відправляє подію про скасування чека та повернення коштів"""
+        try:
+            event_data = {
+                "event_type": "order_refunded",
+                "order_id": order_id,
+                "amount": amount,
+                "payment_method": payment_method
+            }
+            rabbitmq.publish(queue_name="finance_queue", message=event_data)
+        except Exception as e:
+            print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (refund): {e}")
 </file>
 
 <file path="product_service/services/finance_service.py" lang="py">
@@ -14004,6 +14171,7 @@ def generate_pnl_report(db: Session, start_date=None, end_date=None) -> dict:
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 import models
+import requests
 from services.inventory_logger import InventoryLogger
 from services.inventory_service import InventoryService
 from services.product_service import ProductService
@@ -14123,6 +14291,8 @@ class InventoryClient:
         try:
             bom_ingredients = {} # {id_інгредієнта: загальна_кількість}
             bom_consumables = {} # {id_матеріалу: загальна_кількість}
+            sold_items_for_history = [] # Список для запису в історію транзакцій складу
+            product_names = []
 
             for item in items_data:
                 # Підтримуємо і словники, і Pydantic моделі
@@ -14134,31 +14304,72 @@ class InventoryClient:
                 product = db.query(models.Product).filter(models.Product.id == p_id).first()
                 if not product: continue
 
-                # 1. Знаходимо правильний рецепт (варіанту або загальний)
+                # 🌟 Формуємо назву: "Назва товару (Назва варіанту) xКількість"
+                variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first() if v_id else None
+                item_name = product.name
+                if variant and variant.name:
+                    item_name += f" ({variant.name})"
+                product_names.append(f"{item_name} x{int(qty) if qty.is_integer() else qty}")
+
+                # 🌟 ЗБИРАЄМО ДАНІ ПРО ПРОДАНИЙ ТОВАР/ВАРІАНТ ДЛЯ ІСТОРІЇ
+                current_stock = (variant.stock_quantity if variant else product.stock_quantity) or 0.0
+                sold_items_for_history.append({
+                    "type": "product_variant" if v_id else "product",
+                    "id": v_id if v_id else p_id,
+                    "name": item_name,
+                    "qty": qty,
+                    "new_stock": current_stock - qty
+                })
+
                 recipe = None
+                target_weight = 0.0
+                
+                # 1. ЯКЩО Є ВАРІАНТ (S, M, L)
                 if v_id:
                     variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first()
-                    if variant and variant.master_recipe_id:
-                        recipe = variant.master_recipe
+                    if variant:
+                        target_weight = variant.output_weight or 0.0
+                        if variant.master_recipe_id:
+                            recipe = variant.master_recipe
+                            
+                        # 🔥 НОВЕ: Розпаковуємо витратні матеріали ВАРІАНТУ (стаканчики, кришки)
+                        for vc in variant.consumables:
+                            total_qty = vc.quantity * qty
+                            bom_consumables[vc.consumable_id] = bom_consumables.get(vc.consumable_id, 0) + total_qty
+                            
+                        # 🔥 НОВЕ: Розпаковуємо інгредієнти ВАРІАНТУ (якщо є)
+                        for vi in variant.ingredients:
+                            total_qty = vi.quantity * qty
+                            bom_ingredients[vi.ingredient_id] = bom_ingredients.get(vi.ingredient_id, 0) + total_qty
                 
+                # 2. ЯКЩО ЦЕ ПРОСТИЙ ТОВАР (БЕЗ ВАРІАНТІВ)
                 if not recipe and product.master_recipe_id:
                     recipe = product.master_recipe
+                    target_weight = product.output_weight or 0.0
 
-                # 2. Розпаковуємо інгредієнти з рецепту
+                # 3. Розпаковуємо інгредієнти з РЕЦЕПТУ (з правильними відсотками)
                 if recipe:
                     for ri in recipe.items:
-                        total_qty = ri.quantity * qty
+                        if getattr(ri, 'is_percentage', False):
+                            amount_per_item = (ri.quantity / 100.0) * target_weight
+                            total_qty = amount_per_item * qty
+                        else:
+                            total_qty = ri.quantity * qty
+                            
                         bom_ingredients[ri.ingredient_id] = bom_ingredients.get(ri.ingredient_id, 0) + total_qty
 
-                # 3. Розпаковуємо прості інгредієнти (якщо товар без рецепта)
+                # 4. Розпаковуємо базові інгредієнти ПРОДУКТУ
                 for pi in product.ingredients:
                     total_qty = pi.quantity * qty
                     bom_ingredients[pi.ingredient_id] = bom_ingredients.get(pi.ingredient_id, 0) + total_qty
 
-                # 4. Розпаковуємо пакування (стаканчики)
+                # 5. Розпаковуємо базові витратні матеріали ПРОДУКТУ
                 for pc in product.consumables:
                     total_qty = pc.quantity * qty
                     bom_consumables[pc.consumable_id] = bom_consumables.get(pc.consumable_id, 0) + total_qty
+
+            # 🌟 ФОРМУЄМО ДЕТАЛЬНУ ПРИЧИНУ: "Продаж #123: Лате (L) x1, Еспресо x2"
+            detailed_reason = f"Продаж чеку #{order_id}: {', '.join(product_names)}"
 
             # Формуємо чітку команду для Складу
             payload = {
@@ -14166,7 +14377,8 @@ class InventoryClient:
                 "order_id": order_id,
                 "reason": transaction_reason,
                 "ingredients": [{"id": k, "qty": v} for k, v in bom_ingredients.items()],
-                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()]
+                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()],
+                "sold_items": sold_items_for_history
             }
             rabbitmq.publish(queue_name="inventory_queue", message=payload)
             print(f"✅ [InventoryClient] BoM для чека #{order_id} успішно відправлено на склад!")
@@ -14265,6 +14477,68 @@ class InventoryClient:
             obj = db.query(models.ProductVariant).filter(models.ProductVariant.id == entity_id).first()
         
         return getattr(obj, 'costing_method', 'wac') if obj else 'wac'
+    
+    # 🔥 НОВИЙ МЕТОД: Швидко стягує всі залишки зі Складу
+    @staticmethod
+    def get_all_stocks():
+        try:
+            ings = requests.get("http://inventory_api:8004/ingredients/", timeout=2).json()
+            cons = requests.get("http://inventory_api:8004/consumables/", timeout=2).json()
+            
+            ing_stock = {i["id"]: i.get("stock_quantity", 0) for i in ings if "id" in i}
+            con_stock = {c["id"]: c.get("stock_quantity", 0) for c in cons if "id" in c}
+            return ing_stock, con_stock
+        except Exception as e:
+            print(f"⚠️ [InventoryClient] Не вдалося отримати залишки зі складу: {e}")
+            return {}, {}
+        
+    @staticmethod
+    def refund_stock_async(order_id: int, items_data: list):
+        """Відправляє подію на ПОВЕРНЕННЯ розпакованих інгредієнтів (Reverse BoM)"""
+        from database import SessionLocal
+        import models
+        from services.rabbitmq_client import rabbitmq
+        
+        db = SessionLocal()
+        try:
+            bom_ingredients = {}
+            bom_consumables = {}
+
+            # Розпаковуємо всі рецепти точно так само, як при продажі
+            for item in items_data:
+                p_id = getattr(item, 'product_id', None)
+                v_id = getattr(item, 'variant_id', None)
+                qty = getattr(item, 'quantity', 1.0)
+
+                product = db.query(models.Product).filter(models.Product.id == p_id).first()
+                if not product: continue
+
+                variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first() if v_id else None
+                recipe = variant.master_recipe if (variant and variant.master_recipe_id) else (product.master_recipe if product.master_recipe_id else None)
+                target_weight = variant.output_weight if variant else (product.output_weight if product else 0.0)
+
+                if recipe:
+                    for ri in recipe.items:
+                        amount = (ri.quantity / 100.0) * target_weight if getattr(ri, 'is_percentage', False) else ri.quantity
+                        bom_ingredients[ri.ingredient_id] = bom_ingredients.get(ri.ingredient_id, 0) + (amount * qty)
+
+                if variant:
+                    for vi in variant.ingredients: bom_ingredients[vi.ingredient_id] = bom_ingredients.get(vi.ingredient_id, 0) + (vi.quantity * qty)
+                    for vc in variant.consumables: bom_consumables[vc.consumable_id] = bom_consumables.get(vc.consumable_id, 0) + (vc.quantity * qty)
+                
+                for pi in product.ingredients: bom_ingredients[pi.ingredient_id] = bom_ingredients.get(pi.ingredient_id, 0) + (pi.quantity * qty)
+                for pc in product.consumables: bom_consumables[pc.consumable_id] = bom_consumables.get(pc.consumable_id, 0) + (pc.quantity * qty)
+
+            payload = {
+                "event_type": "refund_bom",
+                "order_id": order_id,
+                "reason": f"Скасування чека #{order_id}",
+                "ingredients": [{"id": k, "qty": v} for k, v in bom_ingredients.items()],
+                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()]
+            }
+            rabbitmq.publish(queue_name="inventory_queue", message=payload)
+        finally:
+            db.close()  
 </file>
 
 <file path="product_service/services/inventory_logger.py" lang="py">
@@ -14401,6 +14675,55 @@ import traceback
 from services.inventory_client import InventoryClient 
 
 class OrderService:
+
+    @staticmethod
+    def cancel_order(db: Session, order_id: int) -> bool:
+        """
+        Логіка скасування чека: повернення грошей та продуктів на склад.
+        """
+        try:
+            # 1. Знаходимо замовлення з усіма позиціями
+            order = db.query(models.Order).filter(models.Order.id == order_id).first()
+            if not order:
+                return False
+
+            print(f"🔄 [REFUND] Початок скасування чека #{order_id}")
+
+            # 2. Формуємо дані для повернення складу (BoM return)
+            # Ми збираємо список товарів так само, як при продажу
+            items_for_refund = []
+            for item in order.items:
+                # Якщо у вас в OrderItem є product_id та variant_id
+                items_for_refund.append({
+                    "product_id": item.product_id,
+                    "variant_id": item.variant_id,
+                    "quantity": item.quantity
+                })
+
+            # 3. Відправляємо подію на ПОВЕРНЕННЯ складу
+            # Створюємо новий метод у InventoryClient (див. нижче)
+            InventoryClient.refund_stock_async(order.id, items_for_refund)
+
+            # 4. Відправляємо подію на ПОВЕРНЕННЯ фінансів
+            # Створюємо новий метод у FinanceClient (див. нижче)
+            FinanceClient.register_order_refund(
+                order_id=order.id,
+                amount=order.total_price,
+                payment_method=order.payment_method
+            )
+
+            # 5. Видаляємо замовлення або змінюємо статус (краще змінити статус на 'cancelled')
+            db.delete(order)
+            db.commit()
+            
+            print(f"✅ [REFUND] Чек #{order_id} скасовано, запити на повернення відправлені.")
+            return True
+
+        except Exception as e:
+            db.rollback()
+            print(f"❌ [REFUND] Помилка при скасуванні: {e}")
+            return False
+
     @staticmethod
     def process_checkout(db: Session, order_data: schemas.OrderCreate):
         try:
@@ -14425,9 +14748,12 @@ class OrderService:
             )
 
             # 3. Записуємо "зліпок" (Snapshot) позицій в чек
-            for p_item in processed_items:
+            # 🔥 ВИПРАВЛЕНО: Використовуємо zip, щоб брати ID з оригінального запиту
+            for p_item, orig_item in zip(processed_items, order_data.items):
                 db.add(models.OrderItem(
                     order_id=new_order.id,
+                    product_id=orig_item.product_id, # Зберігаємо ID
+                    variant_id=orig_item.variant_id, # Зберігаємо ID
                     product_name=p_item["product_name"],
                     quantity=p_item["quantity"],
                     price_at_moment=p_item["price_at_moment"], 
@@ -14544,75 +14870,51 @@ class ProductService:
 
         return round(total_cost, 2)
 
+
+    # FILE: product_service/services/product_service.py
     @staticmethod
-    def calculate_max_possible_stock(db: Session, variant_id: int) -> int:
-        """
-        Розраховує, скільки одиниць варіанту можна виготовити 
-        виходячи з поточних залишків інгредієнтів на складі.
-        """
-        # 1. Отримуємо варіант із бази
-        variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
-    
-        # ЗАХИСТ: Якщо варіанта не існує в природі
-        if not variant:
-            return 0
+    def calculate_max_possible_stock(db, variant_id: int, ing_stock: dict = None, con_stock: dict = None) -> float:
+        import math
+        import models
         
-        # ЗАХИСТ: Якщо це простий товар або товар без техкарти
-        if not variant.master_recipe_id:
-            # Повертаємо фізичний залишок, безпечно обробляючи None через 'or 0'
-            return int(variant.stock_quantity or 0)
+        variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == variant_id).first()
+        if not variant: return 0.0
 
-        # 2. Отримуємо рецепт (Master Recipe)
-        recipe = variant.master_recipe
-    
-        # ЗАХИСТ: Якщо ID рецепта є, але самого рецепта або його складників немає в базі
-        if not recipe or not recipe.items:
-            # Повертаємо 9999 (або інше велике число), щоб не блокувати продаж 
-            # товару, який не має обмежень по сировині
-            return 9999 
+        # Якщо словники не передали (наприклад, одиночний виклик), стягуємо їх зі складу
+        if ing_stock is None or con_stock is None:
+            from services.inventory_client import InventoryClient
+            ing_stock, con_stock = InventoryClient.get_all_stocks()
 
-        # 3. Якщо ми тут, значить рецепт є і він не порожній — починаємо рахунок по інгредієнтах
-        max_portions = float('inf')
+        max_qty = float('inf')
+        product = variant.product
+        recipe = variant.master_recipe if variant.master_recipe_id else product.master_recipe
+        target_weight = variant.output_weight or product.output_weight or 0.0
 
-        # 3. Перевіряємо кожен інгредієнт рецепту
-        for r_item in recipe.items:
-            ingredient = r_item.ingredient
-            if not ingredient: 
-                continue
+        def update_max(req_qty, avail_qty):
+            nonlocal max_qty
+            if req_qty > 0:
+                max_qty = min(max_qty, avail_qty / req_qty)
 
-            # Скільки треба на 1 порцію?
-            needed_qty = 0
-            if r_item.is_percentage:
-                # Якщо у відсотках від виходу (наприклад, молоко у лате)
-                needed_qty = (r_item.quantity / 100) * (variant.output_weight or 0)
-            else:
-                needed_qty = r_item.quantity
+        if recipe:
+            for item in recipe.items:
+                req = (item.quantity / 100.0) * target_weight if getattr(item, 'is_percentage', False) else item.quantity
+                avail = ing_stock.get(item.ingredient_id, 0.0)
+                update_max(req, avail)
 
-            if needed_qty <= 0: continue
-
-            # Скільки є на складі?
-            in_stock = ingredient.stock_quantity or 0
-
-            # Скільки порцій вийде з цього конкретного інгредієнта?
-            possible_from_this = in_stock / needed_qty
+        for vc in variant.consumables:
+            update_max(vc.quantity, con_stock.get(vc.consumable_id, 0.0))
             
-            # Шукаємо "вузьке горлечко" (мінімальне значення)
-            if possible_from_this < max_portions:
-                max_portions = possible_from_this
+        for vi in variant.ingredients:
+            update_max(vi.quantity, ing_stock.get(vi.ingredient_id, 0.0))
 
-        # 4. Перевіряємо витратні матеріали варіанту (стаканчики, кришки)
-        for v_cons in variant.consumables:
-            cons = v_cons.consumable
-            if cons and v_cons.quantity > 0:
-                in_stock = cons.stock_quantity or 0
-                possible = in_stock / v_cons.quantity
-                if possible < max_portions:
-                    max_portions = possible
+        for pc in product.consumables:
+            update_max(pc.quantity, con_stock.get(pc.consumable_id, 0.0))
 
-        if max_portions == float('inf'):
-            return 0
-            
-        return int(max_portions) # Округляємо вниз до цілого
+        for pi in product.ingredients:
+            update_max(pi.quantity, ing_stock.get(pi.ingredient_id, 0.0))
+
+        # Округлюємо до меншого цілого (з 5.9 Лате ми можемо продати тільки 5)
+        return float(math.floor(max_qty)) if max_qty != float('inf') else 0.0
 
     @staticmethod
     def create_product(db: Session, product: schemas.ProductCreate):

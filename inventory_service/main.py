@@ -9,6 +9,9 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 import time
+import pika
+import json
+import os
 
 import models
 from database import engine, get_db
@@ -218,6 +221,27 @@ def get_inventory_history(
         
     return query.order_by(desc(models.InventoryTransaction.created_at)).limit(limit).all()
 
+def publish_finance_event(event_type: str, data: dict):
+    """Відправляє фінансову подію у RabbitMQ (Асинхронно)"""
+    try:
+        url = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@rabbitmq:5672/')
+        connection = pika.BlockingConnection(pika.URLParameters(url))
+        channel = connection.channel()
+        channel.queue_declare(queue='finance_queue', durable=True)
+        
+        payload = {"event_type": event_type, **data}
+        
+        channel.basic_publish(
+            exchange='',
+            routing_key='finance_queue',
+            body=json.dumps(payload),
+            properties=pika.BasicProperties(delivery_mode=2) # Persistent
+        )
+        connection.close()
+        print(f"💸 [RabbitMQ] Фінансову подію '{event_type}' успішно відправлено!")
+    except Exception as e:
+        print(f"⚠️ [RabbitMQ] Помилка відправки фінансів: {e}")
+
 # --- МАРШРУТИ ДЛЯ ПОСТАЧАЛЬНИКІВ ---
 @app.post("/suppliers/")
 def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
@@ -298,6 +322,16 @@ def create_supply(supply: SupplyCreate, db: Session = Depends(get_db)):
     db_supply.total_cost = total_supply_cost
     db.commit()
     db.refresh(db_supply)
+
+    # 🔥 НОВЕ: Відправляємо наказ списати гроші, якщо вказано рахунок оплати
+    if supply.payment_account_id and supply.paid_amount and supply.paid_amount > 0:
+        publish_finance_event("supply_paid", {
+            "supply_id": db_supply.id,
+            "account_id": supply.payment_account_id,
+            "amount": float(supply.paid_amount),
+            "user_id": 1 # Тимчасово, поки не додамо авторизацію
+        })
+
     return db_supply
 
 @app.get("/supplies/")

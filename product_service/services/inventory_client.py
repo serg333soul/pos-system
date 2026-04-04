@@ -323,3 +323,51 @@ class InventoryClient:
         except Exception as e:
             print(f"⚠️ [InventoryClient] Не вдалося отримати залишки зі складу: {e}")
             return {}, {}
+        
+    @staticmethod
+    def refund_stock_async(order_id: int, items_data: list):
+        """Відправляє подію на ПОВЕРНЕННЯ розпакованих інгредієнтів (Reverse BoM)"""
+        from database import SessionLocal
+        import models
+        from services.rabbitmq_client import rabbitmq
+        
+        db = SessionLocal()
+        try:
+            bom_ingredients = {}
+            bom_consumables = {}
+
+            # Розпаковуємо всі рецепти точно так само, як при продажі
+            for item in items_data:
+                p_id = getattr(item, 'product_id', None)
+                v_id = getattr(item, 'variant_id', None)
+                qty = getattr(item, 'quantity', 1.0)
+
+                product = db.query(models.Product).filter(models.Product.id == p_id).first()
+                if not product: continue
+
+                variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first() if v_id else None
+                recipe = variant.master_recipe if (variant and variant.master_recipe_id) else (product.master_recipe if product.master_recipe_id else None)
+                target_weight = variant.output_weight if variant else (product.output_weight if product else 0.0)
+
+                if recipe:
+                    for ri in recipe.items:
+                        amount = (ri.quantity / 100.0) * target_weight if getattr(ri, 'is_percentage', False) else ri.quantity
+                        bom_ingredients[ri.ingredient_id] = bom_ingredients.get(ri.ingredient_id, 0) + (amount * qty)
+
+                if variant:
+                    for vi in variant.ingredients: bom_ingredients[vi.ingredient_id] = bom_ingredients.get(vi.ingredient_id, 0) + (vi.quantity * qty)
+                    for vc in variant.consumables: bom_consumables[vc.consumable_id] = bom_consumables.get(vc.consumable_id, 0) + (vc.quantity * qty)
+                
+                for pi in product.ingredients: bom_ingredients[pi.ingredient_id] = bom_ingredients.get(pi.ingredient_id, 0) + (pi.quantity * qty)
+                for pc in product.consumables: bom_consumables[pc.consumable_id] = bom_consumables.get(pc.consumable_id, 0) + (pc.quantity * qty)
+
+            payload = {
+                "event_type": "refund_bom",
+                "order_id": order_id,
+                "reason": f"Скасування чека #{order_id}",
+                "ingredients": [{"id": k, "qty": v} for k, v in bom_ingredients.items()],
+                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()]
+            }
+            rabbitmq.publish(queue_name="inventory_queue", message=payload)
+        finally:
+            db.close()  

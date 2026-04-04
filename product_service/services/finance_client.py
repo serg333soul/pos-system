@@ -49,3 +49,17 @@ class FinanceClient:
             
         except Exception as e:
             print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (supply_expense): {e}")
+
+    @staticmethod
+    def register_order_refund(order_id: int, amount: float, payment_method: str):
+        """Відправляє подію про скасування чека та повернення коштів"""
+        try:
+            event_data = {
+                "event_type": "order_refunded",
+                "order_id": order_id,
+                "amount": amount,
+                "payment_method": payment_method
+            }
+            rabbitmq.publish(queue_name="finance_queue", message=event_data)
+        except Exception as e:
+            print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (refund): {e}")
