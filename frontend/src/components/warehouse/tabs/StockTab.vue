@@ -218,7 +218,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="h-full flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="w-full h-full flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         
         <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center gap-4">
             <div class="flex p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -247,7 +247,7 @@ onMounted(() => {
                         <th class="p-4">Назва</th>
                         <th class="p-4 text-center">Тип</th>
                         <th class="p-4 text-right">Залишок</th>
-                        <th class="p-4 text-center">Дії</th>
+                        <th class="p-4 text-right">Дії</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -257,7 +257,6 @@ onMounted(() => {
                         </td>
                     </tr>
                     
-                    <tbody class="divide-y divide-gray-100">
                     <template v-for="item in filteredItems" :key="item.type + '-' + item.id">
                         <!-- ОСНОВНИЙ РЯДОК -->
                         <tr 
@@ -281,19 +280,17 @@ onMounted(() => {
                             <span class="font-black text-gray-800">{{ item.stock_quantity }}</span>
                             <span class="ml-1 text-gray-400 text-xs">{{ item.unit_symbol }}</span>
                         </td>
-                        <td class="p-4 text-right">
-                            <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold">
-                            Історія
-                            </button>
+                        
+                        <td class="p-4">
+                            <div class="flex justify-end items-center gap-4">
+                                <button @click.stop="openHistory(item)" class="text-blue-500 hover:underline text-xs font-bold whitespace-nowrap">
+                                    Історія
+                                </button>
+                                <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 transition" title="Коригування залишку">
+                                    <i class="fas fa-balance-scale"></i>
+                                </button>
+                            </div>
                         </td>
-
-                        <td class="p-4 text-center flex justify-center gap-2">
-                            <button @click.stop="openAdjustModal(item)" class="text-blue-400 hover:text-blue-600 px-2 transition" title="Коригування залишку">
-                                <i class="fas fa-balance-scale"></i>
-                            </button>
-                            
-                        </td>
-
                         </tr>
 
                         <!-- РОЗГОРНУТИЙ РЯДОК (ПАРТІЇ) -->
@@ -344,7 +341,6 @@ onMounted(() => {
                         </td>
                         </tr>
                     </template>
-                    </tbody>
                 </tbody>
             </table>
         </div>

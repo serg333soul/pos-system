@@ -30,6 +30,28 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '')
       },
 
+      // 🔥 СКЛАД (Inventory)
+      '/api/ingredients': {
+        target: 'http://inventory_api:8004',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/api/consumables': {
+        target: 'http://inventory_api:8004',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/api/units': {
+        target: 'http://inventory_api:8004',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/api/history': {
+        target: 'http://inventory_api:8004',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+
       // 3. Всі ІНШІ запити (Клієнти, Склад, Товари) йдуть на старий product_service
       '/api': {
         target: 'http://product_service:8000', 
