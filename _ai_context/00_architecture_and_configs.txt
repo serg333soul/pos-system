@@ -1,0 +1,306 @@
+SYSTEM CONTEXT FILE (ARCHITECTURE & CONFIGS)\n====================\n\n📊 OVERALL PROJECT STATISTICS\nFiles: 115 | Lines: 14367 | Tokens: ~149524\n\n🌳 PROJECT TREE\n===============\n📁 ./\n    📄 docker-compose.prod.yml\n    📄 docker-compose.yml\n    📁 customer_service/\n        📄 customer_worker.py\n        📄 database.py\n        📄 main.py\n        📄 models.py\n        📄 requirements.txt\n    📁 finance_service/\n        📄 database.py\n        📄 finance_worker.py\n        📄 main.py\n        📄 models.py\n        📄 requirements.txt\n        📄 schemas.py\n    📁 frontend/\n        📄 README.md\n        📄 index.html\n        📄 nginx.conf\n        📄 package.json\n        📄 postcss.config.js\n        📄 tailwind.config.js\n        📄 vite.config.js\n        📁 public/\n        📁 src/\n            📄 App.vue\n            📄 main.js\n            📄 style.css\n            📁 components/\n                📁 common/\n                    📄 IngredientSelect.vue\n                    📄 Sidebar.vue\n                📁 crm/\n                    📄 CustomerHistoryModal.vue\n                    📄 Customers.vue\n                    📄 CustomersTable.vue\n                📁 finance/\n                    📄 Finance.vue\n                📁 pos/\n                    📄 CartDrawer.vue\n                    📄 ProductCard.vue\n                    📄 ProductModal.vue\n                    📄 ProductRoomModal.vue\n                📁 stats/\n                    📄 SalesTable.vue\n                    📄 Statistics.vue\n                📁 warehouse/\n                    📄 Warehouse.vue\n                    📁 modals/\n                        📄 AdjustmentModal.vue\n                        📄 HistoryModal.vue\n                    📁 tabs/\n                        📄 CategoriesTab.vue\n                        📄 ConsumablesTab.vue\n                        📄 IngredientsTab.vue\n                        📄 ProcessesTab.vue\n                        📄 ProductsTab.vue\n                        📄 RecipesTab.vue\n                        📄 RoomsTab.vue\n                        📄 StockTab.vue\n                        📄 SupplyTab.vue\n                        📄 UnitsTab.vue\n                        📁 products/\n                            📄 ProductFormSimple.vue\n                            📄 ProductFormVariant.vue\n                            📄 ProductsTab.vue\n            📁 composables/\n                📄 useCart.js\n                📄 useCustomers.js\n                📄 useFinance.js\n                📄 useProducts.js\n                📄 useStatistics.js\n                📄 useSupplies.js\n                📄 useWarehouse.js\n    📁 inventory_service/\n        📄 database.py\n        📄 inventory_worker.py\n        📄 main.py\n        📄 models.py\n        📄 requirements copy.txt\n        📄 requirements.txt\n    📁 nginx/\n        📄 nginx.conf\n    📁 order_service/\n        📄 main.py\n        📄 requirements.txt\n        📄 schemas.py\n    📁 product_service/\n        📄 alembic.ini\n        📄 database.py\n        📄 db_audit.py\n        📄 inventory_worker.py\n        📄 local_db_audit.txt\n        📄 main.py\n        📄 requirements.txt\n        📁 models/\n            📄 __init__.py\n            📄 base.py\n            📄 crm.py\n            📄 inventory.py\n            📄 orders.py\n            📄 supply.py\n        📁 routers/\n            📄 __init__.py\n            📄 adjustments.py\n            📄 categories.py\n            📄 customers.py\n            📄 inventory.py\n            📄 orders.py\n            📄 processes.py\n            📄 product_rooms.py\n            📄 products.py\n            📄 recipes.py\n            📄 supplies.py\n        📁 schemas/\n            📄 __init__.py\n            📄 crm.py\n            📄 finance.py\n            📄 inventory.py\n            📄 orders.py\n            📄 supply.py\n        📁 services/\n            📄 __init__.py\n            📄 finance_client.py\n            📄 finance_service.py\n            📄 inventory_client.py\n            📄 inventory_logger.py\n            📄 inventory_service.py\n            📄 order_service.py\n            📄 product_room_service.py\n            📄 product_service.py\n            📄 rabbitmq_client.py\n            📄 supply_client.py\n            📄 supply_service.py\n        📁 tests/\n            📄 conftest.py\n            📄 test_categories.py\n            📄 test_consumables.py\n            📄 test_orders.py\n            📄 test_warehouse.py\n\n🛠 KEY DEPENDENCIES\n====================\nDocker Services: product_service, finance_worker, finance_api, customer_api, inventory_db, inventory_api, inventory_worker, postgres_db, finance_db, customer_db, order_service, redis_db, customer_worker, rabbitmq, api_gateway, postgres_data, rabbitmq_data, finance_data, customer_data, inventory_data\nPython Libs (customer_service): fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest...\nPython Libs (finance_service): fastapi...\nJS/Vue Libs: axios, vue\nPython Libs (inventory_service): fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest...\nPython Libs (order_service): fastapi
+uvicorn
+redis
+pydantic
+...\nPython Libs (product_service): fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+pytest...\n\n🗺 ARCHITECTURE MAP\n==================\ncustomer_service/database.py\n  Funcs: get_db\ncustomer_service/main.py\n  Classes: CustomerCreate, CustomerUpdate\n  Funcs: get_customers, get_customer, search_customers, create_customer, update_customer...\ncustomer_service/models.py\n  Classes: Customer\ncustomer_service/customer_worker.py\n  Funcs: process_loyalty_points, callback, start_consuming\nfinance_service/database.py\n  Funcs: get_db\nfinance_service/finance_worker.py\n  Funcs: create_transaction_internal, process_order_paid, process_supply_paid, callback, start_consuming\nfinance_service/main.py\n  Funcs: get_accounts, get_categories, get_transactions, get_active_shift, open_shift...\nfinance_service/models.py\n  Classes: Account, TransactionCategory, Shift, Transaction\nfinance_service/schemas.py\n  Classes: AccountCreate, Account\ninventory_service/database.py\n  Funcs: get_db\ninventory_service/models.py\n  Classes: Unit, Ingredient, Consumable, InventoryTransaction, Supplier, Supply, SupplyItem\ninventory_service/main.py\n  Classes: UnitCreate, IngredientCreate, IngredientUpdate, ConsumableCreate, ConsumableUpdate, SupplierCreate, SupplyItemCreate, SupplyCreate\n  Funcs: create_unit, read_units, create_ingredient, read_ingredients, update_ingredient...\ninventory_service/inventory_worker.py\n  Funcs: apply_fifo, process_message, start_worker\norder_service/main.py\n  Funcs: read_root, get_cart, add_item, update_quantity, remove_item...\norder_service/schemas.py\n  Classes: ConsumableOverride, ModifierItem, CartItemCreate, CartItem\nproduct_service/database.py\n  Funcs: get_db\nproduct_service/db_audit.py\n  Funcs: audit_schema\nproduct_service/inventory_worker.py\n  Funcs: process_deduct_stock, callback, start_consuming\nproduct_service/main.py\n  Funcs: read_root, get_customer_order_history\nproduct_service/models/crm.py\n  Classes: Customer\nproduct_service/models/inventory.py\n  Classes: Category, Unit, Ingredient, Consumable, MasterRecipe, MasterRecipeItem, ProcessGroup, ProcessOption, ProductConsumable, ProductIngredient, Product, ProductVariant, ProductRoom, ProductVariantIngredient, ProductVariantConsumable, ProductModifierGroup, Modifier, InventoryTransaction\nproduct_service/models/orders.py\n  Classes: Order, OrderItem\nproduct_service/models/supply.py\n  Classes: Supplier, Supply, SupplyItem\nproduct_service/routers/adjustments.py\n  Funcs: adjust_stock\nproduct_service/routers/categories.py\n  Funcs: create_category, read_categories, update_category, delete_category\nproduct_service/routers/customers.py\n  Funcs: create_customer, search_customers, read_customers, update_customer, delete_customer...\nproduct_service/routers/inventory.py\n  Funcs: create_unit, read_units, create_ingredient, read_ingredients, update_ingredient...\nproduct_service/routers/orders.py\n  Funcs: checkout, get_orders, delete_order\nproduct_service/routers/processes.py\n  Funcs: create_process_group, update_process_group, read_process_groups, delete_process_group, add_process_option...\nproduct_service/routers/product_rooms.py\n  Funcs: create_room, get_rooms, get_room, delete_room, add_product_to_room...\nproduct_service/routers/products.py\n  Funcs: calculate_cost, get_variant_calculated_stock, get_product_history, create_product, update_product...\nproduct_service/routers/recipes.py\n  Funcs: create_recipe, read_recipes, update_recipe, read_recipe, delete_recipe\nproduct_service/routers/supplies.py\n  Funcs: get_suppliers, create_supplier, create_supply, get_supplies, get_available_batches...\nproduct_service/schemas/crm.py\n  Classes: CustomerCreate, Customer\nproduct_service/schemas/finance.py\n  Classes: AccountBase, AccountCreate, AccountResponse, TransactionCategoryCreate, TransactionCategoryResponse, ShiftCreate, ShiftClose, ShiftResponse, TransactionCreate, TransferCreate, TransactionResponse\nproduct_service/schemas/inventory.py\n  Classes: Category, CategoryCreate, Unit, UnitCreate, IngredientCreate, Ingredient, ConsumableBase, ConsumableCreate, Consumable, ProcessOptionCreate, ProcessOption, ProcessGroupCreate, ProcessGroup, MasterRecipeItemCreate, MasterRecipeItem, MasterRecipeCreate, MasterRecipe, ModifierCreate, Modifier, ModifierGroupCreate, ModifierGroup, ProductIngredientLink, ProductIngredientRead, ProductConsumableLink, ProductConsumableRead, ProductCostCheck, VariantCreate, Variant, ProductBase, ProductCreate, ProductUpdate, Product, ProductRoomCreate, ProductRoomRead, StockDeductionItem, InventoryTransactionRead, InventoryAdjustRequest\nproduct_service/schemas/orders.py\n  Classes: SoldItemModifier, ConsumableOverride, SoldItem, OrderCreate, OrderItemRead, OrderRead, OrderPaginationResponse\nproduct_service/schemas/supply.py\n  Classes: SupplierCreate, Supplier, SupplyItemCreate, SupplyItemResponse, SupplyCreate, SupplyResponse\nproduct_service/services/finance_client.py\n  Classes: FinanceClient\nproduct_service/services/finance_service.py\n  Funcs: create_transaction, transfer_funds, open_shift, close_shift, generate_pnl_report\nproduct_service/services/inventory_client.py\n  Classes: InventoryClient\nproduct_service/services/inventory_logger.py\n  Classes: InventoryLogger\nproduct_service/services/inventory_service.py\n  Classes: InventoryService\nproduct_service/services/order_service.py\n  Classes: OrderService\nproduct_service/services/product_room_service.py\n  Classes: ProductRoomService\nproduct_service/services/product_service.py\n  Classes: ProductService\nproduct_service/services/rabbitmq_client.py\n  Classes: RabbitMQClient\nproduct_service/services/supply_client.py\n  Classes: SupplyClient\nproduct_service/services/supply_service.py\n  Classes: SupplyService\nproduct_service/tests/conftest.py\n  Funcs: db_session, client\nproduct_service/tests/test_categories.py\n  Funcs: test_create_category_success, test_create_subcategory, test_create_category_duplicate_slug, test_update_category, test_delete_category\nproduct_service/tests/test_consumables.py\n  Funcs: test_create_consumable_basic, test_create_consumable_with_category, test_update_consumable_stock, test_delete_consumable\nproduct_service/tests/test_orders.py\n  Funcs: setup_menu, test_create_order_zero_trust, test_order_validation_stock\nproduct_service/tests/test_warehouse.py\n  Funcs: test_create_unit, test_create_ingredient_simple, test_create_ingredient_with_category, test_ingredient_validation, test_list_ingredients\n\n📦 CONFIG FILE CONTENTS\n=======================\n\n<file path="docker-compose.prod.yml">\nservices:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    # Формат: ghcr.io/юзернейм/репозиторій/назва_сервісу:тег
+    image: ghcr.io/serg333soul/pos-system/product_service:latest
+    pull_policy: always 
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    image: ghcr.io/serg333soul/pos-system/order_service:latest
+    pull_policy: always
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  frontend:
+    image: ghcr.io/serg333soul/pos-system/frontend:latest
+    pull_policy: always\n</file>\n\n<file path="docker-compose.yml">\n#version: '3.8'
+
+services:
+  # --- 1. СЕРВІС ТОВАРІВ (Backend) ---
+  product_service:
+    build: ./product_service
+    container_name: pos_product_service
+    restart: always
+    ports:
+      - "8001:8000"
+    volumes:                   
+      - ./product_service:/app
+    environment:
+      # Зв'язок з базою даних (postgres_db - це назва сервісу нижче)
+      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      postgres_db: 
+        condition: service_healthy  # <--- Чекати, поки база скаже "Я здорова"
+
+  finance_worker:
+    build: ./finance_service 
+    container_name: pos_finance_worker
+    restart: always
+    command: python -u finance_worker.py 
+    volumes:
+      - ./finance_service:/app 
+    environment:
+      - DATABASE_URL=postgresql://user:password@finance_db:5432/finance_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - finance_db
+      - rabbitmq      
+  
+  # 🔥 НОВИЙ СЕРВІС: API Фінансів
+  finance_api:
+    build: ./finance_service
+    container_name: pos_finance_api
+    restart: always
+    # Запускаємо сервер FastAPI на порту 8002
+    command: uvicorn main:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./finance_service:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@finance_db:5432/finance_db
+    depends_on:
+      - finance_db
+
+# 🔥 НОВИЙ СЕРВІС: API Клієнтів (CRM)
+  customer_api:
+    build: ./customer_service
+    container_name: pos_customer_api
+    restart: always
+    ports:
+      - "8003:8003" # Сервіс працюватиме на порту 8003
+    volumes:
+      - ./customer_service:/app
+    environment:
+      # Підключаємося до нашої нової БД customer_db
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+
+  # --- БАЗА ДАНИХ СКЛАДУ ---
+  inventory_db:
+    image: postgres:13
+    container_name: pos_inventory_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: inventory_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - inventory_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d inventory_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 🔥 API СКЛАДУ (Для фронтенду: меню складу, накладні)
+  inventory_api:
+    build: ./inventory_service
+    container_name: pos_inventory_api
+    restart: always
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./inventory_service:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@inventory_db:5432/inventory_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      inventory_db:
+        condition: service_healthy
+
+  # 🔥 ВОРКЕР СКЛАДУ (Слухає RabbitMQ і списує товари)
+  inventory_worker:
+    build: ./inventory_service
+    container_name: pos_inventory_worker
+    restart: always
+    command: python -u inventory_worker.py 
+    volumes:
+      - ./inventory_service:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@inventory_db:5432/inventory_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      inventory_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  # --- 2. БАЗА ДАНИХ ТОВАРІВ (PostgreSQL) ---
+  postgres_db:
+    image: postgres:13
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d products_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    container_name: pos_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: products_db
+    volumes:
+      # Зберігаємо дані на диску, щоб не зникали при перезапуску
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- БАЗА ДАНИХ ФІНАНСІВ ---
+  finance_db:
+    image: postgres:13
+    container_name: pos_finance_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: finance_db
+    ports:
+      - "5433:5432" # Прокидаємо на інший порт, щоб не конфліктувало з основною БД
+    volumes:
+      - finance_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d finance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- БАЗА ДАНИХ КЛІЄНТІВ (CRM) ---
+  customer_db:
+    image: postgres:13
+    container_name: pos_customer_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: customers_db
+    ports:
+      - "5435:5432" # Прокидаємо на вільний порт 5435
+    volumes:
+      - customer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d customers_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- 3. СЕРВІС КОШИКА (Backend) ---
+  order_service:
+    build: ./order_service
+    container_name: pos_order_service
+    restart: always
+    environment:
+      # Зв'язок з Redis
+      - REDIS_HOST=redis_db
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
+  redis_db:
+    image: redis:alpine
+    container_name: pos_redis
+    restart: always
+
+  customer_worker:
+    build: ./customer_service
+    container_name: pos_customer_worker
+    restart: always
+    command: python -u customer_worker.py
+    environment:
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+      - rabbitmq
+
+  # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
+  frontend:  # <-- НОВА НАЗВА (було nginx або gateway)
+    build: ./frontend
+    container_name: pos_frontend # <-- НОВЕ ІМ'Я КОНТЕЙНЕРА
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - product_service
+      - order_service
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pos_rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"   # Порт для спілкування між мікросервісами
+      - "15672:15672" # Порт для крутого WEB-інтерфейсу адміністратора
+    environment:
+      RABBITMQ_DEFAULT_USER: hits_admin
+      RABBITMQ_DEFAULT_PASS: hits_password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # НОВИЙ СЕРВІС: API Gateway (Nginx)
+  api_gateway:
+    image: nginx:alpine
+    container_name: pos_api_gateway
+    restart: always
+    ports:
+      - "8088:80" # Фронтенд тепер буде стукати на порт 8080!
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - product_service
+      - finance_api
+
+# Оголошуємо томи для зберігання даних
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  finance_data:
+  customer_data:
+  inventory_data:
+\n</file>\n\n<file path="nginx/nginx.conf">\n# FILE: nginx/nginx.conf
+
+server {
+    listen 80;
+
+    # 1. Рутинг для Фінансового мікросервісу
+    location /finance/ {
+        # Звертаємося до контейнера по його імені та внутрішньому порту
+        proxy_pass http://pos_finance_api:8002/finance/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # 2. Рутинг для всього іншого (Продуктовий сервіс / Моноліт)
+    location / {
+        # Звертаємося до основного контейнера на його внутрішній порт 8000
+        proxy_pass http://pos_product_service:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}\n</file>\n

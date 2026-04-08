@@ -55,6 +55,20 @@ def create_transaction_internal(db: Session, amount: float, account_id: int, cat
     db.commit()
 
 def process_order_paid(db: Session, data: dict):
+
+    """Обробка події пробиття чека на касі"""
+    order_id = data.get("order_id")
+
+    # 🔥 БЛОК-ПОСТ ІДЕМПОТЕНТНОСТІ: Перевіряємо, чи ми вже не записували цей чек
+    existing_tx = db.query(models.Transaction).filter(
+        models.Transaction.reference_type == 'order',
+        models.Transaction.reference_id == order_id
+    ).first()
+    
+    if existing_tx:
+        print(f"🛡️ [Finance Microservice] Дубль перехоплено! Транзакція для чека #{order_id} вже існує. Пропуск.")
+        return  # Зупиняємо функцію, дублікат не пройде!
+
     """Обробка події пробиття чека на касі"""
     active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
     shift_id = active_shift.id if active_shift else None

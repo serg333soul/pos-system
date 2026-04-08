@@ -55,6 +55,14 @@ watch(() => props.isOpen, (isOpen) => {
     if (props.product.variants && props.product.variants.length > 0) {
       const sorted = [...props.product.variants].sort((a, b) => a.price - b.price)
       selectedVariant.value = sorted[0]
+      
+      // 🔥 ВИПРАВЛЕННЯ БАГУ: Примусово заповнюємо пакування для автовибраного варіанту, 
+      // оскільки Vue пропустить watch(selectedVariant), якщо об'єкт залишився тим самим.
+      if (sorted[0].consumables) {
+          sorted[0].consumables.forEach(c => {
+             consumableSelections.value[c.consumable_id] = c.consumable_id
+          })
+      }
     }
 
     // Auto-select Required Modifiers
@@ -160,6 +168,12 @@ const safeConsumables = computed(() => {
     const arr = warehouse.consumables?.value || warehouse.consumables || [];
     return Array.isArray(arr) ? arr : [];
 });
+
+// Функція для пошуку назви матеріалу в базі даних за його ID
+const findConsumableName = (id) => {
+    const item = safeConsumables.value.find(c => c.id === id);
+    return item ? item.name : `ID: ${id}`;
+};
 
 const canAddToCart = computed(() => {
   if (!props.product) return false;
@@ -413,13 +427,13 @@ const formatDate = (dateStr) => {
                     class="flex justify-between items-center bg-white border border-orange-100 p-2.5 rounded-xl shadow-sm">
                     
                     <span class="text-sm font-medium text-gray-700 ml-2">
-                        {{ c.name || c.consumable_name }} <span class="text-gray-400 text-xs ml-1">(x{{ c.quantity }})</span>
+                        {{ c.consumable_id }} <span class="text-gray-400 text-xs ml-1">(x{{ c.quantity }})</span>
                     </span>
                     
                     <select v-model="consumableSelections[c.consumable_id]" 
                             class="p-2 border border-gray-200 rounded-lg text-sm font-medium outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 bg-gray-50 max-w-[200px] cursor-pointer transition">
                         <option :value="0" class="text-red-500 font-bold">🚫 Своя тара (Скасувати)</option>
-                        <option :value="c.consumable_id">🟢 Стандартне</option>
+                        <option :value="c.consumable_id">🟢 {{ findConsumableName(c.consumable_id) }}</option>
                         <option disabled>──────────</option>
                         <option v-for="ac in safeConsumables.filter(item => item.id !== c.consumable_id)" 
                                 :key="ac.id" 

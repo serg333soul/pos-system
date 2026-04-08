@@ -25,7 +25,8 @@ def checkout(order_data: schemas.OrderCreate, db: Session = Depends(database.get
         order_id=new_order.id, 
         total_price=new_order.total_price, 
         payment_method=getattr(order_data, 'payment_method', 'cash'), 
-        user_id=user_id
+        user_id=user_id,
+        customer_id=getattr(new_order, 'customer_id', None)
     )
 
     # 3. Повертаємо результат на фронтенд

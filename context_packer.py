@@ -1,23 +1,25 @@
 import os
 import re
+import shutil
 from pathlib import Path
 
 # --- КОНФІГУРАЦІЯ ---
-OUTPUT_FILE = 'full_project_context.txt'
-MAX_FILE_SIZE_KB = 150  # Трохи збільшив ліміт
-TRUNCATE_LINES = 0      # 0 = не обрізати, >0 = лишати N рядків для великих файлів
+OUTPUT_DIR = '_ai_context'
+MAX_FILE_SIZE_KB = 150  
+TRUNCATE_LINES = 0      
 
-# Папки-ігнор
+# Папки-ігнор (ДОДАНО OUTPUT_DIR сюди, щоб він не сканував сам себе)
 IGNORE_DIRS = {
     '.git', 'node_modules', '__pycache__', 'venv', 'env', '.idea', '.vscode', 
-    'dist', 'build', 'postgres_data', '.pytest_cache', 'migrations', 
-    '.history', 'coverage', 'tmp', 'temp', 'logs', 'assets', 'images', 'fonts'
+    'dist', 'build', 'postgres_data', '.pytest_cache', 'alembic', 'migrations', 
+    '.history', 'coverage', 'tmp', 'temp', 'logs', 'assets', 'images', 'fonts',
+    OUTPUT_DIR
 }
 
 # Файли-ігнор
 IGNORE_FILES = {
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 
-    '.DS_Store', 'context_packer.py', OUTPUT_FILE, 
+    '.DS_Store', 'context_packer.py', 
     'debug_db.py', 'debug_raw.py', '*.log', '*.sqlite', '*.db', 'favicon.ico',
     '.gitignore', '.dockerignore'
 }
@@ -29,236 +31,181 @@ ALLOWED_EXTENSIONS = {
     '.conf', '.ini', '.toml', '.env.example'
 }
 
-class ProjectPacker:
+class ContextPacker:
     def __init__(self, root_dir='.'):
         self.root_dir = Path(root_dir)
         self.tree_structure = []
-        self.file_contents = []
-        self.architecture_map = [] # Список знайдених класів/функцій
-        self.dependencies = []     # Вміст requirements/package.json
-        self.stats = {
-            'files': 0,
-            'lines': 0,
-            'tokens_approx': 0,
-            'skipped_files': 0
+        self.dependencies = []
+        self.architecture_map = []
+        
+        # 🔥 Словник для розділеного контенту
+        self.categories = {
+            "00_architecture_and_configs.txt": [],
+            "01_frontend.txt": [],
+            "02_product_service.txt": [],
+            "03_customer_service.txt": [],
+            "04_inventory_service.txt": [],
+            "05_finance_service.txt": [],
+            "99_other.txt": []
         }
-        self.extensions_stats = {}
-
-    def is_ignored(self, path):
-        # Перевірка папок
-        for part in path.parts:
-            if part in IGNORE_DIRS:
-                return True
         
-        # Перевірка імені файлу
-        if path.name in IGNORE_FILES:
+        self.stats = {'files': 0, 'lines': 0, 'tokens_approx': 0}
+
+    def _should_ignore_dir(self, dir_name):
+        return dir_name in IGNORE_DIRS or dir_name.startswith('.')
+
+    def _should_ignore_file(self, file_name):
+        if file_name in IGNORE_FILES or file_name.startswith('.'):
             return True
+        if any(file_name.endswith(ext.replace('*', '')) for ext in IGNORE_FILES if ext.startswith('*')):
+            return True
+        return Path(file_name).suffix not in ALLOWED_EXTENSIONS
+
+    def _get_category_for_file(self, rel_path: Path) -> str:
+        """Визначає, в який файл покласти контент на основі шляху"""
+        parts = rel_path.parts
         
-        # Перевірка розширення (якщо це файл)
-        if path.is_file():
-            if path.suffix == '.svg': return True # SVG завжди ігноруємо (шум)
-            if path.suffix not in ALLOWED_EXTENSIONS and path.name not in {'Dockerfile', 'Makefile'}:
-                return True
-                
-        return False
-
-    def get_readable_size(self, size_in_bytes):
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_in_bytes < 1024:
-                return f"{size_in_bytes:.2f} {unit}"
-            size_in_bytes /= 1024
-        return f"{size_in_bytes:.2f} TB"
-
-    def extract_symbols(self, content, file_ext):
-        """
-        Покращений парсер для пошуку сутностей FastAPI, SQLAlchemy, Pydantic та Vue 3.
-        """
-        symbols = []
-        lines = content.splitlines()
+        # Якщо файл лежить у корені проекту (або це nginx)
+        if len(parts) == 1 or "nginx" in parts:
+            return "00_architecture_and_configs.txt"
         
-        for line in lines:
-            line_stripped = line.strip()
-            
-            # --- Python (FastAPI, SQLAlchemy, Pydantic) ---
-            if file_ext == '.py':
-                # Класи (з визначенням наслідування, напр. BaseModel)
-                class_match = re.match(r'^class\s+([A-Za-z0-9_]+)(?:\(([^)]+)\))?:', line_stripped)
-                if class_match:
-                    class_name = class_match.group(1)
-                    parent = class_match.group(2)
-                    if parent and 'BaseModel' in parent:
-                        symbols.append(f"📄 Schema: {class_name}")
-                    elif parent and ('Base' in parent or 'Model' in parent):
-                        symbols.append(f"🗄️ Model: {class_name}")
-                    else:
-                        symbols.append(f"📦 Class: {class_name}")
-                
-                # Роути FastAPI
-                elif re.match(r'^@(router|app)\.(get|post|put|delete|patch)', line_stripped):
-                    symbols.append(f"🌐 Endpoint: {line_stripped.split('(')[0]}")
-                
-                # Звичайні функції (ігноруємо приватні)
-                elif line_stripped.startswith('def ') and not line_stripped.startswith('def _'):
-                    symbols.append(f"ƒ  {line_stripped.split('(')[0].replace('def ', '')}")
-
-            # --- JavaScript / TypeScript / Vue 3 ---
-            elif file_ext in ['.js', '.vue', '.ts', '.jsx', '.tsx']:
-                # Компоненти та класи
-                if 'export default' in line_stripped:
-                    symbols.append("📦 Default Export")
-                
-                # Vue 3: Props та Emits
-                elif 'defineProps' in line_stripped:
-                    symbols.append("📥 Props defined")
-                elif 'defineEmits' in line_stripped:
-                    symbols.append("📤 Emits defined")
-                
-                # Vue 3: Важливі стани та обчислення
-                elif re.match(r'^(const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(ref|computed|reactive)\(', line_stripped):
-                    var_name = line_stripped.split()[1]
-                    type_match = re.search(r'(ref|computed|reactive)', line_stripped).group(1)
-                    symbols.append(f"💾 State ({type_match}): {var_name}")
-                
-                # Функції
-                elif line_stripped.startswith('function ') or 'const ' in line_stripped and '=>' in line_stripped:
-                    # Простий пошук стрілочних функцій
-                    func_match = re.match(r'const\s+([A-Za-z0-9_]+)\s*=\s*\(.*=>', line_stripped)
-                    if func_match:
-                        symbols.append(f"ƒ  {func_match.group(1)}")
-
-        # Збільшимо ліміт до 15, оскільки інформація стала більш детальною
-        return symbols[:15]
-
-    def scan_directory(self):
-        print(f"🚀 Scanning project in: {self.root_dir.resolve()}")
+        # Маршрутизація по мікросервісах
+        top_folder = parts[0]
+        if top_folder == "frontend": return "01_frontend.txt"
+        if top_folder == "product_service": return "02_product_service.txt"
+        if top_folder == "customer_service": return "03_customer_service.txt"
+        if top_folder == "inventory_service": return "04_inventory_service.txt"
+        if top_folder == "finance_service": return "05_finance_service.txt"
         
+        return "99_other.txt"
+
+    def _analyze_dependencies(self, filepath, content):
+        name = filepath.name
+        if name == 'docker-compose.yml':
+            services = re.findall(r'^\s\s([a-z0-9_]+):\s*$', content, re.MULTILINE)
+            self.dependencies.append(f"Docker Services: {', '.join(services)}")
+        elif name == 'requirements.txt':
+            libs = [line.split('==')[0] for line in content.split('\\n') if line and not line.startswith('#')]
+            self.dependencies.append(f"Python Libs ({filepath.parent.name}): {', '.join(libs[:10])}...")
+        elif name == 'package.json':
+            import json
+            try:
+                data = json.loads(content)
+                deps = list(data.get('dependencies', {}).keys())
+                self.dependencies.append(f"JS/Vue Libs: {', '.join(deps)}")
+            except: pass
+
+    def _analyze_architecture(self, filepath, content):
+        if filepath.suffix == '.py':
+            classes = re.findall(r'^class\s+([A-Za-z0-9_]+)', content, re.MULTILINE)
+            funcs = re.findall(r'^def\s+([A-Za-z0-9_]+)', content, re.MULTILINE)
+            if classes or funcs:
+                self.architecture_map.append(f"{filepath.as_posix()}")
+                if classes: self.architecture_map.append(f"  Classes: {', '.join(classes)}")
+                if funcs: self.architecture_map.append(f"  Funcs: {', '.join(funcs[:5])}{'...' if len(funcs)>5 else ''}")
+
+    def build_tree(self):
         for root, dirs, files in os.walk(self.root_dir):
-            # Фільтрація папок in-place
-            dirs[:] = [d for d in dirs if not self.is_ignored(Path(root) / d)]
-            
+            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
             level = root.replace(str(self.root_dir), '').count(os.sep)
-            indent = '    ' * level
-            subindent = '    ' * (level + 1)
-            
-            folder_name = os.path.basename(root)
-            if folder_name == '.': folder_name = self.root_dir.name
-            
-            self.tree_structure.append(f"{indent}📂 {folder_name}/")
+            indent = ' ' * 4 * level
+            self.tree_structure.append(f"{indent}📁 {os.path.basename(root)}/")
             
             for f in sorted(files):
-                file_path = Path(root) / f
-                if self.is_ignored(file_path):
+                if not self._should_ignore_file(f):
+                    self.tree_structure.append(f"{indent}    📄 {f}")
+
+    def pack_project(self):
+        print("🔍 Scanning project and routing files...")
+        for root, dirs, files in os.walk(self.root_dir):
+            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
+            
+            for file in files:
+                if self._should_ignore_file(file):
                     continue
                     
-                self.tree_structure.append(f"{subindent}📄 {f}")
-                self.process_file(file_path)
-
-    def process_file(self, file_path):
-        try:
-            file_size_kb = file_path.stat().st_size / 1024
-            
-            if file_size_kb > MAX_FILE_SIZE_KB:
-                self.stats['skipped_files'] += 1
-                self.file_contents.append(
-                    f"\n<file path=\"{file_path}\" status=\"skipped_too_large\">\n"
-                    f"   \n"
-                    f"</file>\n"
-                )
-                return
-
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
+                filepath = Path(root) / file
+                rel_path = filepath.relative_to(self.root_dir)
                 
-                # Статистика
-                lines_count = len(content.splitlines())
-                self.stats['files'] += 1
-                self.stats['lines'] += lines_count
-                self.stats['tokens_approx'] += len(content) // 4
-                
-                ext = file_path.suffix
-                self.extensions_stats[ext] = self.extensions_stats.get(ext, 0) + 1
+                # Перевірка розміру
+                if filepath.stat().st_size > MAX_FILE_SIZE_KB * 1024:
+                    continue
 
-                # 1. Витягуємо важливі залежності окремо
-                if file_path.name in ['requirements.txt', 'package.json', 'docker-compose.yml']:
-                    self.dependencies.append(f"\n--- {file_path.name} ---\n{content}\n")
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                        
+                    content = "".join(lines)
+                    self.stats['files'] += 1
+                    self.stats['lines'] += len(lines)
+                    self.stats['tokens_approx'] += len(content) // 4
+                    
+                    self._analyze_dependencies(filepath, content)
+                    self._analyze_architecture(filepath, content)
 
-                # 2. Будуємо карту символів (Архітектура)
-                symbols = self.extract_symbols(content, ext)
-                if symbols:
-                    rel_path = file_path.relative_to(self.root_dir)
-                    self.architecture_map.append(f"{rel_path}")
-                    for s in symbols:
-                        self.architecture_map.append(f"  └── {s}")
+                    # Форматування для AI
+                    formatted_content = f"\\n<file path=\"{rel_path.as_posix()}\">\\n{content}\\n</file>\\n"
+                    
+                    # Визначаємо, в який файл це покласти
+                    category = self._get_category_for_file(rel_path)
+                    self.categories[category].append(formatted_content)
+                    
+                except Exception as e:
+                    print(f"⚠️ Error reading {rel_path}: {e}")
 
-                # 3. Формуємо блок контенту з XML тегами
-                # Якщо файл дуже великий, можна обрізати (опціонально)
-                if TRUNCATE_LINES > 0 and lines_count > TRUNCATE_LINES:
-                    content = "\n".join(content.splitlines()[:TRUNCATE_LINES])
-                    content += f"\n... (Truncated remaining {lines_count - TRUNCATE_LINES} lines) ..."
+    def save_to_files(self):
+        # 1. Створюємо/очищаємо папку _ai_context
+        if os.path.exists(OUTPUT_DIR):
+            shutil.rmtree(OUTPUT_DIR)
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-                # Визначаємо мову для атрибута lang (без крапки)
-                lang = ext.replace('.', '') if ext else 'text'
-                self.file_contents.append(
-                    f"\n<file path=\"{file_path}\" lang=\"{lang}\">\n"
-                    f"{content}\n"
-                    f"</file>\n"
-                )
+        print(f"📦 Generating modular context in ./{OUTPUT_DIR}/ ...")
 
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
-
-    def generate_ai_header(self):
-        return (
-            "# SYSTEM CONTEXT FILE\n"
-            "# This file contains the full source code of the project.\n"
-            "# USE THIS CONTEXT to understand architecture, debugging, and adding features.\n\n"
-        )
-
-    def save(self):
-        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            # 1. Заголовок
-            f.write(self.generate_ai_header())
+        # 2. Зберігаємо 00_architecture_and_configs.txt (Особливий файл із загальною інфою)
+        arch_file = Path(OUTPUT_DIR) / "00_architecture_and_configs.txt"
+        with open(arch_file, 'w', encoding='utf-8') as f:
+            f.write("SYSTEM CONTEXT FILE (ARCHITECTURE & CONFIGS)\\n====================\\n\\n")
+            f.write(f"📊 OVERALL PROJECT STATISTICS\\nFiles: {self.stats['files']} | Lines: {self.stats['lines']} | Tokens: ~{self.stats['tokens_approx']}\\n\\n")
             
-            # 2. Статистика
-            f.write("📊 PROJECT STATISTICS\n")
-            f.write("=====================\n")
-            f.write(f"Files: {self.stats['files']}\n")
-            f.write(f"Lines: {self.stats['lines']}\n")
-            f.write(f"Tokens: ~{self.stats['tokens_approx']}\n")
-            f.write("\n")
-
-            # 3. Ключові залежності (щоб AI одразу бачив стек)
+            f.write("🌳 PROJECT TREE\\n===============\\n")
+            f.write("\\n".join(self.tree_structure) + "\\n\\n")
+            
             if self.dependencies:
-                f.write("🛠 KEY DEPENDENCIES\n")
-                f.write("====================\n")
-                f.write("".join(self.dependencies))
-                f.write("\n\n")
-
-            # 4. Карта Архітектури (СУПЕР КОРИСНО ДЛЯ AI)
+                f.write("🛠 KEY DEPENDENCIES\\n====================\\n")
+                f.write("\\n".join(self.dependencies) + "\\n\\n")
+                
             if self.architecture_map:
-                f.write("🗺 ARCHITECTURE MAP (Key Symbols)\n")
-                f.write("================================\n")
-                f.write("\n".join(self.architecture_map))
-                f.write("\n\n")
-            
-            # 5. Дерево проекту
-            f.write("🌳 PROJECT TREE\n")
-            f.write("===============\n")
-            f.write("\n".join(self.tree_structure))
-            f.write("\n\n")
-            
-            # 6. Вміст файлів (XML wrapped)
-            f.write("📦 FILE CONTENTS\n")
-            f.write("================\n")
-            f.write("".join(self.file_contents))
-            
-        final_size = Path(OUTPUT_FILE).stat().st_size
-        print("\n" + "="*50)
-        print(f"✅ DONE! Context saved to: {OUTPUT_FILE}")
-        print(f"📊 Total Size: {self.get_readable_size(final_size)}")
+                f.write("🗺 ARCHITECTURE MAP\\n==================\\n")
+                f.write("\\n".join(self.architecture_map) + "\\n\\n")
+                
+            f.write("📦 CONFIG FILE CONTENTS\\n=======================\\n")
+            f.write("".join(self.categories["00_architecture_and_configs.txt"]))
+
+        # 3. Зберігаємо всі інші категорії (якщо там є файли)
+        for cat_name, contents in self.categories.items():
+            if cat_name == "00_architecture_and_configs.txt" or not contents:
+                continue # Вже зберегли вище, або категорія порожня
+                
+            cat_file = Path(OUTPUT_DIR) / cat_name
+            with open(cat_file, 'w', encoding='utf-8') as f:
+                f.write(f"SYSTEM CONTEXT FILE: {cat_name.upper().replace('.TXT', '')}\\n")
+                f.write("=========================================\\n")
+                f.write("This file contains the source code for a specific microservice/module.\\n\\n")
+                f.write("📦 FILE CONTENTS\\n================\\n")
+                f.write("".join(contents))
+
+        print("\\n" + "="*50)
+        print(f"✅ DONE! Context successfully split and saved to: ./{OUTPUT_DIR}/")
+        print("📁 Generated files:")
+        for cat_name, contents in self.categories.items():
+            file_path = Path(OUTPUT_DIR) / cat_name
+            if file_path.exists():
+                size_kb = file_path.stat().st_size / 1024
+                print(f"   - {cat_name} ({size_kb:.1f} KB)")
         print("="*50)
 
-if __name__ == "__main__":
-    packer = ProjectPacker()
-    packer.scan_directory()
-    packer.save()
+if __name__ == '__main__':
+    packer = ContextPacker()
+    packer.build_tree()
+    packer.pack_project()
+    packer.save_to_files()

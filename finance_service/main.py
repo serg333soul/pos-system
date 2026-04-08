@@ -4,8 +4,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from pydantic import BaseModel
 from datetime import datetime
 import models
+import schemas
 from database import get_db
 
 app = FastAPI(title="POS Finance API")
@@ -105,3 +107,16 @@ def seed_database(db: Session = Depends(get_db)):
         db.commit()
         return {"status": "Базу успішно наповнено базовими даними!"}
     return {"status": "Дані вже існують."}
+
+# Оновлений роут
+@app.post("/finance/accounts/", response_model=schemas.Account)
+def create_account(account: schemas.AccountCreate, db: Session = Depends(get_db)):
+    # Створюємо модель бази даних на основі отриманих даних
+    new_account = models.Account(
+        name=account.name,
+        type=account.type
+    )
+    db.add(new_account)
+    db.commit()
+    db.refresh(new_account)
+    return new_account

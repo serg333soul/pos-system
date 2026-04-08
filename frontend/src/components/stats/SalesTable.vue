@@ -46,9 +46,9 @@ const formatDate = (dateString) => {
             </td>
 
             <td class="p-4">
-                <div v-if="order.customer">
-                    <div class="font-bold text-gray-700">{{ order.customer.name }}</div>
-                    <div class="text-xs text-gray-400">{{ order.customer.phone }}</div>
+                <div v-if="order.customer || order.customer_name">
+                    <div class="font-bold text-gray-700">{{ order.customer_name || order.customer?.name }}</div>
+                    <div class="text-xs text-gray-400">{{ order.customer_phone || order.customer?.phone }}</div>
                 </div>
                 <div v-else class="text-gray-400 text-sm italic">Гість</div>
             </td>

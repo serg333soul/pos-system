@@ -17,6 +17,8 @@ class Order(Base):
     # Ми прибираємо ForeignKey, залишаємо просто число (і додаємо індекс для швидкості)
     customer_id = Column(Integer, index=True, nullable=True)
 
+    bonuses_spent = Column(Numeric(10, 2), default=0.0)
+
     #customer = relationship("Customer")
     # 🔥 Ми кажемо SQLAlchemy: "Зв'язок є логічно, але фізично в базі його не шукай"
     customer = relationship(

@@ -65,7 +65,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
+  <div class="flex-1 min-w-0 p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
     
     <div class="flex justify-between items-center mb-8">
       <div>
@@ -133,15 +133,15 @@ onMounted(() => {
                 
                 <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-blue-200 text-blue-600 flex items-center justify-center text-lg">
-                        <i class="fas" :class="selectedOrder.customer ? 'fa-user' : 'fa-user-secret'"></i>
+                        <i class="fas" :class="(selectedOrder.customer || selectedOrder.customer_name) ? 'fa-user' : 'fa-user-secret'"></i>
                     </div>
                     <div>
                         <div class="text-xs font-bold text-blue-400 uppercase">Покупець</div>
                         <div class="font-bold text-gray-800 text-lg">
-                            {{ selectedOrder.customer ? selectedOrder.customer.name : 'Гість' }}
+                            {{ selectedOrder.customer_name || selectedOrder.customer?.name || 'Гість' }}
                         </div>
-                        <div v-if="selectedOrder.customer" class="text-sm text-gray-600">
-                            {{ selectedOrder.customer.phone }}
+                        <div v-if="selectedOrder.customer_phone || selectedOrder.customer?.phone" class="text-sm text-gray-600">
+                            {{ selectedOrder.customer_phone || selectedOrder.customer?.phone }}
                         </div>
                     </div>
                 </div>
@@ -173,6 +173,13 @@ onMounted(() => {
                 <div class="flex justify-between items-center text-3xl font-bold text-gray-900 mt-2">
                     <span>Разом:</span>
                     <span>{{ selectedOrder.total_price }} ₴</span>
+                </div>
+
+                <div v-if="selectedOrder.bonuses_spent > 0" class="flex justify-between items-center text-green-600 mb-2">
+                    <span class="text-sm font-bold">
+                        <i class="fas fa-gift mr-1"></i> Оплачено бонусами:
+                    </span>
+                    <span class="font-bold">{{ selectedOrder.bonuses_spent }} ₴</span>
                 </div>
 
                 <div class="mt-6 flex justify-end border-t pt-4">

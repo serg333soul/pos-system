@@ -92,8 +92,9 @@ export function useCart() {
     } catch(e) { console.error(e) }
   }
 
-  // 🔥 ОСНОВНА ЗМІНА ТУТ
-  const processCheckout = async () => {
+  // ОСНОВНА ЗМІНА ТУТ
+  // Додаємо аргумент options з деструктуризацією, щоб отримати useBonuses з CartDrawer
+  const processCheckout = async ({ useBonuses = false } = {}) => {
     if (cartItems.value.length === 0) return
     isProcessing.value = true
     
@@ -103,21 +104,19 @@ export function useCart() {
           product_id: item.product_id,
           variant_id: item.variant_id || null,
           quantity: item.quantity,
-          // 🔥 ДОДАНО: Передаємо збережені заміни з кошика у фінальне замовлення!
           consumable_overrides: item.consumable_overrides || [],
           ingredient_overrides: item.ingredient_overrides || [],
-          // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
             ? item.modifiers.map(m => ({
-              // Якщо m - це число, беремо його. Якщо об'єкт - беремо m.id або m.modifier_id
               modifier_id: typeof m === 'number' ? m : (m.id || m.modifier_id),
-              quantity: m.quantity || 1 // Додаємо кількість, якщо модифікаторів > 1
+              quantity: m.quantity || 1 
               }))
             : []
         })),
         payment_method: paymentMethod.value,
-        // ❌ total_price БІЛЬШЕ НЕ ВІДПРАВЛЯЄМО!
-        customer_id: selectedCustomer.value ? selectedCustomer.value.id : null
+        customer_id: selectedCustomer.value ? selectedCustomer.value.id : null,
+        // 🔥 ПЕРЕДАЄМО ПРАПОРЕЦЬ БОНУСІВ НА БЕКЕНД
+        use_bonuses: useBonuses 
       }
 
       console.log("📤 Checkout Request:", payload)
@@ -130,20 +129,19 @@ export function useCart() {
 
       if (!res.ok) {
           const err = await res.json()
+          await fetchWarehouseData(); // Оновлюємо дані складу (виніс перед throw)
           throw new Error(err.detail || "Помилка при оплаті")
-          await fetchWarehouseData(); // 3. Оновлюємо дані складу після помилки (можливо, хтось інший змінив залишки)
       }
 
       const responseData = await res.json()
 
       await fetchWarehouseData();
       
-      // Очищення
+      // Очищення (тепер ми НЕ скидаємо selectedCustomer тут, це робить CartDrawer.vue)
       await fetch('/api/cart/', { method: 'DELETE' })
       cartItems.value = []
-      selectedCustomer.value = null
+      // ❌ selectedCustomer.value = null (ВИДАЛЕНО, щоб не ламалася анімація в CartDrawer)
       
-      // Повертаємо результат із СЕРВЕРНОЮ сумою
       return {
         success: true,
         text: `✅ Оплата успішна!\nСписано: ${responseData.total_price} ₴`
