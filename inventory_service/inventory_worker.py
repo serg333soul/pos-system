@@ -40,10 +40,28 @@ def process_message(ch, method, properties, body):
     db = SessionLocal()
     try:
         data = json.loads(body)
+        event_type = data.get("event_type")
+        order_id = data.get("order_id")
         
-        if data.get("event_type") == "deduct_bom":
-            order_id = data.get("order_id")
-            reason = data.get("reason", f"sale_order_{order_id}")
+        # Визначаємо унікальну причину для журналу
+        reason = data.get("reason", f"{event_type}_{order_id}")
+
+        # 🔥 БЛОК-ПОСТ ІДЕМПОТЕНТНОСТІ (Спільний для списання і повернення)
+        if not order_id:
+            print("⚠️ [Inventory] Отримано подію без order_id. Пропуск.")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
+        existing_event = db.query(models.ProcessedEvent).filter(models.ProcessedEvent.event_id == reason).first()
+        if existing_event:
+            print(f"🛡️ [Inventory] Дубль перехоплено! Подія {reason} вже оброблена раніше. Пропуск.")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
+        # ---------------------------------------------------------
+        # ЛОГІКА СПИСАННЯ
+        # ---------------------------------------------------------
+        if event_type == "deduct_bom":
             print(f"📦 [Inventory Worker] Списання для чека #{order_id}...")
 
             # 1. Списуємо інгредієнти
@@ -52,7 +70,6 @@ def process_message(ch, method, properties, body):
                 if db_ing:
                     db_ing.stock_quantity -= ing["qty"]
                     apply_fifo(db, "ingredient", ing["id"], ing["qty"]) # FIFO
-                    
                     db.add(models.InventoryTransaction(
                         entity_type="ingredient", entity_id=ing["id"], entity_name=db_ing.name,
                         change_amount=-ing["qty"], balance_after=db_ing.stock_quantity, reason=reason
@@ -64,57 +81,56 @@ def process_message(ch, method, properties, body):
                 if db_cons:
                     db_cons.stock_quantity -= cons["qty"]
                     apply_fifo(db, "consumable", cons["id"], cons["qty"]) # FIFO
-                    
                     db.add(models.InventoryTransaction(
                         entity_type="consumable", entity_id=cons["id"], entity_name=db_cons.name,
                         change_amount=-cons["qty"], balance_after=db_cons.stock_quantity, reason=reason
                     ))
 
-            # 3. Реєструємо продаж самих товарів або варіантів для історії
-            # (Навіть якщо їх фізичний залишок у іншій БД, транзакція має бути тут для звітності)
+            # 3. Реєструємо продаж самих товарів
             for item in data.get("sold_items", []):
-                # Очікуємо в повідомленні: {"type": "variant", "id": 10, "name": "Latte", "qty": 1, "new_stock": 5}
                 db.add(models.InventoryTransaction(
                     entity_type=item.get("type", "product"),
                     entity_id=item.get("id"),
                     entity_name=item.get("name", "Unknown Product"),
                     change_amount=-item.get("qty", 0),
-                    # balance_after беремо з повідомлення, бо воркер не має прямого доступу до БД товарів
                     balance_after=item.get("new_stock"), 
                     reason=reason
                 ))
 
+            # ЗАПИСУЄМО В ЖУРНАЛ ПАМ'ЯТІ ТА ЗБЕРІГАЄМО
+            db.add(models.ProcessedEvent(event_id=reason))
             db.commit()
             print(f"✅ [Inventory Worker] Чек #{order_id} успішно списано з партій (FIFO)!")
 
-        # Всередині try-блоку process_message:
-        elif data.get("event_type") == "refund_bom":
-            order_id = data.get("order_id")
-            reason = data.get("reason", f"refund_order_{order_id}")
+        # ---------------------------------------------------------
+        # ЛОГІКА ПОВЕРНЕННЯ
+        # ---------------------------------------------------------
+        elif event_type == "refund_bom":
             print(f"📦 [Inventory Worker] ПОВЕРНЕННЯ товарів для чека #{order_id}...")
 
             for ing in data.get("ingredients", []):
                 db_ing = db.query(models.Ingredient).filter(models.Ingredient.id == ing["id"]).first()
                 if db_ing:
-                    db_ing.stock_quantity += ing["qty"] # ПЛЮСУЄМО назад
-                    # Повертаємо в останню партію
+                    db_ing.stock_quantity += ing["qty"]
                     batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "ingredient", models.SupplyItem.entity_id == ing["id"]).order_by(models.SupplyItem.id.desc()).first()
                     if batch: batch.remaining_quantity += ing["qty"]
-                    
                     db.add(models.InventoryTransaction(entity_type="ingredient", entity_id=ing["id"], entity_name=db_ing.name, change_amount=ing["qty"], balance_after=db_ing.stock_quantity, reason=reason))
 
             for cons in data.get("consumables", []):
                 db_cons = db.query(models.Consumable).filter(models.Consumable.id == cons["id"]).first()
                 if db_cons:
-                    db_cons.stock_quantity += cons["qty"] # ПЛЮСУЄМО назад
+                    db_cons.stock_quantity += cons["qty"]
                     batch = db.query(models.SupplyItem).filter(models.SupplyItem.entity_type == "consumable", models.SupplyItem.entity_id == cons["id"]).order_by(models.SupplyItem.id.desc()).first()
                     if batch: batch.remaining_quantity += cons["qty"]
-                    
                     db.add(models.InventoryTransaction(entity_type="consumable", entity_id=cons["id"], entity_name=db_cons.name, change_amount=cons["qty"], balance_after=db_cons.stock_quantity, reason=reason))
             
+            # ЗАПИСУЄМО В ЖУРНАЛ ПАМ'ЯТІ ТА ЗБЕРІГАЄМО
+            db.add(models.ProcessedEvent(event_id=reason))
             db.commit()
+            print(f"✅ [Inventory Worker] ПОВЕРНЕННЯ для чека #{order_id} завершено!")
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
+        
     except Exception as e:
         db.rollback()
         print(f"❌ [Inventory Worker] Помилка обробки чека: {e}")

@@ -4,8 +4,12 @@ import redis
 import os
 import json
 import uuid
+import pika
 from typing import List
 from schemas import CartItemCreate, CartItem # Імпортуємо схеми
+
+# Налаштування RabbitMQ
+RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@rabbitmq:5672/')
 
 app = FastAPI()
 
@@ -92,3 +96,40 @@ def remove_item(cart_item_id: str):
 def clear_cart():
     r.delete(CART_KEY)
     return {"status": "cleared"}
+
+@app.post("/cart/checkout")
+def checkout(payload: dict):
+    # 1. Отримуємо всі товари з Redis для цього касира/сесії
+    raw_data = r.hgetall(CART_KEY)
+    if not raw_data:
+        raise HTTPException(status_code=400, detail="Кошик порожній")
+
+    # 2. Формуємо повне повідомлення для створення замовлення
+    order_event = {
+        "event_type": "create_order",
+        "customer_id": payload.get("customer_id"),
+        "payment_method": payload.get("payment_method", "cash"),
+        "items": [json.loads(v) for v in raw_data.values()],
+        "bonuses_spent": payload.get("bonuses_spent", 0),
+        "use_bonuses": payload.get("use_bonuses", False)
+    }
+
+    # 3. ВІДПРАВЛЯЄМО В RABBITMQ (Асинхронно!)
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+        channel = connection.channel()
+        channel.queue_declare(queue='orders_queue', durable=True)
+        channel.basic_publish(
+            exchange='',
+            routing_key='orders_queue',
+            body=json.dumps(order_event),
+            properties=pika.BasicProperties(delivery_mode=2) # Робимо повідомлення стійким
+        )
+        connection.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Помилка черги: {e}")
+
+    # 4. Очищаємо кошик у Redis після успішної відправки в чергу
+    r.delete(CART_KEY)
+    
+    return {"status": "accepted", "message": "Замовлення прийнято в чергу на обробку"}

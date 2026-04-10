@@ -99,6 +99,13 @@ export function useCart() {
     isProcessing.value = true
     
     try {
+      // 🔥 1. РОЗРАХУНОК БОНУСІВ (з безпечним перетворенням у число Number)
+      let bonusesSpent = 0;
+      if (useBonuses && selectedCustomer.value && Number(selectedCustomer.value.bonus_balance) > 0) {
+        bonusesSpent = Math.min(Number(selectedCustomer.value.bonus_balance), totalSum.value);
+      }
+
+      // 🔥 2. ФОРМУВАННЯ PAYLOAD
       const payload = {
         items: cartItems.value.map(item => ({
           product_id: item.product_id,
@@ -115,13 +122,13 @@ export function useCart() {
         })),
         payment_method: paymentMethod.value,
         customer_id: selectedCustomer.value ? selectedCustomer.value.id : null,
-        // 🔥 ПЕРЕДАЄМО ПРАПОРЕЦЬ БОНУСІВ НА БЕКЕНД
-        use_bonuses: useBonuses 
+        use_bonuses: useBonuses,
+        bonuses_spent: bonusesSpent // 🔥 ПЕРЕДАЄМО НА БЕКЕНД
       }
 
       console.log("📤 Checkout Request:", payload)
 
-      const res = await fetch('/api/orders/checkout/', { 
+      const res = await fetch('/api/cart/checkout', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -129,7 +136,7 @@ export function useCart() {
 
       if (!res.ok) {
           const err = await res.json()
-          await fetchWarehouseData(); // Оновлюємо дані складу (виніс перед throw)
+          await fetchWarehouseData(); 
           throw new Error(err.detail || "Помилка при оплаті")
       }
 
@@ -137,14 +144,17 @@ export function useCart() {
 
       await fetchWarehouseData();
       
-      // Очищення (тепер ми НЕ скидаємо selectedCustomer тут, це робить CartDrawer.vue)
       await fetch('/api/cart/', { method: 'DELETE' })
       cartItems.value = []
-      // ❌ selectedCustomer.value = null (ВИДАЛЕНО, щоб не ламалася анімація в CartDrawer)
       
+      // Вираховуємо суму для попапу
+      const finalPrice = responseData.total_price !== undefined 
+            ? responseData.total_price 
+            : Math.max(0, totalSum.value - bonusesSpent);
+
       return {
         success: true,
-        text: `✅ Оплата успішна!\nСписано: ${responseData.total_price} ₴`
+        text: `✅ Оплата успішна!\nДо сплати: ${finalPrice} ₴`
       }
 
     } catch (err) {

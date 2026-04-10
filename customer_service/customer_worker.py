@@ -25,6 +25,19 @@ while True:
 RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@rabbitmq:5672/')
 
 def process_loyalty_points(db: Session, data: dict):
+    order_id = data.get("order_id")
+    
+    # 🔥 БЛОК-ПОСТ ІДЕМПОТЕНТНОСТІ: Перевіряємо, чи ми вже нараховували бонуси за цей чек
+    if not order_id:
+        print("⚠️ [Loyalty] Чек без ID. Пропуск.")
+        return
+
+    existing_tx = db.query(models.BonusTransaction).filter(models.BonusTransaction.order_id == order_id).first()
+    if existing_tx:
+        print(f"🛡️ [Loyalty] Дубль перехоплено! Бонуси за чек #{order_id} вже оброблені. Пропуск.")
+        return
+
+    # Перевірка клієнта
     customer_id = data.get("customer_id")
     if not customer_id:
         print("ℹ️ [Loyalty] Чек без клієнта (гість). Бонуси не нараховуються.")
@@ -35,23 +48,34 @@ def process_loyalty_points(db: Session, data: dict):
         print(f"⚠️ [Loyalty] Клієнта з ID {customer_id} не знайдено в базі.")
         return
 
-    # 1. СПИСАННЯ БОНУСІВ (Якщо вони були використані для оплати)
-    bonuses_spent = Decimal(str(data.get("bonuses_spent", 0)))
+    # 1. СПИСАННЯ БОНУСІВ
+    bonuses_spent = Decimal(str(data.get("bonuses_spent", 0.0)))
     if bonuses_spent > 0:
-        # Захист: не можемо списати більше, ніж є на балансі
-        actual_spent = min(customer.bonus_balance, bonuses_spent)
-        customer.bonus_balance -= actual_spent
-        print(f"📉 [Loyalty] Списано {actual_spent} бонусів у '{customer.name}'.")
+        customer.bonus_balance -= bonuses_spent
+        print(f"➖ [Loyalty] Списано {bonuses_spent} бонусів.")
 
-    # 2. НАРАХУВАННЯ БОНУСІВ (Тільки на ту суму, яку клієнт сплатив РЕАЛЬНИМИ грошима)
-    amount_paid = Decimal(str(data.get("amount", 0)))
-    if amount_paid > 0:
-        bonus_to_add = amount_paid * Decimal("0.05") # 5% кешбеку
-        customer.bonus_balance += bonus_to_add
-        print(f"✨ [Loyalty] Нараховано {bonus_to_add} бонусів за покупку на суму {amount_paid} ₴.")
+    # 2. НАРАХУВАННЯ БОНУСІВ
+    amount = Decimal(str(data.get("amount", 0.0)))
+    bonuses_earned = Decimal("0.0")
+    
+    # Нараховуємо кешбек лише на ту суму, яка була оплачена реальними грошима
+    eligible_amount = amount - bonuses_spent
+    if eligible_amount > 0:
+        bonuses_earned = eligible_amount * Decimal("0.05") # 5% кешбек (можна винести в налаштування)
+        customer.bonus_balance += bonuses_earned
+        print(f"➕ [Loyalty] Нараховано {bonuses_earned:.2f} бонусів.")
+
+    # 🔥 ЗБЕРІГАЄМО ТРАНЗАКЦІЮ (Щоб наступного разу спрацював блок-пост)
+    new_tx = models.BonusTransaction(
+        customer_id=customer.id,
+        order_id=order_id,
+        bonuses_spent=bonuses_spent,
+        bonuses_earned=bonuses_earned
+    )
+    db.add(new_tx)
 
     db.commit()
-    print(f"💰 [Loyalty] Фінальний баланс клієнта '{customer.name}': {customer.bonus_balance} ₴\n")
+    print(f"✅ [Loyalty] Баланс клієнта {customer.name} оновлено. Поточний баланс: {customer.bonus_balance:.2f} ₴\n")
 
 def callback(ch, method, properties, body):
     data = json.loads(body)

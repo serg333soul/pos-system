@@ -88,3 +88,11 @@ class SupplyItem(Base):
     total_cost = Column(Float)
     
     supply = relationship("Supply", back_populates="items")
+
+# Журнал ідемпотентності (захист від дублікатів RabbitMQ)
+class ProcessedEvent(Base):
+    __tablename__ = "processed_events"
+    id = Column(Integer, primary_key=True, index=True)
+    # Зберігатимемо унікальний ідентифікатор події, наприклад "sale_order_105"
+    event_id = Column(String, unique=True, index=True) 
+    processed_at = Column(DateTime, default=datetime.utcnow)
