@@ -11,7 +11,6 @@ router = APIRouter(prefix="/recipes", tags=["Recipes"])
 def create_recipe(recipe: schemas.MasterRecipeCreate, db: Session = Depends(database.get_db)):
     new_recipe = models.MasterRecipe(name=recipe.name, description=recipe.description)
     db.add(new_recipe)
-    # 🔥 ВИПРАВЛЕНО: Використовуємо flush замість commit. Транзакція залишається відкритою.
     db.flush() 
     
     for item in recipe.items:
@@ -22,34 +21,37 @@ def create_recipe(recipe: schemas.MasterRecipeCreate, db: Session = Depends(data
             is_percentage=item.is_percentage
         ))
     
-    # 🔥 ВИПРАВЛЕНО: Єдиний коміт наприкінці. Або все, або нічого.
     db.commit()
     db.refresh(new_recipe)
     return new_recipe
 
 @router.get("/", response_model=List[schemas.MasterRecipe])
 def read_recipes(db: Session = Depends(database.get_db)):
-    # 🔥 ВИПРАВЛЕНО: Проблема N+1 вирішена! Завантажуємо все ОДНИМ запитом (Eager Loading)
+    # 🔥 ВИПРАВЛЕНО: Прибрали .joinedload(models.MasterRecipeItem.ingredient)
+    # Тепер ми завантажуємо лише елементи рецепту (ID інгредієнтів та їх кількість)
     recipes = db.query(models.MasterRecipe).options(
-        joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
+        joinedload(models.MasterRecipe.items)
     ).all()
     
-    for r in recipes:
-        for i in r.items: 
-            i.ingredient_name = i.ingredient.name if i.ingredient else "Unknown"
+    for recipe in recipes:
+        for i in recipe.items:
+            # Заглушка: оскільки БД розділені, моноліт знає лише ID, а не назву.
+            # Назви тепер має "склеювати" фронтенд.
+            i.ingredient_name = f"ID Інгредієнта: {i.ingredient_id}"
+            
     return recipes
 
 @router.put("/{recipe_id}", response_model=schemas.MasterRecipe)
 def update_recipe(recipe_id: int, recipe_data: schemas.MasterRecipeCreate, db: Session = Depends(database.get_db)):
     db_recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == recipe_id).first()
-    if not db_recipe: 
+    if not db_recipe:
         raise HTTPException(status_code=404, detail="Рецепт не знайдено")
-    
+        
     db_recipe.name = recipe_data.name
     db_recipe.description = recipe_data.description
     
     db_recipe.items = [] 
-    db.flush() # 🔥 Очищення старих записів перед додаванням нових
+    db.flush() 
     
     for item in recipe_data.items:
         db.add(models.MasterRecipeItem(
@@ -65,26 +67,25 @@ def update_recipe(recipe_id: int, recipe_data: schemas.MasterRecipeCreate, db: S
 
 @router.get("/{recipe_id}", response_model=schemas.MasterRecipe)
 def read_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
-    # 🔥 Отримання одного рецепту також має завантажувати зв'язки одразу
+    # 🔥 ВИПРАВЛЕНО: Прибрали .joinedload(...) для ingredient
     recipe = db.query(models.MasterRecipe).options(
-        joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient)
+        joinedload(models.MasterRecipe.items)
     ).filter(models.MasterRecipe.id == recipe_id).first()
     
     if not recipe:
         raise HTTPException(status_code=404, detail="Рецепт не знайдено")
         
     for i in recipe.items:
-        i.ingredient_name = i.ingredient.name if i.ingredient else "Unknown"
+        # 🔥 ВИПРАВЛЕНО: Змінили логіку отримання назви
+        i.ingredient_name = f"ID Інгредієнта: {i.ingredient_id}"
         
     return recipe
 
 @router.delete("/{recipe_id}")
 def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
     db_recipe = db.query(models.MasterRecipe).filter(models.MasterRecipe.id == recipe_id).first()
-    if not db_recipe: 
-        raise HTTPException(status_code=404)
-        
-    # Завдяки cascade в моделі, items видаляться автоматично
+    if not db_recipe:
+        raise HTTPException(status_code=404, detail="Рецепт не знайдено")
     db.delete(db_recipe)
     db.commit()
     return {"status": "deleted"}

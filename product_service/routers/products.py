@@ -45,14 +45,17 @@ def update_product(product_id: int, product_data: schemas.ProductCreate, db: Ses
 
 @router.get("/", response_model=List[schemas.Product])
 def read_products(db: Session = Depends(database.get_db)):
-    # Ідеальний Eager Loading залишено без змін!
+    # 🔥 СТЯГУЄМО ЗАЛИШКИ ЗІ СКЛАДУ ОДИН РАЗ ДЛЯ ВСІХ ТОВАРІВ
+    from services.inventory_client import InventoryClient
+    ing_stock, con_stock = InventoryClient.get_all_stocks()
+    # 🔥 ВИПРАВЛЕНО: Видалені JOIN-и з базами складу!
     products = db.query(models.Product).options(
         joinedload(models.Product.category),
-        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
-        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
-        joinedload(models.Product.variants).joinedload(models.ProductVariant.master_recipe).joinedload(models.MasterRecipe.items).joinedload(models.MasterRecipeItem.ingredient),
-        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
-        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.master_recipe).joinedload(models.MasterRecipe.items),
+        joinedload(models.Product.consumables),
+        joinedload(models.Product.ingredients)
     ).all()
 
     for p in products:
@@ -61,9 +64,9 @@ def read_products(db: Session = Depends(database.get_db)):
         if p.output_weight is None: p.output_weight = 0.0
 
         for c in p.consumables:
-            if c.consumable: c.consumable_name = c.consumable.name
+            c.consumable_name = f"ID Матеріалу: {c.consumable_id}"
         for i in p.ingredients:
-            if i.ingredient: i.ingredient_name = i.ingredient.name
+            i.ingredient_name = f"ID Інгредієнта: {i.ingredient_id}"
             
         for v in p.variants:
             if v.stock_quantity is None: v.stock_quantity = 0.0
@@ -72,46 +75,48 @@ def read_products(db: Session = Depends(database.get_db)):
 
             if v.master_recipe:
                 for item in v.master_recipe.items:
-                    if item.ingredient: item.ingredient_name = item.ingredient.name
+                    item.ingredient_name = f"ID Інгредієнта: {item.ingredient_id}"
 
             if v.master_recipe_id and not p.track_stock:
                 try:
-                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id)
+                    # 🔥 ПЕРЕДАЄМО СЛОВНИКИ В КАЛЬКУЛЯТОР
+                    v.stock_quantity = ProductService.calculate_max_possible_stock(db, v.id, ing_stock, con_stock)
                 except Exception:
                     v.stock_quantity = 0.0
             
             if v.stock_quantity is None: v.stock_quantity = 0.0
 
             for vc in v.consumables:
-                if vc.consumable: vc.consumable_name = vc.consumable.name
+                vc.consumable_name = f"ID Матеріалу: {vc.consumable_id}"
             for vi in v.ingredients:
-                if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+                vi.ingredient_name = f"ID Інгредієнта: {vi.ingredient_id}"
                     
     return products
 
 @router.get("/{product_id}", response_model=schemas.Product)
 def read_product(product_id: int, db: Session = Depends(database.get_db)):
+    # 🔥 ВИПРАВЛЕНО: Видалені JOIN-и з базами складу!
     p = db.query(models.Product).options(
         joinedload(models.Product.category),
-        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables).joinedload(models.ProductVariantConsumable.consumable),
-        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients).joinedload(models.ProductVariantIngredient.ingredient),
-        joinedload(models.Product.consumables).joinedload(models.ProductConsumable.consumable),
-        joinedload(models.Product.ingredients).joinedload(models.ProductIngredient.ingredient)
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.consumables),
+        joinedload(models.Product.variants).joinedload(models.ProductVariant.ingredients),
+        joinedload(models.Product.consumables),
+        joinedload(models.Product.ingredients)
     ).filter(models.Product.id == product_id).first()
 
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found")
     
     for c in p.consumables:
-        if c.consumable: c.consumable_name = c.consumable.name
+        c.consumable_name = f"ID Матеріалу: {c.consumable_id}"
     for i in p.ingredients:
-        if i.ingredient: i.ingredient_name = i.ingredient.name
+        i.ingredient_name = f"ID Інгредієнта: {i.ingredient_id}"
         
     for v in p.variants:
         for vc in v.consumables:
-            if vc.consumable: vc.consumable_name = vc.consumable.name
+            vc.consumable_name = f"ID Матеріалу: {vc.consumable_id}"
         for vi in v.ingredients:
-            if vi.ingredient: vi.ingredient_name = vi.ingredient.name
+            vi.ingredient_name = f"ID Інгредієнта: {vi.ingredient_id}"
                 
     return p
 
@@ -124,8 +129,6 @@ def delete_product(product_id: int, db: Session = Depends(database.get_db)):
 
 @router.post("/{product_id}/stock")
 def update_stock(product_id: int, qty: float, db: Session = Depends(database.get_db)):
-    # 🔥 ВИПРАВЛЕНО: Замість ручного оновлення бази товарів, ми викликаємо
-    # сервіс коригування залишків (Adjustments), який правильно рахує FIFO!
     from services.inventory_service import InventoryService
     
     request = schemas.InventoryAdjustRequest(
@@ -135,6 +138,3 @@ def update_stock(product_id: int, qty: float, db: Session = Depends(database.get
         reason="Ручне коригування з картки товару"
     )
     return InventoryService.adjust_inventory(db, request)
-
-# ✂️ МАРШРУТ deduct_stock_for_order ПОВНІСТЮ ВИДАЛЕНО!
-# (Його логіка вже ідеально працює в OrderService -> InventoryClient.process_order_items)

@@ -55,7 +55,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
+  <div class="flex-1 min-w-0 p-8 h-screen overflow-y-auto bg-gray-50 ml-64 custom-scrollbar">
     <header class="flex justify-between items-center mb-8">
       <h2 class="text-3xl font-bold text-gray-800">{{ tabTitles[props.currentTab] || '📦 Управління складом' }}</h2>
       <button @click="fetchData" class="text-blue-600 hover:bg-blue-100 p-3 rounded-full transition-colors">

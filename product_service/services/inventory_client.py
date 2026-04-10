@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 import models
+import requests
 from services.inventory_logger import InventoryLogger
 from services.inventory_service import InventoryService
 from services.product_service import ProductService
@@ -111,24 +112,113 @@ class InventoryClient:
     @staticmethod
     def deduct_stock_async(order_id: int, transaction_reason: str, items_data: list):
         """
-        Відправляє подію на списання складу в RabbitMQ.
-        Викликається ТІЛЬКИ після успішного збереження чека в БД!
+        Відправляє подію на списання складу в RabbitMQ (Патерн Bill of Materials).
+        Моноліт сам розпаковує товари до рівня інгредієнтів і матеріалів!
         """
+        from database import SessionLocal
+        import models
+        from services.rabbitmq_client import rabbitmq
+        
+        db = SessionLocal() # Відкриваємо коротку сесію для читання рецептів
         try:
-            # Конвертуємо Pydantic-моделі у звичайні словники (бо RabbitMQ приймає лише JSON)
-            clean_items = []
-            for item in items_data:
-                clean_items.append(item.model_dump() if hasattr(item, 'model_dump') else dict(item))
+            bom_ingredients = {} # {id_інгредієнта: загальна_кількість}
+            bom_consumables = {} # {id_матеріалу: загальна_кількість}
+            sold_items_for_history = [] # Список для запису в історію транзакцій складу
+            product_names = []
 
-            event_data = {
-                "event_type": "deduct_stock",
+            for item in items_data:
+                # Підтримуємо і словники, і Pydantic моделі
+                item_dict = item.model_dump() if hasattr(item, 'model_dump') else dict(item)
+                p_id = item_dict.get("product_id")
+                v_id = item_dict.get("variant_id")
+                qty = float(item_dict.get("quantity", 1.0))
+
+                product = db.query(models.Product).filter(models.Product.id == p_id).first()
+                if not product: continue
+
+                # 🌟 Формуємо назву: "Назва товару (Назва варіанту) xКількість"
+                variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first() if v_id else None
+                item_name = product.name
+                if variant and variant.name:
+                    item_name += f" ({variant.name})"
+                product_names.append(f"{item_name} x{int(qty) if qty.is_integer() else qty}")
+
+                # 🌟 ЗБИРАЄМО ДАНІ ПРО ПРОДАНИЙ ТОВАР/ВАРІАНТ ДЛЯ ІСТОРІЇ
+                current_stock = (variant.stock_quantity if variant else product.stock_quantity) or 0.0
+                sold_items_for_history.append({
+                    "type": "product_variant" if v_id else "product",
+                    "id": v_id if v_id else p_id,
+                    "name": item_name,
+                    "qty": qty,
+                    "new_stock": current_stock - qty
+                })
+
+                recipe = None
+                target_weight = 0.0
+                
+                # 1. ЯКЩО Є ВАРІАНТ (S, M, L)
+                if v_id:
+                    variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first()
+                    if variant:
+                        target_weight = variant.output_weight or 0.0
+                        if variant.master_recipe_id:
+                            recipe = variant.master_recipe
+                            
+                        # 🔥 НОВЕ: Розпаковуємо витратні матеріали ВАРІАНТУ (стаканчики, кришки)
+                        for vc in variant.consumables:
+                            total_qty = vc.quantity * qty
+                            bom_consumables[vc.consumable_id] = bom_consumables.get(vc.consumable_id, 0) + total_qty
+                            
+                        # 🔥 НОВЕ: Розпаковуємо інгредієнти ВАРІАНТУ (якщо є)
+                        for vi in variant.ingredients:
+                            total_qty = vi.quantity * qty
+                            bom_ingredients[vi.ingredient_id] = bom_ingredients.get(vi.ingredient_id, 0) + total_qty
+                
+                # 2. ЯКЩО ЦЕ ПРОСТИЙ ТОВАР (БЕЗ ВАРІАНТІВ)
+                if not recipe and product.master_recipe_id:
+                    recipe = product.master_recipe
+                    target_weight = product.output_weight or 0.0
+
+                # 3. Розпаковуємо інгредієнти з РЕЦЕПТУ (з правильними відсотками)
+                if recipe:
+                    for ri in recipe.items:
+                        if getattr(ri, 'is_percentage', False):
+                            amount_per_item = (ri.quantity / 100.0) * target_weight
+                            total_qty = amount_per_item * qty
+                        else:
+                            total_qty = ri.quantity * qty
+                            
+                        bom_ingredients[ri.ingredient_id] = bom_ingredients.get(ri.ingredient_id, 0) + total_qty
+
+                # 4. Розпаковуємо базові інгредієнти ПРОДУКТУ
+                for pi in product.ingredients:
+                    total_qty = pi.quantity * qty
+                    bom_ingredients[pi.ingredient_id] = bom_ingredients.get(pi.ingredient_id, 0) + total_qty
+
+                # 5. Розпаковуємо базові витратні матеріали ПРОДУКТУ
+                for pc in product.consumables:
+                    total_qty = pc.quantity * qty
+                    bom_consumables[pc.consumable_id] = bom_consumables.get(pc.consumable_id, 0) + total_qty
+
+            # 🌟 ФОРМУЄМО ДЕТАЛЬНУ ПРИЧИНУ: "Продаж #123: Лате (L) x1, Еспресо x2"
+            detailed_reason = f"Продаж чеку #{order_id}: {', '.join(product_names)}"
+
+            # Формуємо чітку команду для Складу
+            payload = {
+                "event_type": "deduct_bom",
                 "order_id": order_id,
-                "transaction_reason": transaction_reason,
-                "items": clean_items
+                "reason": transaction_reason,
+                "ingredients": [{"id": k, "qty": v} for k, v in bom_ingredients.items()],
+                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()],
+                "sold_items": sold_items_for_history
             }
-            rabbitmq.publish(queue_name="inventory_queue", message=event_data)
+            rabbitmq.publish(queue_name="inventory_queue", message=payload)
+            print(f"✅ [InventoryClient] BoM для чека #{order_id} успішно відправлено на склад!")
+            
         except Exception as e:
-            print(f"⚠️ [InventoryClient] Помилка відправки в RabbitMQ (Склад): {e}")
+            print(f"⚠️ [InventoryClient] Помилка формування BoM: {e}")
+        finally:
+            db.close()
     
     @staticmethod
     def receive_stock(db: Session, entity_type: str, entity_id: int, quantity: float, cost_per_unit: float, reason: str) -> str:
@@ -219,3 +309,65 @@ class InventoryClient:
             obj = db.query(models.ProductVariant).filter(models.ProductVariant.id == entity_id).first()
         
         return getattr(obj, 'costing_method', 'wac') if obj else 'wac'
+    
+    # 🔥 НОВИЙ МЕТОД: Швидко стягує всі залишки зі Складу
+    @staticmethod
+    def get_all_stocks():
+        try:
+            ings = requests.get("http://inventory_api:8004/ingredients/", timeout=2).json()
+            cons = requests.get("http://inventory_api:8004/consumables/", timeout=2).json()
+            
+            ing_stock = {i["id"]: i.get("stock_quantity", 0) for i in ings if "id" in i}
+            con_stock = {c["id"]: c.get("stock_quantity", 0) for c in cons if "id" in c}
+            return ing_stock, con_stock
+        except Exception as e:
+            print(f"⚠️ [InventoryClient] Не вдалося отримати залишки зі складу: {e}")
+            return {}, {}
+        
+    @staticmethod
+    def refund_stock_async(order_id: int, items_data: list):
+        """Відправляє подію на ПОВЕРНЕННЯ розпакованих інгредієнтів (Reverse BoM)"""
+        from database import SessionLocal
+        import models
+        from services.rabbitmq_client import rabbitmq
+        
+        db = SessionLocal()
+        try:
+            bom_ingredients = {}
+            bom_consumables = {}
+
+            # Розпаковуємо всі рецепти точно так само, як при продажі
+            for item in items_data:
+                p_id = getattr(item, 'product_id', None)
+                v_id = getattr(item, 'variant_id', None)
+                qty = getattr(item, 'quantity', 1.0)
+
+                product = db.query(models.Product).filter(models.Product.id == p_id).first()
+                if not product: continue
+
+                variant = db.query(models.ProductVariant).filter(models.ProductVariant.id == v_id).first() if v_id else None
+                recipe = variant.master_recipe if (variant and variant.master_recipe_id) else (product.master_recipe if product.master_recipe_id else None)
+                target_weight = variant.output_weight if variant else (product.output_weight if product else 0.0)
+
+                if recipe:
+                    for ri in recipe.items:
+                        amount = (ri.quantity / 100.0) * target_weight if getattr(ri, 'is_percentage', False) else ri.quantity
+                        bom_ingredients[ri.ingredient_id] = bom_ingredients.get(ri.ingredient_id, 0) + (amount * qty)
+
+                if variant:
+                    for vi in variant.ingredients: bom_ingredients[vi.ingredient_id] = bom_ingredients.get(vi.ingredient_id, 0) + (vi.quantity * qty)
+                    for vc in variant.consumables: bom_consumables[vc.consumable_id] = bom_consumables.get(vc.consumable_id, 0) + (vc.quantity * qty)
+                
+                for pi in product.ingredients: bom_ingredients[pi.ingredient_id] = bom_ingredients.get(pi.ingredient_id, 0) + (pi.quantity * qty)
+                for pc in product.consumables: bom_consumables[pc.consumable_id] = bom_consumables.get(pc.consumable_id, 0) + (pc.quantity * qty)
+
+            payload = {
+                "event_type": "refund_bom",
+                "order_id": order_id,
+                "reason": f"Скасування чека #{order_id}",
+                "ingredients": [{"id": k, "qty": v} for k, v in bom_ingredients.items()],
+                "consumables": [{"id": k, "qty": v} for k, v in bom_consumables.items()]
+            }
+            rabbitmq.publish(queue_name="inventory_queue", message=payload)
+        finally:
+            db.close()  

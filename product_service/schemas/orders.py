@@ -28,6 +28,7 @@ class OrderCreate(BaseModel):
     items: List[SoldItem]
     payment_method: str
     customer_id: Optional[int] = None
+    use_bonuses: bool = False
     
     class Config: 
         extra = 'ignore'
@@ -48,6 +49,8 @@ class OrderRead(BaseModel):
     created_at: datetime
     total_price: float
     payment_method: str
+    customer_id: Optional[int] = None
+    bonuses_spent: Optional[float] = 0.0
     items: List[OrderItemRead] = []
     customer: Optional[Customer] = None
     

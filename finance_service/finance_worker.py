@@ -55,6 +55,20 @@ def create_transaction_internal(db: Session, amount: float, account_id: int, cat
     db.commit()
 
 def process_order_paid(db: Session, data: dict):
+
+    """Обробка події пробиття чека на касі"""
+    order_id = data.get("order_id")
+
+    # 🔥 БЛОК-ПОСТ ІДЕМПОТЕНТНОСТІ: Перевіряємо, чи ми вже не записували цей чек
+    existing_tx = db.query(models.Transaction).filter(
+        models.Transaction.reference_type == 'order',
+        models.Transaction.reference_id == order_id
+    ).first()
+    
+    if existing_tx:
+        print(f"🛡️ [Finance Microservice] Дубль перехоплено! Транзакція для чека #{order_id} вже існує. Пропуск.")
+        return  # Зупиняємо функцію, дублікат не пройде!
+
     """Обробка події пробиття чека на касі"""
     active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
     shift_id = active_shift.id if active_shift else None
@@ -110,6 +124,17 @@ def callback(ch, method, properties, body):
             process_order_paid(db, event_data)
         elif event_type == "supply_paid":
             process_supply_paid(db, event_data)
+        # 🔥 ДОДАНО
+        elif event_type == "order_refunded":
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            account = db.query(models.Account).filter(models.Account.type == ('bank' if event_data.get("payment_method") == 'card' else 'cash')).first()
+            if account:
+                create_transaction_internal(
+                    db=db,
+                    amount=-abs(float(event_data.get("amount"))), # Повернення - це відтік грошей
+                    account_id=account.id, category_id=None, shift_id=active_shift.id if active_shift else None,
+                    user_id=1, ref_type='refund', ref_id=event_data.get("order_id"), desc=f"Повернення чека #{event_data.get('order_id')}"
+                )
         else:
             print(f"⚠️ Невідомий тип події: {event_type}")
 

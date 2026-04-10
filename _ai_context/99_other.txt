@@ -1,15 +1,11 @@
-from fastapi import FastAPI, HTTPException
+SYSTEM CONTEXT FILE: 99_OTHER\n=========================================\nThis file contains the source code for a specific microservice/module.\n\n📦 FILE CONTENTS\n================\n\n<file path="order_service/main.py">\nfrom fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import redis
 import os
 import json
 import uuid
-import pika
 from typing import List
 from schemas import CartItemCreate, CartItem # Імпортуємо схеми
-
-# Налаштування RabbitMQ
-RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@rabbitmq:5672/')
 
 app = FastAPI()
 
@@ -95,41 +91,32 @@ def remove_item(cart_item_id: str):
 @app.delete("/cart/")
 def clear_cart():
     r.delete(CART_KEY)
-    return {"status": "cleared"}
+    return {"status": "cleared"}\n</file>\n\n<file path="order_service/requirements.txt">\nfastapi
+uvicorn
+redis
+pydantic
+\n</file>\n\n<file path="order_service/schemas.py">\nfrom pydantic import BaseModel
+from typing import List, Optional
 
-@app.post("/cart/checkout")
-def checkout(payload: dict):
-    # 1. Отримуємо всі товари з Redis для цього касира/сесії
-    raw_data = r.hgetall(CART_KEY)
-    if not raw_data:
-        raise HTTPException(status_code=400, detail="Кошик порожній")
+# 🔥 ДОДАНО: Схема для замін пакування
+class ConsumableOverride(BaseModel):
+    original_id: int
+    new_id: Optional[int] = None
 
-    # 2. Формуємо повне повідомлення для створення замовлення
-    order_event = {
-        "event_type": "create_order",
-        "customer_id": payload.get("customer_id"),
-        "payment_method": payload.get("payment_method", "cash"),
-        "items": [json.loads(v) for v in raw_data.values()],
-        "bonuses_spent": payload.get("bonuses_spent", 0),
-        "use_bonuses": payload.get("use_bonuses", False)
-    }
+class ModifierItem(BaseModel):
+    modifier_id: int
 
-    # 3. ВІДПРАВЛЯЄМО В RABBITMQ (Асинхронно!)
-    try:
-        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
-        channel = connection.channel()
-        channel.queue_declare(queue='orders_queue', durable=True)
-        channel.basic_publish(
-            exchange='',
-            routing_key='orders_queue',
-            body=json.dumps(order_event),
-            properties=pika.BasicProperties(delivery_mode=2) # Робимо повідомлення стійким
-        )
-        connection.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Помилка черги: {e}")
+class CartItemCreate(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    modifiers: List[ModifierItem] = []
+    quantity: int = 1
+    # Ми передаємо ці дані з фронту, щоб кошик не робив запитів до Product Service (швидкодія)
+    name: str 
+    price: float
 
-    # 4. Очищаємо кошик у Redis після успішної відправки в чергу
-    r.delete(CART_KEY)
-    
-    return {"status": "accepted", "message": "Замовлення прийнято в чергу на обробку"}
+    # 🔥 ДОДАНО: Поле для збереження замін пакування в кошику
+    consumable_overrides: Optional[List[ConsumableOverride]] = []
+
+class CartItem(CartItemCreate):
+    cart_item_id: str # Унікальний ID саме цього рядка в кошику (UUID)\n</file>\n

@@ -1,0 +1,436 @@
+SYSTEM CONTEXT FILE: 05_FINANCE_SERVICE\n=========================================\nThis file contains the source code for a specific microservice/module.\n\n📦 FILE CONTENTS\n================\n\n<file path="finance_service/database.py">\n# FILE: finance_service/database.py
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+# URL за замовчуванням дивиться на нову базу
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5433/finance_db")
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()\n</file>\n\n<file path="finance_service/finance_worker.py">\n# FILE: finance_service/finance_worker.py
+
+import pika
+import json
+import os
+import time
+from decimal import Decimal
+from sqlalchemy.orm import Session
+
+# Імпортуємо локальні файли НОВОГО мікросервісу
+import models
+from database import SessionLocal, engine
+
+from sqlalchemy.exc import OperationalError
+
+print("⏳ [Finance Microservice] Очікування бази даних...")
+while True:
+    try:
+        # Намагаємося створити таблиці
+        models.Base.metadata.create_all(bind=engine)
+        print("✅ [Finance Microservice] База даних готова!")
+        break
+    except OperationalError:
+        print("⏳ База ще завантажується... Повтор через 2 секунди.")
+        time.sleep(2)
+
+RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://hits_admin:hits_password@localhost:5672/')
+
+def create_transaction_internal(db: Session, amount: float, account_id: int, category_id: int, shift_id: int, user_id: int, ref_type: str, ref_id: int, desc: str):
+    """
+    Ця функція повністю замінює старий finance_service.create_transaction().
+    Вона створює транзакцію і оновлює баланс рахунку.
+    """
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    if not account or not account.is_active:
+        raise ValueError(f"Рахунок {account_id} не знайдено або він деактивований")
+
+    # 1. Створюємо запис у регістрі (Transactions)
+    new_tx = models.Transaction(
+        amount=Decimal(str(amount)),
+        account_id=account.id,
+        category_id=category_id,
+        shift_id=shift_id,
+        user_id=user_id,
+        reference_type=ref_type,
+        reference_id=ref_id,
+        description=desc
+    )
+    db.add(new_tx)
+    
+    # 2. Оновлюємо кешований баланс рахунку
+    account.balance += Decimal(str(amount))
+    
+    # 3. Зберігаємо все атомарно
+    db.commit()
+
+def process_order_paid(db: Session, data: dict):
+
+    """Обробка події пробиття чека на касі"""
+    order_id = data.get("order_id")
+
+    # 🔥 БЛОК-ПОСТ ІДЕМПОТЕНТНОСТІ: Перевіряємо, чи ми вже не записували цей чек
+    existing_tx = db.query(models.Transaction).filter(
+        models.Transaction.reference_type == 'order',
+        models.Transaction.reference_id == order_id
+    ).first()
+    
+    if existing_tx:
+        print(f"🛡️ [Finance Microservice] Дубль перехоплено! Транзакція для чека #{order_id} вже існує. Пропуск.")
+        return  # Зупиняємо функцію, дублікат не пройде!
+
+    """Обробка події пробиття чека на касі"""
+    active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    shift_id = active_shift.id if active_shift else None
+
+    payment_type = 'bank' if data.get("payment_method") == 'card' else 'cash'
+    account = db.query(models.Account).filter(models.Account.type == payment_type, models.Account.is_active == True).first()
+    category = db.query(models.TransactionCategory).filter(models.TransactionCategory.name == "Продаж товарів").first()
+
+    if account:
+        create_transaction_internal(
+            db=db,
+            amount=data.get("amount"),
+            account_id=account.id,
+            category_id=getattr(category, 'id', None),
+            shift_id=shift_id,
+            user_id=data.get("user_id", 1),
+            ref_type='order',
+            ref_id=data.get("order_id"),
+            desc=f"Оплата замовлення #{data.get('order_id')}"
+        )
+
+def process_supply_paid(db: Session, data: dict):
+    """Обробка події закупівлі товару"""
+    active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    shift_id = active_shift.id if active_shift else None
+
+    account = db.query(models.Account).filter(models.Account.id == data.get("account_id")).first()
+    category = db.query(models.TransactionCategory).filter(models.TransactionCategory.name == "Закупівля товару").first()
+
+    if account:
+        create_transaction_internal(
+            db=db,
+            amount=-abs(float(data.get("amount"))), # Витрати завжди з мінусом
+            account_id=account.id,
+            category_id=getattr(category, 'id', None),
+            shift_id=shift_id,
+            user_id=data.get("user_id", 1),
+            ref_type='supply',
+            ref_id=data.get("supply_id"),
+            desc=f"Оплата постачання #{data.get('supply_id')}"
+        )
+
+def callback(ch, method, properties, body):
+    """Слухач подій з RabbitMQ"""
+    event_data = json.loads(body)
+    event_type = event_data.get("event_type")
+    
+    print(f"📥 [Finance Microservice] Отримано подію: {event_type} -> {event_data}")
+    
+    db = SessionLocal()
+    try:
+        if event_type == "order_paid":
+            process_order_paid(db, event_data)
+        elif event_type == "supply_paid":
+            process_supply_paid(db, event_data)
+        # 🔥 ДОДАНО
+        elif event_type == "order_refunded":
+            active_shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+            account = db.query(models.Account).filter(models.Account.type == ('bank' if event_data.get("payment_method") == 'card' else 'cash')).first()
+            if account:
+                create_transaction_internal(
+                    db=db,
+                    amount=-abs(float(event_data.get("amount"))), # Повернення - це відтік грошей
+                    account_id=account.id, category_id=None, shift_id=active_shift.id if active_shift else None,
+                    user_id=1, ref_type='refund', ref_id=event_data.get("order_id"), desc=f"Повернення чека #{event_data.get('order_id')}"
+                )
+        else:
+            print(f"⚠️ Невідомий тип події: {event_type}")
+
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"✅ [Finance Microservice] Транзакцію успішно записано!\n")
+        
+    except Exception as e:
+        print(f"❌ [Finance Microservice] Помилка обробки: {e}")
+        db.rollback()
+        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+    finally:
+        db.close()
+
+def start_consuming():
+    print("⏳ [Finance Microservice] З'єднання з RabbitMQ...")
+    while True:
+        try:
+            parameters = pika.URLParameters(RABBITMQ_URL)
+            connection = pika.BlockingConnection(parameters)
+            channel = connection.channel()
+            break
+        except pika.exceptions.AMQPConnectionError:
+            print("Втрачено зв'язок. Повторна спроба через 5 сек...")
+            time.sleep(5)
+
+    channel.queue_declare(queue="finance_queue", durable=True)
+    channel.basic_qos(prefetch_count=1) 
+    channel.basic_consume(queue="finance_queue", on_message_callback=callback)
+
+    print("🎧 [Finance Microservice] Готовий до роботи! Чекаю на фінансові події...")
+    channel.start_consuming()
+
+if __name__ == "__main__":
+    start_consuming()\n</file>\n\n<file path="finance_service/main.py">\n# FILE: finance_service/main.py
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from pydantic import BaseModel
+from datetime import datetime
+import models
+import schemas
+from database import get_db
+
+app = FastAPI(title="POS Finance API")
+
+# Налаштування CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 1. Рахунки (зверніть увагу на слеш наприкінці)
+@app.get("/finance/accounts/")
+def get_accounts(db: Session = Depends(get_db)):
+    return db.query(models.Account).all()
+
+# 2. Категорії транзакцій
+@app.get("/finance/categories/")
+def get_categories(db: Session = Depends(get_db)):
+    return db.query(models.TransactionCategory).all()
+
+# 3. Історія транзакцій
+@app.get("/finance/transactions/")
+def get_transactions(limit: int = 50, db: Session = Depends(get_db)):
+    return db.query(models.Transaction).order_by(models.Transaction.timestamp.desc()).limit(limit).all()
+
+# 4. Перевірка активної зміни
+@app.get("/finance/shifts/active")
+def get_active_shift(db: Session = Depends(get_db)):
+    shift = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    return shift
+
+# 5. Відкриття касової зміни
+@app.post("/finance/shifts/open")
+def open_shift(payload: dict, db: Session = Depends(get_db)):
+    active = db.query(models.Shift).filter(models.Shift.closed_at == None).first()
+    if active:
+        raise HTTPException(status_code=400, detail="Зміна вже відкрита")
+    
+    new_shift = models.Shift(
+        user_id=1, # Поки немає системи логіну, ставимо ID касира за замовчуванням
+        opening_balance=payload.get("opening_balance", 0)
+    )
+    db.add(new_shift)
+    db.commit()
+    db.refresh(new_shift)
+    return new_shift
+
+# 6. Закриття касової зміни
+@app.post("/finance/shifts/{shift_id}/close")
+def close_shift(shift_id: int, cash_account_id: int, safe_account_id: int, actual_balance: float, db: Session = Depends(get_db)):
+    shift = db.query(models.Shift).filter(models.Shift.id == shift_id, models.Shift.closed_at == None).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Активну зміну не знайдено")
+    
+    shift.closed_at = datetime.utcnow()
+    shift.closing_balance_actual = actual_balance
+    
+    cash_acc = db.query(models.Account).filter(models.Account.id == cash_account_id).first()
+    expected = float(cash_acc.balance) if cash_acc else 0.0
+    
+    shift.closing_balance_expected = expected
+    shift.discrepancy = actual_balance - expected
+    db.commit()
+    return {"status": "success", "shift": shift}
+
+# 7. Звіт PnL (Доходи та Витрати)
+@app.get("/finance/report/pnl")
+def get_pnl(db: Session = Depends(get_db)):
+    # Базовий розрахунок загальних доходів та витрат
+    income = db.query(func.sum(models.Transaction.amount)).join(models.TransactionCategory).filter(models.TransactionCategory.type == 'INCOME').scalar() or 0
+    expense = db.query(func.sum(models.Transaction.amount)).join(models.TransactionCategory).filter(models.TransactionCategory.type == 'EXPENSE').scalar() or 0
+    
+    return {
+        "income": float(income),
+        "expense": abs(float(expense)),
+        "profit": float(income) - abs(float(expense)),
+        "categories": [] 
+    }
+
+# 8. Сівба (Генерація базових рахунків)
+@app.post("/finance/seed")
+def seed_database(db: Session = Depends(get_db)):
+    if not db.query(models.Account).first():
+        db.add_all([
+            models.Account(name="Каса (Готівка)", type="cash"),
+            models.Account(name="Банк (Еквайринг)", type="bank"),
+            models.Account(name="Головний Сейф", type="safe")
+        ])
+        db.add_all([
+            models.TransactionCategory(name="Продаж товарів", type="INCOME"),
+            models.TransactionCategory(name="Закупівля товару", type="EXPENSE"),
+            models.TransactionCategory(name="Інкасація", type="SERVICE")
+        ])
+        db.commit()
+        return {"status": "Базу успішно наповнено базовими даними!"}
+    return {"status": "Дані вже існують."}
+
+# Оновлений роут
+@app.post("/finance/accounts/", response_model=schemas.Account)
+def create_account(account: schemas.AccountCreate, db: Session = Depends(get_db)):
+    # Створюємо модель бази даних на основі отриманих даних
+    new_account = models.Account(
+        name=account.name,
+        type=account.type
+    )
+    db.add(new_account)
+    db.commit()
+    db.refresh(new_account)
+    return new_account\n</file>\n\n<file path="finance_service/models.py">\n# FILE: finance_service/models.py
+
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Numeric, Boolean, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from database import Base # 🔥 Беремо Base з нашого нового файлу підключення
+
+# 1. class Account(Base):
+class Account(Base):
+    """
+    Таблиця Рахунків. 
+    Фізичні або віртуальні місця, де зберігаються гроші.
+    """
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # Назва (напр. "Каса 1", "Головний сейф")
+    type = Column(String) # Тип: 'cash' (готівка), 'bank' (еквайринг/банк), 'safe' (сейф)
+    currency = Column(String, default="UAH") # Мультивалютність (UAH, USD, EUR)
+    
+    # Використовуємо Numeric(12, 2) для грошей: 12 цифр всього, 2 після коми.
+    # Це кешований баланс для швидкого виведення на фронтенді.
+    # Реальний баланс завжди можна перерахувати як суму всіх транзакцій.
+    balance = Column(Numeric(12, 2), default=0.00) 
+    is_active = Column(Boolean, default=True) # Чи можна використовувати цей рахунок
+
+    # Зв'язок з транзакціями (один рахунок має багато транзакцій)
+    transactions = relationship("Transaction", back_populates="account")
+
+# 2. class TransactionCategory(Base):
+class TransactionCategory(Base):
+    """
+    Таблиця Категорій транзакцій (Статті витрат/доходів).
+    Необхідна для побудови P&L звітів.
+    """
+    __tablename__ = "transaction_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String) # Напр. "Оренда", "Продаж товарів", "Інкасація"
+    type = Column(String) # 'INCOME' (Дохід), 'EXPENSE' (Витрата), 'SERVICE' (Службове)
+    
+    # Для створення дерева категорій (напр. Витрати -> Зарплата -> ЗП Бариста)
+    parent_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="SET NULL"), nullable=True)
+    
+    transactions = relationship("Transaction", back_populates="category")
+
+# 3. class Shift(Base):
+class Shift(Base):
+    """
+    Таблиця Касових змін.
+    Прив'язує фінансові рухи до конкретного робочого дня та касира.
+    """
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True) # ID користувача (касира), який відкрив зміну
+    opened_at = Column(DateTime, default=datetime.utcnow) # Час відкриття
+    closed_at = Column(DateTime, nullable=True) # Час закриття (якщо null - зміна триває)
+    
+    # Фінансові показники зміни
+    opening_balance = Column(Numeric(12, 2), default=0.00) # Гроші в касі на ранок (розмінка)
+    closing_balance_expected = Column(Numeric(12, 2), nullable=True) # Скільки має бути по системі
+    closing_balance_actual = Column(Numeric(12, 2), nullable=True) # Скільки касир перерахував руками
+    discrepancy = Column(Numeric(12, 2), default=0.00) # Нестача (-) або Лишок (+)
+
+    transactions = relationship("Transaction", back_populates="shift")
+
+# 4. class Transaction(Base):
+class Transaction(Base):
+    """
+    Таблиця Транзакцій (Ledger / Регістр).
+    СЕРЦЕ системи. Записи тут є незмінними (immutable).
+    """
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Сума транзакції. Може бути позитивною (дохід) або негативною (витрата)
+    amount = Column(Numeric(12, 2), nullable=False)
+    
+    # Зовнішні ключі для зв'язків
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="RESTRICT"))
+    category_id = Column(Integer, ForeignKey("transaction_categories.id", ondelete="RESTRICT"), nullable=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(Integer) # Хто ініціював транзакцію
+    
+    # Поліморфний зв'язок (Polymorphic Association)
+    # Зберігає ЧОМУ виникла транзакція. Напр: type='order', id=105 (Чек №105)
+    reference_type = Column(String, index=True, nullable=True) 
+    reference_id = Column(Integer, index=True, nullable=True)
+    
+    # Мультивалютність: курс валюти на момент здійснення операції (щоб історія не ламалась при зміні курсу)
+    exchange_rate = Column(Numeric(10, 4), default=1.0000)
+    
+    # Зв'язок для переміщень (Transfer). 
+    # При інкасації створюються 2 транзакції (-500 з Каси, +500 в Сейф). Вони посилаються одна на одну.
+    linked_transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
+    
+    description = Column(Text, nullable=True) # Коментар касира ("Заплатив за молоко")
+
+    # Встановлення зв'язків з об'єктами
+    account = relationship("Account", back_populates="transactions")
+    category = relationship("TransactionCategory", back_populates="transactions")
+    shift = relationship("Shift", back_populates="transactions")\n</file>\n\n<file path="finance_service/requirements.txt">\nfastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+pika==1.3.2
+pydantic==2.5.2\n</file>\n\n<file path="finance_service/schemas.py">\nfrom pydantic import BaseModel
+from typing import Optional
+
+# Схема для створення (те, що ми отримуємо від фронтенду)
+class AccountCreate(BaseModel):
+    name: str
+    type: str  # 'cash', 'bank' або 'safe'
+
+# Схема для відповіді (те, що ми повертаємо фронтенду)
+class Account(BaseModel):
+    id: int
+    name: str
+    type: str
+    balance: float
+    is_active: bool
+
+    class Config:
+        from_attributes = True # Дозволяє Pydantic читати дані прямо з SQLAlchemy моделей\n</file>\n

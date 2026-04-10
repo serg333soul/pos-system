@@ -18,17 +18,47 @@ export function useStatistics() {
     loading.value = true
     try {
       const url = `/api/orders/?page=${currentPage.value}&limit=${pageSize.value}`
-      console.log("🚀 Запит до API:", url) // Додай для дебагу в консолі
+      console.log("🚀 Запит до API:", url)
 
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
-        orders.value = data.items
+        
+        // --- 🔥 МІКРОСЕРВІСНЕ СКЛЕЮВАННЯ ДАНИХ (Frontend Join) ---
+        let fetchedOrders = data.items || []
+        
+        // 1. Знаходимо всі унікальні ID клієнтів з цих чеків (відкидаємо null/гостей)
+        const uniqueCustomerIds = [...new Set(fetchedOrders.map(o => o.customer_id).filter(id => id))]
+        
+        if (uniqueCustomerIds.length > 0) {
+            const customerMap = {}
+            
+            // 2. Робимо паралельні запити до CRM для отримання імен
+            await Promise.all(uniqueCustomerIds.map(async (id) => {
+                try {
+                    // Звертаємося до ендпоінта, який ми щойно створили в main.py
+                    const cRes = await fetch(`/api/customers/${id}`)
+                    if (cRes.ok) {
+                        customerMap[id] = await cRes.json()
+                    }
+                } catch (err) {
+                    console.error(`Не вдалося завантажити дані клієнта ${id}:`, err)
+                }
+            }))
+            
+            // 3. Підміняємо дані: "пришиваємо" об'єкт customer до кожного чека
+            fetchedOrders = fetchedOrders.map(order => ({
+                ...order,
+                customer: order.customer_id ? (customerMap[order.customer_id] || null) : null
+            }))
+        }
+        // ---------------------------------------------------------
+
+        orders.value = fetchedOrders
         totalOrders.value = data.total
         totalPages.value = data.pages
       } else {
-      // Якщо тут 422 - значить лапки все ще не ті
-      console.error("❌ Помилка бекенда:", res.status);
+        console.error("❌ Помилка бекенда:", res.status);
       }
     } catch (err) {
       console.error("Помилка завантаження статистики:", err)
@@ -54,16 +84,7 @@ export function useStatistics() {
   }
 
   return {
-    orders,
-    loading,
-    totalOrders, 
-    totalPages,
-    currentPage, 
-    pageSize,
-    showDetailModal,
-    selectedOrder,
-    fetchOrders,
-    openDetails,
-    closeDetails
+    orders, loading, totalOrders, totalPages, currentPage, pageSize,
+    showDetailModal, selectedOrder, fetchOrders, openDetails, closeDetails
   }
 }

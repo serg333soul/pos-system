@@ -56,7 +56,13 @@ const menuItems = [
 ]
 
 const navigate = (pageId) => {
-  emit('change-page', pageId)
+  // Якщо ми натискаємо на вже активний розділ (наприклад, Склад), 
+  // то повертаємо користувача на "Касу", що закриє підменю.
+  if (props.currentPage === pageId && pageId !== 'pos') {
+    emit('change-page', 'pos')
+  } else {
+    emit('change-page', pageId)
+  }
 }
 
 // Нова функція для навігації по під-меню

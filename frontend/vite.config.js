@@ -1,8 +1,8 @@
+
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
@@ -16,25 +16,11 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      // 1. Запити до КОШИКА йдуть на order_service
-      '/api/cart': {
-        target: 'http://order_service:8000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
-      },
-      
-      // 🔥 НОВЕ ПРАВИЛО: Всі запити по фінансах йдуть на новий мікросервіс!
-      '/api/finance': {
-        target: 'http://finance_api:8002', // Вказуємо контейнер нашої нової БД
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
-      },
-
-      // 3. Всі ІНШІ запити (Клієнти, Склад, Товари) йдуть на старий product_service
+      // 🔥 ВСІ запити на бекенд відправляємо в єдиний Nginx Gateway
       '/api': {
-        target: 'http://product_service:8000', 
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        target: 'http://localhost:8088', 
+        changeOrigin: true
+        // Зауважте: ми прибрали "rewrite", бо Nginx сам відрізає /api/ там, де це потрібно!
       }
     }
   }

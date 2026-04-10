@@ -12,20 +12,26 @@ class FinanceClient:
     """
     
     @staticmethod
-    def register_order_income(db: Session, order_id: int, total_price: float, payment_method: str, user_id: int):
-        """Відправляє подію про новий дохід від продажу у чергу"""
+    def register_order_income(db: Session, order_id: int, total_price: float, payment_method: str, user_id: int, customer_id: int = None, bonuses_spent: float = 0.0, use_bonuses: bool = False):
+        """Відправляє подію про новий дохід у черги Фінансів та Лояльності"""
         try:
-            # 1. Формуємо "тіло" повідомлення (Payload)
             event_data = {
                 "event_type": "order_paid",
                 "order_id": order_id,
                 "amount": total_price,
                 "payment_method": payment_method,
-                "user_id": user_id
+                "user_id": user_id,
+                "customer_id": customer_id,
+                "bonuses_spent": bonuses_spent, # Точна сума списання
+                "use_bonuses": use_bonuses      # Прапорець для воркера
             }
             
             # 2. Публікуємо подію в чергу фінансів
             rabbitmq.publish(queue_name="finance_queue", message=event_data)
+            # Дублюємо подію в чергу лояльності
+            rabbitmq.publish(queue_name="loyalty_queue", message=event_data)
+
+            print(f"✅ [FinanceClient] Подію 'order_paid' розіслано (списано бонусів: {bonuses_spent})")
             
         except Exception as e:
             # Якщо RabbitMQ впав, каса все одно проб'є чек (надійність!)
@@ -49,3 +55,17 @@ class FinanceClient:
             
         except Exception as e:
             print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (supply_expense): {e}")
+
+    @staticmethod
+    def register_order_refund(order_id: int, amount: float, payment_method: str):
+        """Відправляє подію про скасування чека та повернення коштів"""
+        try:
+            event_data = {
+                "event_type": "order_refunded",
+                "order_id": order_id,
+                "amount": amount,
+                "payment_method": payment_method
+            }
+            rabbitmq.publish(queue_name="finance_queue", message=event_data)
+        except Exception as e:
+            print(f"⚠️ [FinanceClient] Помилка відправки в RabbitMQ (refund): {e}")

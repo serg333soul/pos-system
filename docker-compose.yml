@@ -18,6 +18,21 @@ services:
       postgres_db: 
         condition: service_healthy  # <--- Чекати, поки база скаже "Я здорова"
 
+  # --- ВОРКЕР ОФОРМЛЕННЯ ЗАМОВЛЕНЬ ---
+  order_worker:
+    build: ./product_service
+    container_name: pos_order_worker
+    restart: always
+    command: python -u order_worker.py
+    volumes:                   
+      - ./product_service:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres_db:5432/products_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - postgres_db
+      - rabbitmq
+
   finance_worker:
     build: ./finance_service 
     container_name: pos_finance_worker
@@ -181,15 +196,28 @@ services:
     environment:
       # Зв'язок з Redis
       - REDIS_HOST=redis_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
     depends_on:
       postgres_db:
         condition: service_healthy
-
+    
   # --- 4. БАЗА ДАНИХ КОШИКА (Redis) ---
   redis_db:
     image: redis:alpine
     container_name: pos_redis
     restart: always
+
+  customer_worker:
+    build: ./customer_service
+    container_name: pos_customer_worker
+    restart: always
+    command: python -u customer_worker.py
+    environment:
+      - DATABASE_URL=postgresql://user:password@customer_db:5432/customers_db
+      - RABBITMQ_URL=amqp://hits_admin:hits_password@rabbitmq:5672/
+    depends_on:
+      - customer_db
+      - rabbitmq
 
   # --- 5. ВХІДНІ ВОРОТА (Nginx) ---
   frontend:  # <-- НОВА НАЗВА (було nginx або gateway)

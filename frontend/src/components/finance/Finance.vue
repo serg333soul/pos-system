@@ -7,6 +7,11 @@ const { accounts, transactions, pnlReport, fetchAccounts, fetchTransactions, fet
 // Вкладки: 'accounts' (Рахунки), 'transactions' (Історія), 'pnl' (Звіти)
 const activeTab = ref('accounts')
 
+// Змінні для модального вікна
+const showAddAccountModal = ref(false)
+const newAccount = ref({ name: '', type: 'cash' })
+const isSavingAccount = ref(false)
+
 onMounted(async () => {
     await fetchAccounts()
     await fetchTransactions()
@@ -35,6 +40,41 @@ const formatDate = (dateString) => {
         hour: '2-digit', minute: '2-digit' 
     })
 }
+
+// Функція збереження рахунку
+const handleCreateAccount = async () => {
+    if (!newAccount.value.name) {
+        alert("Будь ласка, введіть назву рахунку!");
+        return;
+    }
+    
+    isSavingAccount.value = true;
+    try {
+        const res = await fetch('/api/finance/accounts/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newAccount.value)
+        });
+        
+        if (res.ok) {
+            showAddAccountModal.value = false; // Закриваємо модалку
+            newAccount.value = { name: '', type: 'cash' }; // Очищаємо форму
+            
+            // Оновлюємо список рахунків (викличте вашу функцію завантаження, 
+            // наприклад fetchAccounts() або fetchFinanceData(), якщо вона так називається. 
+            // Якщо такої функції під рукою немає, тимчасово можна використати: window.location.reload();
+            fetchFinanceData(); // ЗАМІНІТЬ на вашу реальну функцію оновлення
+        } else {
+            const err = await res.json();
+            alert("Помилка створення: " + (err.detail || res.statusText));
+        }
+    } catch (e) {
+        console.error("Помилка:", e);
+    } finally {
+        isSavingAccount.value = false;
+    }
+}
+
 </script>
 
 <template>
@@ -45,7 +85,7 @@ const formatDate = (dateString) => {
           <h2 class="text-3xl font-black text-gray-800">Управління фінансами</h2>
           <p class="text-gray-500 mt-1">Контроль рахунків, транзакцій та прибутку</p>
         </div>
-        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2">
+        <button @click="showAddAccountModal = true" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2">
             <i class="fas fa-plus"></i> Новий рахунок
         </button>
       </div>
@@ -221,4 +261,45 @@ const formatDate = (dateString) => {
 
     </main>
   </div>
+
+  <div v-if="showAddAccountModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl p-6 w-[400px] shadow-xl">
+          <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-bold text-gray-800">Новий рахунок</h2>
+              <button @click="showAddAccountModal = false" class="text-gray-400 hover:text-gray-600">
+                  <i class="fas fa-times text-xl"></i>
+              </button>
+          </div>
+          
+          <div class="mb-4">
+              <label class="block text-sm font-bold text-gray-600 mb-1">Назва рахунку</label>
+              <input v-model="newAccount.name" type="text" 
+                    class="w-full border border-gray-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
+                    placeholder="Наприклад: Картка Монобанк">
+          </div>
+
+          <div class="mb-6">
+              <label class="block text-sm font-bold text-gray-600 mb-1">Тип рахунку</label>
+              <select v-model="newAccount.type" 
+                      class="w-full border border-gray-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all bg-white">
+                  <option value="cash">💵 Готівка (Каса)</option>
+                  <option value="bank">💳 Банк (Еквайринг/Картка)</option>
+                  <option value="safe">🏦 Сейф / Резерв</option>
+              </select>
+          </div>
+
+          <div class="flex justify-end gap-3">
+              <button @click="showAddAccountModal = false" 
+                      class="px-5 py-2.5 text-gray-600 font-bold bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
+                  Скасувати
+              </button>
+              <button @click="handleCreateAccount" :disabled="isSavingAccount" 
+                      class="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                  <i v-if="isSavingAccount" class="fas fa-spinner fa-spin"></i>
+                  {{ isSavingAccount ? 'Створення...' : 'Створити' }}
+              </button>
+          </div>
+      </div>
+  </div>
+
 </template>

@@ -92,37 +92,43 @@ export function useCart() {
     } catch(e) { console.error(e) }
   }
 
-  // 🔥 ОСНОВНА ЗМІНА ТУТ
-  const processCheckout = async () => {
+  // ОСНОВНА ЗМІНА ТУТ
+  // Додаємо аргумент options з деструктуризацією, щоб отримати useBonuses з CartDrawer
+  const processCheckout = async ({ useBonuses = false } = {}) => {
     if (cartItems.value.length === 0) return
     isProcessing.value = true
     
     try {
+      // 🔥 1. РОЗРАХУНОК БОНУСІВ (з безпечним перетворенням у число Number)
+      let bonusesSpent = 0;
+      if (useBonuses && selectedCustomer.value && Number(selectedCustomer.value.bonus_balance) > 0) {
+        bonusesSpent = Math.min(Number(selectedCustomer.value.bonus_balance), totalSum.value);
+      }
+
+      // 🔥 2. ФОРМУВАННЯ PAYLOAD
       const payload = {
         items: cartItems.value.map(item => ({
           product_id: item.product_id,
           variant_id: item.variant_id || null,
           quantity: item.quantity,
-          // 🔥 ДОДАНО: Передаємо збережені заміни з кошика у фінальне замовлення!
           consumable_overrides: item.consumable_overrides || [],
           ingredient_overrides: item.ingredient_overrides || [],
-          // Безпечна обробка модифікаторів
           modifiers: Array.isArray(item.modifiers) 
             ? item.modifiers.map(m => ({
-              // Якщо m - це число, беремо його. Якщо об'єкт - беремо m.id або m.modifier_id
               modifier_id: typeof m === 'number' ? m : (m.id || m.modifier_id),
-              quantity: m.quantity || 1 // Додаємо кількість, якщо модифікаторів > 1
+              quantity: m.quantity || 1 
               }))
             : []
         })),
         payment_method: paymentMethod.value,
-        // ❌ total_price БІЛЬШЕ НЕ ВІДПРАВЛЯЄМО!
-        customer_id: selectedCustomer.value ? selectedCustomer.value.id : null
+        customer_id: selectedCustomer.value ? selectedCustomer.value.id : null,
+        use_bonuses: useBonuses,
+        bonuses_spent: bonusesSpent // 🔥 ПЕРЕДАЄМО НА БЕКЕНД
       }
 
       console.log("📤 Checkout Request:", payload)
 
-      const res = await fetch('/api/orders/checkout/', { 
+      const res = await fetch('/api/cart/checkout', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -130,23 +136,25 @@ export function useCart() {
 
       if (!res.ok) {
           const err = await res.json()
+          await fetchWarehouseData(); 
           throw new Error(err.detail || "Помилка при оплаті")
-          await fetchWarehouseData(); // 3. Оновлюємо дані складу після помилки (можливо, хтось інший змінив залишки)
       }
 
       const responseData = await res.json()
 
       await fetchWarehouseData();
       
-      // Очищення
       await fetch('/api/cart/', { method: 'DELETE' })
       cartItems.value = []
-      selectedCustomer.value = null
       
-      // Повертаємо результат із СЕРВЕРНОЮ сумою
+      // Вираховуємо суму для попапу
+      const finalPrice = responseData.total_price !== undefined 
+            ? responseData.total_price 
+            : Math.max(0, totalSum.value - bonusesSpent);
+
       return {
         success: true,
-        text: `✅ Оплата успішна!\nСписано: ${responseData.total_price} ₴`
+        text: `✅ Оплата успішна!\nДо сплати: ${finalPrice} ₴`
       }
 
     } catch (err) {
